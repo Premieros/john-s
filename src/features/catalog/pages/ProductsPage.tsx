@@ -152,9 +152,25 @@ export function ProductsPage() {
       .from('product_unit_links')
       .select('unit_id,quantity,unit:inventory_units(id,name,unit_type,cost_price)')
       .eq('product_id', p.id);
+
+    let displayInventoryLinks = ((inventoryLinks || []) as unknown as LinkedInventoryUnit[]).map((row) => ({ ...row, quantity: Number(row.quantity) || 0 }));
+    if (p.product_type === 'manufactured' && effectiveProductBranch) {
+      const { data: manufacturedUnits } = await supabase
+        .from('inventory_units')
+        .select('id,name,unit_type,cost_price')
+        .eq('branch_id', effectiveProductBranch)
+        .eq('unit_type', 'manufactured')
+        .eq('is_active', true);
+      const normalize = (value: string) => value.trim().toLowerCase().replace(/[ .]+$/g, '');
+      const ownUnit = ((manufacturedUnits || []) as { id: string; name: string; unit_type: 'manufactured'; cost_price: number }[])
+        .find((unit) => normalize(unit.name) === normalize(p.name));
+      if (ownUnit && !displayInventoryLinks.some((row) => row.unit_id === ownUnit.id)) {
+        displayInventoryLinks = [{ unit_id: ownUnit.id, quantity: 1, unit: ownUnit }, ...displayInventoryLinks];
+      }
+    }
     setRecipeYield(currentYield);
     setRecipeIngredients(recipeRows);
-    setLinkedInventoryUnits(((inventoryLinks || []) as unknown as LinkedInventoryUnit[]).map((row) => ({ ...row, quantity: Number(row.quantity) || 0 })));
+    setLinkedInventoryUnits(displayInventoryLinks);
 
     setComponentSel('');
     setComponentQty(1);
