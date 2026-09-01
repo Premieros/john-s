@@ -84,6 +84,7 @@ export interface RfqComparisonRow {
 export interface PurchaseBackorderRow {
   id: string;
   purchase_id: string;
+  branch_id: string;
   invoice_number: string;
   supplier_id: string;
   supplier_name: string;
