@@ -1,6 +1,7 @@
 import type { Language, Settings } from '@/lib/types';
 import { formatCurrency, escapeHtml } from '@/lib/format';
 import { generateQRCodeDataURL } from '@/lib/barcode';
+import { supabase } from '@/api';
 
 export interface ReceiptData {
   invoice: string;
@@ -19,6 +20,130 @@ export interface ReceiptData {
   guestCount?: number | null;
 }
 
+type PrintAuthorizationResult = {
+  success?: boolean;
+  error?: string;
+  action?: string;
+  print_number?: number;
+  is_reprint?: boolean;
+};
+
+type ApprovalRow = {
+  id: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | 'consumed';
+  expires_at: string;
+};
+
+export class ReceiptPrintApprovalError extends Error {
+  code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'ReceiptPrintApprovalError';
+    this.code = code;
+  }
+}
+
+/**
+ * Authorize every official receipt print before the browser print dialog opens.
+ *
+ * Behaviour:
+ * - First print is recorded by authorize_sale_print and proceeds immediately.
+ * - Users with pos.reprint can reprint immediately.
+ * - Cashiers without pos.reprint automatically reuse an already-approved,
+ *   unexpired reprint request if one exists.
+ * - If approval is still pending, printing stays blocked.
+ * - If there is no live request, a manager approval request is created and the
+ *   caller receives REPRINT_APPROVAL_PENDING. The cashier can press Print again
+ *   after the manager approves; the approved request is then consumed once.
+ */
+async function authorizeReceiptPrint(receipt: ReceiptData): Promise<void> {
+  const invoice = receipt.invoice?.trim();
+  if (!invoice) {
+    throw new ReceiptPrintApprovalError('INVALID_INVOICE', 'Receipt invoice number is required');
+  }
+
+  const { data: sale, error: saleError } = await supabase
+    .from('sales')
+    .select('id')
+    .eq('invoice_number', invoice)
+    .maybeSingle();
+
+  if (saleError) throw saleError;
+  if (!sale?.id) {
+    throw new ReceiptPrintApprovalError('SALE_NOT_FOUND', 'Sale was not found for receipt printing');
+  }
+
+  const tryAuthorize = async (approvalRequestId: string | null) => {
+    const { data, error } = await supabase.rpc('authorize_sale_print', {
+      p_sale_id: sale.id,
+      p_approval_request_id: approvalRequestId,
+    });
+    if (error) throw error;
+    return (data ?? {}) as PrintAuthorizationResult;
+  };
+
+  const initial = await tryAuthorize(null);
+  if (initial.success) return;
+  if (initial.error !== 'MANAGER_APPROVAL_REQUIRED') {
+    throw new ReceiptPrintApprovalError(initial.error || 'PRINT_NOT_AUTHORIZED', initial.error || 'Receipt print is not authorized');
+  }
+
+  const nowIso = new Date().toISOString();
+  const { data: existing, error: existingError } = await supabase
+    .from('approval_requests')
+    .select('id,status,expires_at')
+    .eq('action_type', 'reprint')
+    .eq('entity_type', 'sale')
+    .eq('entity_id', sale.id)
+    .in('status', ['pending', 'approved'])
+    .gt('expires_at', nowIso)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+  const request = existing as ApprovalRow | null;
+
+  if (request?.status === 'approved') {
+    const authorized = await tryAuthorize(request.id);
+    if (authorized.success) return;
+    throw new ReceiptPrintApprovalError(authorized.error || 'INVALID_APPROVAL', authorized.error || 'Reprint approval is invalid');
+  }
+
+  if (request?.status === 'pending') {
+    throw new ReceiptPrintApprovalError(
+      'REPRINT_APPROVAL_PENDING',
+      'Manager approval is pending for this receipt reprint',
+    );
+  }
+
+  const { data: created, error: createError } = await supabase.rpc('request_manager_approval', {
+    p_action_type: 'reprint',
+    p_entity_type: 'sale',
+    p_entity_id: sale.id,
+    p_payload: {
+      invoice_number: invoice,
+      total: receipt.total,
+    },
+    p_reason: `Receipt reprint: ${invoice}`,
+  });
+
+  if (createError) throw createError;
+  const createdResult = (created ?? {}) as { success?: boolean; error?: string };
+  if (!createdResult.success) {
+    throw new ReceiptPrintApprovalError(
+      createdResult.error || 'APPROVAL_REQUEST_FAILED',
+      createdResult.error || 'Could not create reprint approval request',
+    );
+  }
+
+  throw new ReceiptPrintApprovalError(
+    'REPRINT_APPROVAL_PENDING',
+    'Manager approval request was sent for this receipt reprint',
+  );
+}
+
 export function openPrintWindow(html: string, widthMm: number): boolean {
   const win = window.open('', '_blank', `width=${Math.min(500, widthMm + 140)},height=600`);
   if (!win) return false;
@@ -28,6 +153,10 @@ export function openPrintWindow(html: string, widthMm: number): boolean {
 }
 
 export async function buildReceiptHtml(receipt: ReceiptData, s: Settings, lang: Language, isAr: boolean): Promise<string> {
+  // The receipt HTML is only produced after the server records/authorizes the
+  // print attempt. This keeps auto-print and manual printing on the same gate.
+  await authorizeReceiptPrint(receipt);
+
   const width = Math.max(50, Math.min(100, s.receipt_width_mm || 80));
   const copies = Math.max(1, Math.min(5, s.receipt_copies || 1));
   const showTax = s.receipt_show_tax !== false;
