@@ -1,0 +1,65 @@
+name: Apply products server search
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-products-server-search.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch ProductsPage
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('src/features/catalog/pages/ProductsPage.tsx')
+          s = p.read_text()
+          old = """  const can = useCan();
+          const branchFilter = useBranchFilter();
+          const { rows: products, loading, total, hasMore, loadMore, loadingMore, refresh: reloadProducts } = usePaginatedRows<Product>({
+            table: 'products',
+            select: '*, category:categories(*)',
+            order: { column: 'created_at', ascending: false },
+            branch_id: branchFilter,
+            pageSize: 100,
+          });
+          const [categories, setCategories] = useState<Category[]>([]);
+          const [search, setSearch] = useState('');
+          """
+          new = """  const can = useCan();
+          const branchFilter = useBranchFilter();
+          const [search, setSearch] = useState('');
+          const { rows: products, loading, total, hasMore, loadMore, loadingMore, refresh: reloadProducts } = usePaginatedRows<Product>({
+            table: 'products',
+            select: '*, category:categories(*)',
+            order: { column: 'created_at', ascending: false },
+            branch_id: branchFilter,
+            search: { term: search, columns: ['name', 'name_en', 'barcode', 'sku'] },
+            pageSize: 100,
+          });
+          const [categories, setCategories] = useState<Category[]>([]);
+          """
+          if old not in s:
+              raise SystemExit('ProductsPage hook block not found')
+          s = s.replace(old, new, 1)
+          old_filter = """  const filtered = products.filter((p) =>
+            !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode?.includes(search) || p.sku?.includes(search)
+          );
+          """
+          if old_filter not in s:
+              raise SystemExit('client-side products filter block not found')
+          s = s.replace(old_filter, "  const filtered = products;\n", 1)
+          p.write_text(s)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/catalog/pages/ProductsPage.tsx
+          git commit -m "feat: make product search server-side"
+          git push
