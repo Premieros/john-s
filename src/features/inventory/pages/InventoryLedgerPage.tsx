@@ -5,6 +5,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useBranchFilter } from '@/lib/useBranchFilter';
 import { DesignSurface, DesignPageHeader, DesignSearch, DesignPanel, DesignPagination } from '@/components/design';
 import { DataTable, type Column } from '@/components/DataTable';
+import { BranchBadge } from '@/components/BranchBadge';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
 import { Select } from '@/components/Input';
 import { formatNumber, formatDateTime } from '@/lib/format';
@@ -49,6 +50,8 @@ export function InventoryLedgerPage() {
   }
   useEffect(() => { loadBranches(); }, []);
 
+  const branchName = (id: string | null | undefined) => branches.find((br) => br.id === id)?.name || '-';
+
   const filtered = rows.filter((r) => {
     const e = r.entry;
     if (entryType !== 'all' && e.entry_type !== entryType) return false;
@@ -66,6 +69,7 @@ export function InventoryLedgerPage() {
       Date: r.entry.created_at,
       Type: entryTypes.find((x) => x.key === r.entry.entry_type)?.label || r.entry.entry_type,
       Item: r.entry.product?.name || r.entry.raw_material?.name || '-',
+      Branch: branchName(r.entry.branch_id),
       Reference: r.entry.reference_number || '',
       Batch: r.entry.batch_number || '',
       Quantity: r.entry.quantity,
@@ -113,6 +117,7 @@ export function InventoryLedgerPage() {
       </div>
     )},
     { key: 'warehouse', header: t('warehouse'), render: (r) => (r.entry.warehouse as Warehouse | undefined)?.name || '-' },
+    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branchName(r.entry.branch_id)} /> },
     { key: 'batch', header: t('batchNumber'), render: (r) => r.entry.batch_number || '-' },
     { key: 'quantity', header: t('quantity'), render: (r) => (
       <span className={`font-semibold ${r.entry.quantity >= 0 ? 'text-ui-success dark:text-ui-success' : 'text-ui-danger'}`}>
