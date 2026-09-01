@@ -1,0 +1,145 @@
+name: Apply automatic production POS availability
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-auto-production-pos-availability.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch POS availability source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/features/pos/pages/PosWorkspacePage.tsx')
+          s = p.read_text(encoding='utf-8')
+          old = '''  const loadStock = useCallback(async (branchId: string) => {
+    if (!branchId) {
+      setStockMap({});
+      return;
+    }
+    const { data: warehouses } = await supabase.from('warehouses').select('id').eq('branch_id', branchId).eq('is_active', true);
+    const warehouseIds = (warehouses || []).map((w: { id: string }) => w.id);
+    if (warehouseIds.length === 0) {
+      setStockMap({});
+      return;
+    }
+    const { data: inv } = await supabase.from('inventory').select('product_id, quantity').in('warehouse_id', warehouseIds);
+    const map: Record<string, number> = {};
+    for (const row of (inv || []) as { product_id: string; quantity: number }[]) {
+      map[row.product_id] = (map[row.product_id] || 0) + Number(row.quantity);
+    }
+    setStockMap(map);
+  }, []);
+
+  const sellableStock = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of products) {
+      if (p.product_type !== 'manufactured') continue;
+      const comps = recipeMap[p.id] || [];
+      if (comps.length === 0) {
+        map[p.id] = 0;
+        continue;
+      }
+      let min = Infinity;
+      for (const c of comps) {
+        const perUnit = Number(c.quantity) || 0;
+        if (perUnit <= 0) {
+          min = 0;
+          break;
+        }
+        const possible = (stockMap[c.component_product_id] || 0) / perUnit;
+        if (possible < min) min = possible;
+      }
+      map[p.id] = min === Infinity ? 0 : Math.floor(min);
+    }
+    return map;
+  }, [products, recipeMap, stockMap]);
+'''
+          new = '''  const loadStock = useCallback(async (branchId: string) => {
+    if (!branchId) {
+      setStockMap({});
+      return;
+    }
+    const { data: warehouses } = await supabase
+      .from('warehouses')
+      .select('id')
+      .eq('branch_id', branchId)
+      .eq('is_active', true);
+    const warehouseId = ((warehouses || []) as { id: string }[])[0]?.id || null;
+    if (!warehouseId) {
+      setStockMap({});
+      return;
+    }
+
+    const { data, error } = await supabase.rpc('get_pos_product_availability', {
+      p_branch_id: branchId,
+      p_warehouse_id: warehouseId,
+      p_cap: 100000,
+    });
+    if (error) {
+      setStockMap({});
+      return;
+    }
+    const map: Record<string, number> = {};
+    for (const row of (data || []) as { product_id: string; available_quantity: number | string }[]) {
+      map[row.product_id] = Number(row.available_quantity) || 0;
+    }
+    setStockMap(map);
+  }, []);
+
+  // Server availability already explodes direct raw materials + manufactured units
+  // (including nested manufactured shortages), so one map is authoritative for POS.
+  const sellableStock = stockMap;
+'''
+          if old not in s:
+              raise SystemExit('PosWorkspace loadStock/sellableStock anchor not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+
+          p = Path('src/features/pos/hooks/usePosOrder.ts')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace(
+            "  const { branchId, orderId, customers, effSettings, isCashier, activeShift, products, stockMap, sellableStock, recipeMap } = input;",
+            "  const { branchId, orderId, customers, effSettings, isCashier, activeShift, products, stockMap } = input;"
+          )
+          old = '''  const getStock = useCallback((productId: string) => {
+    const prod = products.find((x) => x.id === productId);
+    if (prod?.product_type === 'manufactured') return sellableStock[productId] || 0;
+    return stockMap[productId] || 0;
+  }, [products, sellableStock, stockMap]);
+'''
+          new = '''  const getStock = useCallback((productId: string) => {
+    return stockMap[productId] || 0;
+  }, [stockMap]);
+'''
+          if old not in s:
+              raise SystemExit('usePosOrder getStock anchor not found')
+          s = s.replace(old, new, 1)
+          old = '''    if (product.product_type === 'manufactured' && (recipeMap[product.id]?.length || 0) === 0) {
+      show(`${product.name}: ${t('noRecipe')}`, 'error');
+      return;
+    }
+'''
+          s = s.replace(old, '', 1)
+          s = s.replace('    if (inCart + quantity > stock && stock > 0) {', '    if (inCart + quantity > stock) {', 1)
+          s = s.replace("  }, [getStock, recipeMap, cart, show, t]);", "  }, [getStock, cart, show, t]);", 1)
+          s = s.replace('    if (delta > 0 && stock > 0) {', '    if (delta > 0) {', 1)
+          s = s.replace('    if (stock > 0 && qty > stock) {', '    if (qty > stock) {', 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/pos/pages/PosWorkspacePage.tsx src/features/pos/hooks/usePosOrder.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: derive POS availability from ingredients"
+          git push
