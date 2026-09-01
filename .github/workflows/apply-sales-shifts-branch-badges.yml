@@ -1,0 +1,52 @@
+name: Apply sales shifts branch badges
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-sales-shifts-branch-badges.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch sales and shifts branch visibility
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/features/trade/pages/SalesPage.tsx')
+          s = p.read_text(encoding='utf-8-sig')
+          if "import { BranchBadge } from '@/components/BranchBadge';" not in s:
+              s = s.replace("import { ConfirmDialog } from '@/components/ConfirmDialog';", "import { ConfirmDialog } from '@/components/ConfirmDialog';\nimport { BranchBadge } from '@/components/BranchBadge';")
+          if "import { useBranches } from '@/hooks/useBranches';" not in s:
+              s = s.replace("import { usePaginatedRows } from '@/hooks/usePaginatedRows';", "import { usePaginatedRows } from '@/hooks/usePaginatedRows';\nimport { useBranches } from '@/hooks/useBranches';")
+          s = s.replace("  customer_id: string | null;\n", "  customer_id: string | null;\n  branch_id: string;\n", 1)
+          s = s.replace("select: 'id, invoice_number, total, paid_amount, refunded_amount, payment_method, status, notes, created_at, customer_id,", "select: 'id, invoice_number, total, paid_amount, refunded_amount, payment_method, status, notes, created_at, customer_id, branch_id,", 1)
+          anchor = "  const { effectiveSettings } = useSettings();\n"
+          if anchor in s and "const { branches } = useBranches();" not in s:
+              s = s.replace(anchor, anchor + "  const { branches } = useBranches();\n", 1)
+          anchor = "    { key: 'customer', header: t('customer'), render: (r) => r.customer?.name || '-' },\n"
+          if anchor in s and "key: 'branch'" not in s:
+              s = s.replace(anchor, anchor + "    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branches.find((b) => b.id === r.branch_id)?.name || '-'} /> },\n", 1)
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('src/features/trade/pages/ShiftsPage.tsx')
+          s = p.read_text(encoding='utf-8')
+          if "import { BranchBadge } from '@/components/BranchBadge';" not in s:
+              s = s.replace("import { Modal } from '@/components/Modal';", "import { Modal } from '@/components/Modal';\nimport { BranchBadge } from '@/components/BranchBadge';")
+          s = s.replace("{ key: 'branch', header: t('branch'), render: (r) => r.branch?.name || '-' },", "{ key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={r.branch?.name || '-'} /> },")
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/trade/pages/SalesPage.tsx src/features/trade/pages/ShiftsPage.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: show branch badges on sales and shifts"
+          git push
