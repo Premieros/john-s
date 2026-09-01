@@ -16,6 +16,7 @@ import { useActiveBranchId } from '../lib/activeBranch';
 import { useBranches } from '@/hooks/useBranches';
 import { useActiveOrders } from '../features/pos/hooks/useActiveOrders';
 import { Logo } from './Logo';
+import { ApprovalInbox } from './ApprovalInbox';
 import { APP_ROUTES } from '@/core/navigation/routes';
 import { MENU_GROUPS, MENU_ITEMS, type MenuIcon, type MenuGroup } from '@/core/navigation/menu.config';
 import { CommandPalette, CommandPaletteTrigger } from './CommandPalette';
@@ -207,6 +208,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <OfflineStatusIndicator />
           </div>
 
+          <ApprovalInbox ar={ar} />
           {/* Active orders */}
           <button data-testid="active-orders-button" type="button" onClick={() => navigate('/floor-plan')} className="relative rounded-xl p-2 text-ui-muted transition-colors hover:bg-ui-page-alt hover:text-ui-text" aria-label={ar ? 'الطلبات النشطة' : 'Active orders'}>
             <Activity className="h-5 w-5" />
