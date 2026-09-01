@@ -6,6 +6,7 @@ import type { PosPaymentMethod } from '@/lib/posMath';
 import type { CartItem, Customer, DiningTable, OrderType } from '@/lib/types';
 import { orderTypeLabel } from '../../utils/format';
 import { parseCarNotes, parseDeliveryNotes } from '../../utils/orderLabels';
+import { CashierDiscountApprovalCard } from './CashierDiscountApprovalCard';
 
 interface PaymentPanelProps {
   currentBranchName: string;
@@ -170,7 +171,15 @@ export function PaymentPanel(p: PaymentPanelProps) {
               </div>
             </div>
           </div>
-
+<CashierDiscountApprovalCard
+  subtotal={p.subtotal}
+  currentType={p.discountType}
+  ar={isAr}
+  onApproved={(type, amount) => {
+    p.onDiscountTypeChange(type);
+    p.onDiscountAmountChange(amount);
+  }}
+/>
           <div className="grid grid-cols-2 gap-3">
             {METHODS.map((m) => (
               <button
