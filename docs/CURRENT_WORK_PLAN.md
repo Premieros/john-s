@@ -322,3 +322,35 @@ Migration الجديدة للـBackorders:
 ### الحالة التالية
 - لا تُطبق Migration Backorders على Production قبل Verify أخضر على HEAD النظيف.
 - بعد P3: P4 Products/POS server-side search + pagination + cache consistency ثم E2E نهائي.
+
+---
+
+## تحديث 2026-09-02 — Backorders Production + P3 Parties/Audit + P4 audit ✅
+
+### Backorders branch visibility — Production ✅
+- Verify main run `33572558012`: App/lint/typecheck/unit/build + DB/Integration/Security/RLS + Browser Smoke = SUCCESS.
+- Deploy run `33572557921`: SUCCESS.
+- طُبقت Migration `purchase_backorders_branch_visibility` على Production.
+- `get_purchase_backorders(uuid)` يعيد `branch_id` فعليًا.
+- الدالة `SECURITY DEFINER` مع `search_path=public, pg_temp`.
+- `anon` لا يملك EXECUTE؛ `authenticated` و`service_role` فقط يملكان EXECUTE.
+- واجهة Receiving تعرض BranchBadge في Backorders وفي نافذة الاستلام.
+
+### P3 Users / Parties / Audit ✅
+- Users: تم توحيد عرض الفرع باستخدام `BranchBadge`.
+- Customers: أضيف BranchBadge للجدول واسم الفرع إلى Excel export.
+- Suppliers: أضيف BranchBadge للجدول واسم الفرع إلى Excel export.
+- Audit Log: أضيف branch filter إلى الاستعلام وعرض BranchBadge لكل سجل.
+- commit الفعلي: `49b59f3611cdcd2dfd397c10a1f30906ffc6391d`.
+
+### P4 Products/POS — نتيجة المراجعة
+- `usePaginatedRows` يدعم server-side text search أصلًا.
+- ProductsPage يستخدم server-side search على `name`, `name_en`, `barcode`, `sku` مع pagination حقيقي من السيرفر.
+- ProductsPage يبطل POS offline catalog cache بعد تعديل/حذف المنتج.
+- POS يحمل المنتجات من `products` مع `branch_id = effectiveBranch` و`is_active = true`، ويخزن نفس الكتالوج للـoffline.
+- لذلك المشكلة القديمة: البحث داخل أول 100 فقط لم تعد موجودة في الكود الحالي.
+- المتبقي في P4: regression coverage يثبت server-side search + تطابق branch/is_active بين Products/POS، ثم إغلاق البند إذا نجح.
+
+### P3 المتبقي
+- Reports: فلتر الفرع موجود، لكن عند اختيار “كل الفروع” بعض النتائج لا تحمل اسم الفرع؛ يحتاج إصلاحًا حقيقيًا للبيانات وليس Badge شكليًا.
+- Print/documents: مراجعة أن الفرع ظاهر بوضوح في المستندات المطبوعة الأساسية.
