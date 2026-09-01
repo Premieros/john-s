@@ -6,262 +6,203 @@
 
 ## 1) الحالة العامة
 
-المشروع يعمل على `main` مع قاعدة Supabase الإنتاجية.
+المشروع يعمل على `main` مع Supabase الإنتاجية.
 
-آخر baseline كود مكتمل التحقق قبل تحديث هذا السجل:
-- Commit: `853d43fad4e2e7296da985cd61643d0fe6c829ce`
-- Verify main #40: **SUCCESS**
-- lint ✅
-- typecheck ✅
-- full test typecheck ✅
-- unit tests ✅
-- build ✅
-- canonical migrations ✅
-- schema verification ✅
-- integration/security/RLS: **334/334 ✅**
+آخر baseline مكتمل قبل إصلاح عرض تركيب المنتج:
+- Verify main #45 على `4e17122a19d50a7297102f19163c033669419019`: **SUCCESS**.
+- lint ✅ typecheck ✅ unit ✅ build ✅
+- canonical migrations / schema ✅
+- integration/security/RLS ✅
 - Playwright browser smoke ✅
+- Deploy #47 ✅
 
-قاعدة ثابتة: لا نعتبر أي مسار مكتملًا قبل نجاح الكود + DB + الاختبارات + smoke المناسب.
+الإصلاح الأحدث لعرض وحدة التصنيع الخاصة بالمنتج موجود في الكود، والتحقق النهائي بعد تنظيف الأدوات المؤقتة جارٍ على `main`.
 
 ---
 
 ## 2) بيانات Excel الجديدة — مكتمل ✅
 
-المصادر:
-- `Document النادى(1).xls` — المنتجات والأسعار والأقسام.
-- `sales recipe(2)(1).xlsx` — وصفات المنتجات والمكونات.
-
-الحالة الفعلية في الإنتاج:
 - المنتجات: **352/352**.
 - الأقسام: **30/30**.
-- أسماء المنتجات المكررة: **0**.
+- أسماء مكررة: **0**.
 - منتجات بدون قسم: **0**.
-- الخامات/المكونات المختلفة: **215**.
+- الخامات المختلفة: **215**.
 - المنتجات ذات الوصفة: **265**.
 - أسطر الوصفات: **1205/1205**.
-- الوصفات الفارغة: **0**.
-- المنتجات بدون وصفة في ملف الوصفات: **87**.
+- وصفات فارغة: **0**.
+- منتجات بلا وصفة في ملف المصدر: **87**.
 
 ### التكلفة
-- لم تُستورد تكلفة ثابتة من Excel.
-- `products.cost_price` و`raw_materials.default_cost` لم يُستخدما كمصدر تكلفة نهائي.
-- مصدر التكلفة التشغيلي هو **المشتريات ودفعات المخزون الفعلية**.
-- التصنيع يأخذ تكلفة الخامات من FIFO/تكلفة الشراء الفعلية ويرحّلها إلى تكلفة الوحدة المصنعة.
+- لا نعتمد تكلفة ثابتة مستوردة من Excel.
+- تكلفة الخامات تأتي من المشتريات/دفعات المخزون الفعلية.
+- تكلفة المصنع تنتقل من تكلفة مكوناته الفعلية أثناء الإنتاج.
 
 ---
 
-## 3) المصنعات / Semi-finished Components — مكتمل معماريًا ✅
+## 3) المصنعات / Semi-finished Components ✅
 
-تم تحويل قسم `تصنيعات` إلى مكونات مصنعة داخلية:
 - المنتجات المصنعة الداخلية: **17**.
 - `inventory_units` المصنعة: **17**.
-- جميعها مخفية من POS كمنتجات بيع مستقلة.
-- الوصفات الخام للمصنعات محفوظة في `inventory_unit_recipes`.
-- المنتجات النهائية التي تستخدم مصنعًا ترتبط به عبر `product_unit_links`.
-- علاقات المنتج النهائي → المصنع الموجودة من ملف Excel: **52**.
+- مخفية من POS كمنتجات بيع مستقلة.
+- وصفات التصنيع الخام في `inventory_unit_recipes`.
+- المنتج النهائي الذي يستهلك مصنعًا يرتبط به عبر `product_unit_links`.
+- علاقات المنتج → المصنع من Excel: **52**.
 
-### مصنع داخل مصنع — تم دعمه رسميًا ✅
-
+### مصنع داخل مصنع ✅
 Migration:
 `supabase/migrations/20260901233000_nested_manufacturing_hybrid_sale_inventory.sql`
 
-تم إنشاء:
-`inventory_unit_recipe_units(parent unit -> manufactured component unit)`
+تم دعم `inventory_unit_recipe_units(parent -> component manufactured unit)`.
+العلاقات الفعلية: **3**:
+1. `mash side` ← `ماش مصنع .` — 0.133452 دفعة.
+2. `penna white side` ← `صوص الفريدو تصنيع` — 0.062925 دفعة.
+3. `rice side` ← `ارز بسمتى مصنع.` — 0.053727 دفعة.
 
-العلاقات الفعلية المكتشفة والمحوّلة في الإنتاج: **3**
-1. `mash side` ← `ماش مصنع .` — **0.133452 دفعة**.
-2. `penna white side` ← `صوص الفريدو تصنيع` — **0.062925 دفعة**.
-3. `rice side` ← `ارز بسمتى مصنع.` — **0.053727 دفعة**.
-
-تم حذف الـraw placeholder المقابل من وصفة المصنع الأعلى عند التحويل، لمنع الخصم المزدوج.
-
-### سلوك `produce_inventory_unit`
-- يرفض كمية تصنيع <= 0.
-- يرفض التصنيع عند نقص الخامات.
-- يرفض التصنيع عند نقص المصنع الفرعي المطلوب.
-- يستهلك الخامات الأساسية من FIFO.
-- يستهلك المصنع الفرعي من `inventory_unit_batches` بنظام FIFO.
-- يسجل `production_consumption` للوحدات المصنعة المستهلكة.
-- يجمع تكلفة الخامات + تكلفة المصنع الفرعي.
-- ينشئ batch للمصنع الناتج بالتكلفة المجمعة.
-- يحدث تكلفة `inventory_unit` والمنتج المصنع المطابق.
-
-اختبار مباشر:
-`tests/integration/nested_manufactured_units.test.ts`
-يثبت خامة → مصنع أول → مصنع ثان + انتقال التكلفة وخصم كمية المصنع الأول.
+`produce_inventory_unit` يستهلك الخامات والمصانع الفرعية FIFO، يرفض النقص قبل إتمام التصنيع، ويجمع التكلفة الفعلية في batch المصنع الناتج.
 
 ---
 
-## 4) معمارية المخزون والبيع — القرار النهائي الحالي ✅
+## 4) معمارية المخزون والبيع — Hybrid Inventory ✅
 
-تم إلغاء الفكرة القديمة التي تقول إن كل منتج يجب أن يملك `inventory_unit/product_unit_link` صناعيًا لمجرد السماح بالبيع؛ ذلك كان سيكرر المخزون ويخلق وحدات وهمية للخامات.
-
-المسار المعتمد أصبح **Hybrid Inventory**:
-
-### أ) منتج له خامات مباشرة في وصفته
+### منتج بوصفة خامات مباشرة
 `Product -> recipe_items -> raw_materials`
+- البيع يخصم الخامات FIFO بعد Preflight.
 
-عند البيع:
-- تُجمع الكميات المطلوبة حسب الوصفة.
-- يتم Preflight للمخزون كاملًا قبل أي خصم.
-- الخصم يتم من `raw_material_inventory/raw_material_batches` FIFO.
-- التكلفة تأتي من دفعات الشراء الفعلية.
-
-### ب) منتج يستخدم مصنعًا
+### منتج يستخدم مصنعًا
 `Product -> product_unit_links -> manufactured inventory_unit`
+- البيع يخصم المصنع من `inventory_unit_batches`.
+- خامات المصنع لا تخصم مرة ثانية عند البيع لأنها خصمت وقت التصنيع.
 
-عند البيع:
-- يخصم نسبة المصنع المطلوبة من `inventory_unit_batches` FIFO.
-- لا يعاد خصم خامات المصنع مرة ثانية؛ خاماته خُصمت وقت التصنيع.
+### منتج جاهز بلا وصفة
+- يخصم من `inventory_batches/inventory` الخاصة بالمنتج الجاهز.
 
-إذا كان نفس المنتج له خامات مباشرة + مصنع، يخصم الاثنين معًا بدون Double Deduction.
-
-### ج) منتج جاهز/مُشترى وليس له وصفة
-عند البيع:
-- يستخدم مخزون المنتج الجاهز الحالي `inventory_batches/inventory`.
-- لا يتم إنشاء inventory unit مكرر له فقط لإرضاء شرط تقني.
-
-### تغطية المنتجات الفعلية في الإنتاج
-المنتجات القابلة للبيع: **335/335 مصنفة بمسار مخزون واضح**:
+التغطية الفعلية:
+- المنتجات القابلة للبيع: **335/335** لها مسار مخزون واضح.
 - وصفة خامات مباشرة: **196**.
-- تستخدم مكونات مصنعة عبر unit links: **52**.
-- منتجات جاهزة بلا وصفة: **87**.
-- غير مصنف/خارج دورة المخزون: **0**.
-
-الـ17 المتبقية من أصل 352 هي المصنعات الداخلية المخفية من POS.
-
----
-
-## 5) KDS والمخزون ✅
-
-المعمارية المعتمدة:
-- `send_to_kitchen` = State/Snapshot فقط.
-- لا يوجد خصم مخزون عند إرسال KDS.
-- `order_kitchen_sends` يمنع تكرار الإرسال لنفس السطر.
-- الخصم الحقيقي يحدث مرة واحدة عند البيع.
-- إلغاء صنف تم إرساله للمطبخ لا يعيد مخزونًا لأن KDS لم يخصم مخزونًا أصلًا.
-
-### Cancel sent item
-تم:
-- إزالة مسار زيادة المخزون الوهمية.
-- إضافة `cancel_sent_order_item` Server-side.
-- cashier يحتاج موافقة `cancel_sent_item`.
-- منع خفض/حذف sent item عبر تجاوز `update_order`.
-- تسجيل الإلغاء/السبب/المستخدم.
-- اختبار أن cancel لا يغير المخزون.
-
-متبقي صغير في KDS:
-- اختبار/مراجعة زيادة كمية سطر سبق إرساله مع الحفاظ على نفس `order_item_id` والتأكد أن Delta الجديد يصل للمطبخ بصورة صحيحة.
+- تستخدم مصنعًا: **52**.
+- جاهزة بلا وصفة: **87**.
+- خارج دورة المخزون: **0**.
+- الـ17 المتبقية هي المصنعات الداخلية المخفية من POS.
 
 ---
 
-## 6) نظام موافقات المدير — P1
+## 5) عرض مكونات المنتج في الواجهة — مُصحح ✅
 
-### مكتمل ✅
-- `approval_requests`.
-- إنشاء/قبول/رفض/استهلاك الموافقة مرة واحدة.
-- منع self-approval.
-- Realtime + `ApprovalInbox`.
-- خصم cashier بموافقة Server-side.
-- إعادة الطباعة بموافقة Server-side عبر `authorize_sale_print`.
-- `sale_print_events`.
-- Cancel sent item بموافقة Server-side.
+المشكلة المكتشفة:
+`ProductsPage` كانت تعرض النظام القديم `product_components/product_units`، بينما بيانات التشغيل المستوردة والفعلية موجودة في `recipes/recipe_items` و`product_unit_links/inventory_units`.
 
-### متبقي
-1. Refund approval integration.
+تم التصحيح:
+- نافذة تعديل المنتج تعرض **الخامات المباشرة الفعلية** من أحدث Recipe نشطة.
+- تعرض **الوحدات المخزنية/المصنعة التي يستهلكها المنتج** من `product_unit_links`.
+- تفصل ذلك عن **وحدات البيع** مثل قطعة/كرتونة.
+- لا يتم نسخ البيانات إلى الجداول القديمة ولا إنشاء مخزون مكرر.
+
+Commit الأساسي:
+`481ae725a458f861a035343a85bc5dfecc849360` — `fix: show actual product recipes and inventory units`.
+
+### وحدة التصنيع الخاصة بالمنتج
+الصورة/الفحص كشف حالة `صوص بلو تشيز مصنع`:
+- المنتج Manufactured داخلي.
+- له وحدة تصنيع فعلية بنفس الاسم في `inventory_units`.
+- لها **4 خامات تصنيع**.
+- لم تكن تظهر لأن `product_unit_links` تمثل ما **يستهلكه** المنتج، وليست الوحدة التي **ينتجها** المنتج.
+
+تم إصلاح العرض بحيث المنتج المصنع يعرض أيضًا **وحدة التصنيع الخاصة به** عند تطابق الاسم والفرع، بدون إنشاء self-link في `product_unit_links` حتى لا يستهلك المنتج نفسه.
+
+Commit:
+`8535e64fd09b4fb92eeab7a86d9d2b25a0b91ced` — `fix: show product own manufacturing unit`.
+
+بعد الإصلاح، `صوص بلو تشيز مصنع` يجب أن يظهر له **1 وحدة مصنعة** بدل الرقم المضلل 0، بالإضافة إلى خاماته الأربع.
+
+---
+
+## 6) KDS والمخزون ✅
+
+- `send_to_kitchen` State/Snapshot فقط ولا يخصم مخزونًا.
+- البيع هو نقطة الخصم الفعلية مرة واحدة.
+- Cancel sent item لا يعيد مخزونًا وهميًا.
+- `cancel_sent_order_item` محمي Server-side ويتطلب موافقة للكاشير.
+
+متبقي صغير:
+- اختبار Delta عند زيادة كمية سطر سبق إرساله للمطبخ.
+
+---
+
+## 7) نظام موافقات المدير — P1
+
+مكتمل:
+- Discount approval.
+- Reprint approval + `authorize_sale_print`.
+- Cancel sent item approval.
+- Realtime/ApprovalInbox + استهلاك الموافقة مرة واحدة.
+
+متبقي:
+1. Refund approval.
 2. Change payment method approval.
 3. Open drawer approval.
 4. Force close shift approval.
-5. Void order إذا كان له مسار فعلي مستقل.
-6. Cashier/Manager E2E كامل لهذه العمليات.
-7. تحسين رسالة `REPRINT_APPROVAL_PENDING` في UI.
+5. Void order إذا كان له مسار مستقل.
+6. Cashier/Manager E2E.
+7. تحسين رسالة `REPRINT_APPROVAL_PENDING`.
 
 ---
 
-## 7) حماية البيع ومكافحة التلاعب
+## 8) حماية البيع — P2
 
 مكتمل:
-- cashier لا يعدّل `sales` مباشرة.
-- `sale_items` immutable مباشرة عبر RLS.
-- خصومات cashier تمر بالموافقة.
-- authoritative pricing موجود ومختبر: سعر الكتالوج Server-side هو المعتمد وليس السعر المزور القادم من العميل.
-- مسار خصم المخزون الآن يعمل Preflight قبل mutation للمصنع/الخامات/المنتج الجاهز.
+- cashier لا يعدل `sales` مباشرة.
+- `sale_items` immutable عبر RLS.
+- authoritative catalog pricing Server-side مختبر.
+- inventory preflight قبل mutation.
 
-### P2 المتبقي
-Audit صغير فقط للفجوات الحقيقية:
+متبقي Audit محدود لـ:
 - tax tampering.
 - discount combinations.
 - unit/quantity combinations.
-- التأكد أن total/subtotal النهائيين لا يمكن التلاعب بهما في أي مسار بديل.
+- أي مسار بديل قد يقبل subtotal/total من العميل.
 
 ---
 
-## 8) Products vs POS — P4
+## 9) Products vs POS — P4
 
-المشكلة ما زالت قائمة في الواجهة:
-- `ProductsPage` يحمل أول 100 منتج فقط في الصفحة الأولى.
-- البحث Client-side على البيانات المحملة.
-- POS يجلب جميع المنتجات النشطة للفرع.
-- لذلك يمكن أن يظهر منتج في POS ولا يظهر في نتائج بحث Products قبل Load More.
-
-المطلوب:
-- Server-side search.
+متبقي:
+- Server-side product search بدل البحث في أول 100 سجل فقط.
 - Pagination حقيقية مع البحث.
-- توحيد branch + active conditions بين POS وProducts.
-- invalidate/update Offline catalog cache بعد create/edit/deactivate/delete.
-- اختبار تطابق الـ335 منتجًا القابل للبيع بين Products وPOS لنفس الفرع.
+- توحيد branch + active conditions بين Products وPOS.
+- invalidate/update Offline catalog cache بعد تغييرات المنتجات.
+- اختبار تطابق الـ335 منتجًا القابل للبيع بين الصفحتين.
 
 ---
 
-## 9) إظهار الفرع بجانب كل سجل — P3
+## 10) Branch visibility — P3
 
-القرار:
-كل سجل branch-scoped يجب أن يعرض **اسم الفرع** بوضوح، وليس UUID أو مجرد فلترة داخلية.
-
-المطلوب:
-- `BranchBadge` مشترك.
-- Sales / invoices / refunds / shifts أولًا.
-- Products.
-- Purchases / Receiving / RFQs / Purchase Requests / Expenses.
-- Inventory / Counts / Batches / Valuation / Waste / Transfers.
-- Customers / Suppliers / Employees / Users عندما تكون branch-scoped.
-- Tables / Dining Areas / Kitchen Stations.
-- Reports / Audit / Approvals / Excel / PDF / print.
-
-لا يضاف BranchBadge لكيان global على مستوى المؤسسة إذا لم يكن branch-scoped معماريًا.
+كل سجل branch-scoped يجب أن يعرض اسم الفرع بوضوح.
+المطلوب: `BranchBadge` موحد، بدءًا من Sales/invoices/refunds/shifts ثم Products ثم المشتريات والمخزون والأطراف والتقارير والطباعة.
 
 ---
 
-## 10) ترتيب العمل القادم
+## 11) ترتيب العمل القادم
 
-### P1 — أولوية مباشرة
-- Refund approval.
-- Change payment method.
-- Open drawer.
-- Force close shift.
-- E2E cashier/manager.
+### أولوية فورية
+- إغلاق Verify/Deploy لإصلاح عرض مكونات ووحدة تصنيع المنتج.
 
-### P2
-- إغلاق أي pricing/tax tampering gaps حقيقية فقط.
+### ثم P1
+- Refund → Change payment method → Open drawer → Force close shift → E2E.
 
-### P3
-- Branch visibility standard.
-
-### P4
-- Products/POS server-side search + pagination + cache consistency.
-
-### P5
-- التقارير والتصدير والطباعة وبقية تحسينات التشغيل.
+### ثم P2/P3/P4
+- security pricing/tax gaps.
+- Branch visibility.
+- Products/POS search + pagination + cache consistency.
 
 ---
 
-## 11) قواعد ثابتة
+## 12) قواعد ثابتة
 
 - لا نحذف أو نضعف RLS أو الاختبارات لتجاوز فشل.
-- لا نثق في بيانات العميل في العمليات المالية الحساسة.
-- لا نخلق وحدات مخزون وهمية أو مخزونًا مزدوجًا فقط لتجاوز شرط تقني.
+- لا نثق في بيانات العميل في العمليات المالية.
+- لا ننشئ وحدات مخزون وهمية أو self-links لمجرد العرض.
 - تكلفة الخامات والمصنعات تعتمد على المشتريات الفعلية.
 - KDS لا يخصم المخزون؛ البيع يخصم مرة واحدة فقط.
 - المصنع يمكن أن يدخل في مصنع آخر عبر `inventory_unit_recipe_units`.
-- كل عملية حساسة للكاشير: Permission أو Manager Approval على الخادم.
+- كل عملية حساسة للكاشير تمر Permission أو Manager Approval Server-side.
 - كل تعديل مهم يجب أن ينعكس في هذا الملف.
