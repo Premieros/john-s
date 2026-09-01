@@ -46,11 +46,11 @@ BEGIN
       SELECT ar.id
         INTO v_approval_id
       FROM public.approval_requests ar
-      WHERE ar.requester_user_id = auth.uid()
+      WHERE ar.requester_id = auth.uid()
         AND ar.branch_id = v_sale.branch_id
         AND ar.action_type = 'refund'
-        AND ar.target_type = 'sale'
-        AND ar.target_id = p_sale_id
+        AND ar.entity_type = 'sale'
+        AND ar.entity_id = p_sale_id
         AND ar.status = 'approved'
         AND ar.consumed_at IS NULL
         AND ar.expires_at > now()
@@ -63,8 +63,8 @@ BEGIN
           'success', false,
           'error', 'APPROVAL_REQUIRED',
           'action_type', 'refund',
-          'target_type', 'sale',
-          'target_id', p_sale_id
+          'entity_type', 'sale',
+          'entity_id', p_sale_id
         );
       END IF;
     END IF;$new$;
@@ -81,12 +81,12 @@ BEGIN
 
     v_new := $new$    IF v_approval_id IS NOT NULL THEN
       UPDATE public.approval_requests
-      SET status = 'consumed', consumed_at = now(), updated_at = now()
+      SET status = 'consumed', consumed_at = now()
       WHERE id = v_approval_id
-        AND requester_user_id = auth.uid()
+        AND requester_id = auth.uid()
         AND action_type = 'refund'
-        AND target_type = 'sale'
-        AND target_id = p_sale_id
+        AND entity_type = 'sale'
+        AND entity_id = p_sale_id
         AND status = 'approved'
         AND consumed_at IS NULL
         AND expires_at > now();
