@@ -64,7 +64,7 @@ export function PurchasesPage() {
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModal, setViewModal] = useState<Purchase | null>(null);
-  const [viewItems, setViewItems] = useState<{ name: string; quantity: number; unit_cost: number; total: number }[]>([]);
+  const [viewItems, setViewItems] = useState<{ name: string; quantity: number; unit_name: string; unit_cost: number; total: number }[]>([]);
 
   const [form, setForm] = useState({
     supplier_id: '',
@@ -133,6 +133,49 @@ export function PurchasesPage() {
     return rm?.unit?.symbol || rm?.unit?.name || 'وحدة';
   };
 
+  const purchaseUnitOptions = (id: string) => {
+    const stockUnit = rawUnitName(id);
+    const normalized = stockUnit.trim().toLowerCase();
+    if (['جم', 'g', 'gr', 'gm', 'gram', 'grams'].includes(normalized)) {
+      return [
+        { value: 'جم', label: lang === 'ar' ? 'جرام' : 'g' },
+        { value: 'kg', label: lang === 'ar' ? 'كيلوجرام' : 'kg' },
+      ];
+    }
+    if (['كجم', 'كغ', 'كيلو', 'kg', 'kgs', 'kilogram', 'kilograms'].includes(normalized)) {
+      return [
+        { value: 'kg', label: lang === 'ar' ? 'كيلوجرام' : 'kg' },
+        { value: 'جم', label: lang === 'ar' ? 'جرام' : 'g' },
+      ];
+    }
+    if (['مل', 'ml', 'mil', 'milliliter', 'milliliters'].includes(normalized)) {
+      return [
+        { value: 'مل', label: lang === 'ar' ? 'مل' : 'ml' },
+        { value: 'liter', label: lang === 'ar' ? 'لتر' : 'liter' },
+      ];
+    }
+    if (['ل', 'لتر', 'l', 'lt', 'liter', 'litre', 'liters', 'litres'].includes(normalized)) {
+      return [
+        { value: 'liter', label: lang === 'ar' ? 'لتر' : 'liter' },
+        { value: 'مل', label: lang === 'ar' ? 'مل' : 'ml' },
+      ];
+    }
+    if (['قطعة', 'حبة', 'each', 'ea', 'pcs', 'pc', 'piece', 'pieces'].includes(normalized)) {
+      return [{ value: 'قطعة', label: lang === 'ar' ? 'قطعة' : 'each' }];
+    }
+    if (['كيس', 'باكيت', 'packet', 'pack', 'bag'].includes(normalized)) {
+      return [{ value: 'كيس', label: lang === 'ar' ? 'كيس' : 'packet' }];
+    }
+    return [{ value: stockUnit, label: stockUnit }];
+  };
+
+  const updateRawMaterial = (index: number, rawMaterialId: string) => {
+    const defaultUnit = purchaseUnitOptions(rawMaterialId)[0]?.value || rawUnitName(rawMaterialId);
+    setLineItems((current) => current.map((line, idx) => (
+      idx === index ? { ...line, raw_material_id: rawMaterialId, unit_name: defaultUnit } : line
+    )));
+  };
+
   const save = async () => {
     const allowed = guardPurchase({
       warehousesCount: warehouses.length,
@@ -175,7 +218,7 @@ export function PurchasesPage() {
       p_notes: form.notes,
       p_items: validItems.map((i) => ({
         ...(i.line_type === 'raw' ? { raw_material_id: i.raw_material_id } : { product_id: i.product_id }),
-        unit_name: i.line_type === 'raw' ? rawUnitName(i.raw_material_id) : i.unit_name,
+        unit_name: i.unit_name || (i.line_type === 'raw' ? rawUnitName(i.raw_material_id) : 'piece'),
         quantity: i.quantity,
         unit_cost: i.unit_cost,
       })),
@@ -208,6 +251,7 @@ export function PurchasesPage() {
     setViewItems((data || []).map((i: Record<string, unknown>) => ({
       name: (i.product as { name: string })?.name || (i.raw_material as { name: string })?.name || '-',
       quantity: Number(i.quantity),
+      unit_name: String(i.unit_name || ''),
       unit_cost: Number(i.unit_cost),
       total: Number(i.total),
     })));
@@ -344,15 +388,27 @@ export function PurchasesPage() {
                         {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
                     ) : (
-                      <select value={l.raw_material_id} onChange={(e) => updateLine(i, 'raw_material_id', e.target.value)} className="w-full rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
+                      <select value={l.raw_material_id} onChange={(e) => updateRawMaterial(i, e.target.value)} className="w-full rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm">
                         <option value="">--</option>
                         {rawMaterials.map((rm) => <option key={rm.id} value={rm.id}>{rm.name}</option>)}
                       </select>
                     )}
                   </div>
-                  <input type="number" placeholder={t('quantity')} value={l.quantity || ''} onChange={(e) => updateLine(i, 'quantity', parseFloat(e.target.value) || 0)} className="col-span-2 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm" />
+                  {l.line_type === 'raw' ? (
+                    <select
+                      value={l.unit_name}
+                      onChange={(e) => updateLine(i, 'unit_name', e.target.value)}
+                      className="col-span-2 rounded-md border border border-ui-border bg-ui-surface px-2 py-1.5 text-sm"
+                      title={`${lang === 'ar' ? 'وحدة الشراء' : 'Purchase unit'} · ${lang === 'ar' ? 'وحدة التخزين' : 'Stock unit'}: ${rawUnitName(l.raw_material_id)}`}
+                    >
+                      {purchaseUnitOptions(l.raw_material_id).map((unit) => <option key={unit.value} value={unit.value}>{unit.label}</option>)}
+                    </select>
+                  ) : (
+                    <input value={l.unit_name} onChange={(e) => updateLine(i, 'unit_name', e.target.value)} className="col-span-2 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm" placeholder={lang === 'ar' ? 'الوحدة' : 'Unit'} />
+                 )}
+                  <input type="number" placeholder={t('quantity')} value={l.quantity || ''} onChange={(e) => updateLine(i, 'quantity', parseFloat(e.target.value) || 0)} className="col-span-1 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm" />
                   <input type="number" placeholder={t('cost')} step="0.01" value={l.unit_cost || ''} onChange={(e) => updateLine(i, 'unit_cost', parseFloat(e.target.value) || 0)} className="col-span-2 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm" />
-                  <span className="col-span-2 text-sm text-ui-muted text-end">{formatCurrency(l.quantity * l.unit_cost, currency, lang)}</span>
+                  <span className="col-span-1 text-sm text-ui-muted text-end">{formatCurrency(l.quantity * l.unit_cost, currency, lang)}</span>
                   <button onClick={() => removeLine(i)} className="col-span-1 p-1.5 text-ui-danger hover:bg-ui-danger-soft rounded-md"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
@@ -391,7 +447,7 @@ export function PurchasesPage() {
                   {viewItems.map((i, idx) => (
                     <tr key={idx} className="border-b border-ui-border">
                       <td className="py-2 text-ui-text">{i.name}</td>
-                      <td className="py-2 text-center text-ui-text">{i.quantity}</td>
+                      <td className="py-2 text-center text-ui-text">{i.quantity} {i.unit_name}</td>
                       <td className="py-2 text-center text-ui-text">{formatCurrency(i.unit_cost, currency, lang)}</td>
                       <td className="py-2 text-end font-medium text-ui-text">{formatCurrency(i.total, currency, lang)}</td>
                     </tr>
