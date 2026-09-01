@@ -57,24 +57,22 @@ export function VoidItemModal({
       size="md"
     >
       <div className="space-y-4">
-        {/* Warning Banner */}
         <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3.5 flex items-start gap-3">
           <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
           <div className="text-xs space-y-1">
             <p className="font-black text-rose-700">
               {isAr
-                ? `هذا الصنف تم إرساله مسبقاً للمطبخ وتم خصم مكوناته (الكمية المرسلة: ${sentQty})`
+                ? `هذا الصنف تم إرساله مسبقاً للمطبخ (الكمية المرسلة: ${sentQty})`
                 : `This item was previously sent to kitchen (Sent Qty: ${sentQty})`}
             </p>
             <p className="text-rose-600">
               {isAr
-                ? 'إلغاء هذا الصنف سيقوم بتحديث شاشة المطبخ KDS وإرجاع كميات المخزون المستهلكة وتسجيل سبب الإلغاء.'
-                : 'Voiding this item will update the KDS, restore consumed inventory, and log the void reason.'}
+                ? 'إلغاء الصنف يغيّر حالة الطلب وKDS فقط ولا يضيف أي كمية للمخزون؛ المخزون يُخصم مرة واحدة عند إتمام البيع. قد يتطلب الإلغاء موافقة المدير حسب صلاحيات المستخدم.'
+                : 'Voiding changes the order/KDS state only and does not add inventory. Stock is deducted once at sale completion. Manager approval may be required.'}
             </p>
           </div>
         </div>
 
-        {/* Product Details & Quantity to Void */}
         <div className="rounded-2xl border border-ui-border bg-ui-page p-3.5 flex items-center justify-between">
           <div>
             <p className="text-sm font-black text-ui-text">
@@ -103,10 +101,9 @@ export function VoidItemModal({
           </div>
         </div>
 
-        {/* Reason selection */}
         <div className="space-y-1.5">
           <label className="text-xs font-black text-ui-text">
-            {isAr ? 'سبب الإلغاء (مطلوب لرقابة الوردية والتدقيق):' : 'Void Reason (Audit Log):'}
+            {isAr ? 'سبب الإلغاء (مطلوب للرقابة والتدقيق):' : 'Void Reason (Audit Log):'}
           </label>
           <div className="space-y-1.5">
             {COMMON_REASONS.map((r) => (
@@ -141,16 +138,11 @@ export function VoidItemModal({
           )}
         </div>
 
-        {/* Modal Actions */}
         <div className="flex items-center justify-end gap-2 pt-3 border-t border-ui-border">
           <Button variant="secondary" onClick={onClose} disabled={loading}>
             {t('cancel')}
           </Button>
-          <Button
-            variant="danger"
-            onClick={handleConfirm}
-            disabled={loading}
-          >
+          <Button variant="danger" onClick={handleConfirm} disabled={loading}>
             <Trash2 className="h-4 w-4" />
             <span>{isAr ? 'تأكيد إلغاء الصنف (Void)' : 'Confirm Void'}</span>
           </Button>
