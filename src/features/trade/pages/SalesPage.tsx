@@ -67,6 +67,8 @@ export function SalesPage() {
   const isAr = lang === 'ar';
   const canRequestRefundApproval = user?.role === 'cashier';
   const canOpenRefund = can('refunds.approve') || canRequestRefundApproval;
+  const canRequestPaymentApproval = user?.role === 'cashier';
+  const canEditSale = can('refunds.approve') || canRequestPaymentApproval;
 
   async function loadMeta() {
     const { data: customersRes } = await supabase.from('customers').select('*').order('name');
@@ -169,14 +171,59 @@ export function SalesPage() {
 
   const saveSaleEdit = async () => {
     if (!viewSale) return;
-    const { error } = await supabase.from('sales').update({
-      customer_id: editForm.customer_id || null,
-      payment_method: editForm.payment_method,
-      status: editForm.status,
-      notes: editForm.notes || null,
-    }).eq('id', viewSale.id);
-    if (error) { show(error.message, 'error'); return; }
-    await logAudit('update', 'sales', viewSale.id);
+
+    const paymentChanged = editForm.payment_method !== viewSale.payment_method;
+    if (paymentChanged) {
+      if (editForm.payment_method === 'credit') {
+        show(isAr ? 'التحويل إلى آجل يحتاج مسار ذمم مدينة مستقل' : 'Changing to credit requires the receivables workflow', 'error');
+        return;
+      }
+
+      const { data, error } = await supabase.rpc('change_sale_payment_method', {
+        p_sale_id: viewSale.id,
+        p_new_method: editForm.payment_method,
+        p_reason: null,
+      });
+      if (error) { show(error.message, 'error'); return; }
+
+      const result = data as { success?: boolean; error?: string; detail?: string } | null;
+      if (!result?.success) {
+        if (result?.error === 'APPROVAL_REQUIRED' && canRequestPaymentApproval) {
+          const { data: approvalData, error: approvalError } = await supabase.rpc('request_manager_approval', {
+            p_action_type: 'change_payment_method',
+            p_entity_type: 'sale',
+            p_entity_id: viewSale.id,
+            p_payload: {
+              old_method: viewSale.payment_method,
+              new_method: editForm.payment_method,
+              invoice_number: viewSale.invoice_number,
+            },
+            p_reason: isAr ? 'طلب تغيير طريقة دفع من الكاشير' : 'Cashier payment-method correction request',
+          });
+          if (approvalError) { show(approvalError.message, 'error'); return; }
+          const approvalResult = approvalData as { success?: boolean; error?: string } | null;
+          if (!approvalResult?.success) {
+            show(approvalResult?.error || (isAr ? 'تعذر إرسال طلب الموافقة' : 'Could not request approval'), 'error');
+            return;
+          }
+          show(isAr ? 'تم إرسال طلب تغيير طريقة الدفع للمدير. بعد الموافقة اضغط حفظ مرة أخرى.' : 'Payment change approval requested. After approval, save again.', 'success');
+          return;
+        }
+        show(result?.detail || result?.error || (isAr ? 'فشل تغيير طريقة الدفع' : 'Payment change failed'), 'error');
+        return;
+      }
+    }
+
+    if (user?.role !== 'cashier') {
+      const { error } = await supabase.from('sales').update({
+        customer_id: editForm.customer_id || null,
+        status: editForm.status,
+        notes: editForm.notes || null,
+      }).eq('id', viewSale.id);
+      if (error) { show(error.message, 'error'); return; }
+    }
+
+    await logAudit('update', 'sales', viewSale.id, paymentChanged ? { payment_method: editForm.payment_method } : undefined);
     show(t('saveSuccess'), 'success');
     setViewSale(null);
     reloadSales();
@@ -257,7 +304,7 @@ export function SalesPage() {
     )},
     { key: 'actions', header: t('actions'), render: (r) => (
       <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-        {can('refunds.approve') && (
+        {canEditSale && (
           <button onClick={() => openViewSale(r)} className="p-1.5 rounded-md hover:bg-ui-info-soft text-ui-info" title={t('edit')}>
             <Edit2 className="w-4 h-4" />
           </button>
@@ -312,7 +359,7 @@ export function SalesPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Select label={t('customer')} value={editForm.customer_id} onChange={(e) => setEditForm({ ...editForm, customer_id: e.target.value })}>
+              <Select label={t('customer')} value={editForm.customer_id} disabled={user?.role === 'cashier'} onChange={(e) => setEditForm({ ...editForm, customer_id: e.target.value })}>
                 <option value="">--</option>
                 {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
@@ -320,16 +367,16 @@ export function SalesPage() {
                 <option value="cash">{t('cash')}</option>
                 <option value="card">{t('card')}</option>
                 <option value="transfer">{t('transfer')}</option>
-                <option value="credit">{t('credit')}</option>
+                <option value="credit" disabled>{t('credit')}</option>
               </Select>
-              <Select label={t('status')} value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
+              <Select label={t('status')} value={editForm.status} disabled={user?.role === 'cashier'} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
                 <option value="completed">{isAr ? 'مكتملة' : 'Completed'}</option>
                 <option value="pending">{isAr ? 'قيد الانتظار' : 'Pending'}</option>
                 <option value="returned">{isAr ? 'مرتجعة' : 'Returned'}</option>
               </Select>
               <div />
             </div>
-            <Textarea label={t('notes')} value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} />
+            <Textarea label={t('notes')} value={editForm.notes} disabled={user?.role === 'cashier'} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} />
 
             {viewSale.sale_items && viewSale.sale_items.length > 0 && (
               <div>
