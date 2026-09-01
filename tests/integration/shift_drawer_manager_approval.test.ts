@@ -29,9 +29,10 @@ describe('shift and drawer manager approval', () => {
     `);
     expect(r.rowCount).toBe(1);
     const def = String(r.rows[0].def || '');
+    const compactDef = def.replace(/\s+/g, '');
     expect(def).toContain("action_type = 'force_close_shift'");
     expect(def).toContain("entity_type = 'shift'");
-    expect(def).toContain("payload ->> 'actual_amount'");
+    expect(compactDef).toContain("payload->>'actual_amount'");
     expect(def).toContain("status = 'consumed'");
     expect(def).toContain('FORCE_CLOSE_APPROVAL_CONSUME_FAILED');
     expect(def).toContain("UPDATE public.shifts");
