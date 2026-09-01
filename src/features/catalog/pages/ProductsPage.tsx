@@ -13,6 +13,7 @@ import { Button } from '@/components/Button';
 import { Input, Select, Textarea } from '@/components/Input';
 import { Modal } from '@/components/Modal';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { BranchBadge } from '@/components/BranchBadge';
 import { formatCurrency, formatNumber } from '@/lib/format';
 import { exportToExcel, importFromExcel } from '@/lib/excel';
 import { renderBarcode, generateQRCodeDataURL } from '@/lib/barcode';
@@ -54,6 +55,7 @@ export function ProductsPage() {
   const { effectiveSettings } = useSettings();
   const { branches } = useBranches();
   const currency = effectiveSettings(branchFilter)?.currency || 'EGP';
+  const branchLabel = (id: string | null | undefined) => branches.find((b) => b.id === id)?.name || '';
 
   const [form, setForm] = useState({
     name: '', name_en: '', barcode: '', sku: '', category_id: '', description: '',
@@ -319,6 +321,7 @@ export function ProductsPage() {
       </div>
     )},
     { key: 'category', header: t('category'), render: (p) => p.category?.name || '-' },
+    { key: 'branch', header: t('branch'), render: (p) => <BranchBadge name={branchLabel(p.branch_id)} /> },
     { key: 'cost_price', header: t('costPrice'), render: (p) => formatCurrency(p.cost_price, currency, lang) },
     { key: 'sale_price', header: t('salePrice'), render: (p) => <span className="font-semibold text-brand-600 dark:text-brand-400">{formatCurrency(p.sale_price, currency, lang)}</span> },
     { key: 'wholesale_price', header: t('wholesalePrice'), render: (p) => formatCurrency(p.wholesale_price, currency, lang) },
@@ -395,7 +398,12 @@ export function ProductsPage() {
                 </button>
               </div>
             </div>
-            {!branchFilter && (
+            {branchFilter ? (
+              <div>
+                <label className="block text-sm font-medium text-ui-muted mb-1">{t('branch')}</label>
+                <div className="min-h-11 flex items-center"><BranchBadge name={branchLabel(form.branch_id || branchFilter)} /></div>
+              </div>
+            ) : (
               <Select label={t('branch')} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
                 <option value="">--</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}

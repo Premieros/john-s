@@ -12,6 +12,7 @@ import { Button } from '@/components/Button';
 import { Input, Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { BranchBadge } from '@/components/BranchBadge';
 import { formatNumber, formatDate } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
@@ -28,12 +29,13 @@ interface MaterialForm {
   min_stock: number;
   default_cost: number;
   description: string;
+  branch_id: string;
   is_active: boolean;
 }
 
 const EMPTY_FORM: MaterialForm = {
   code: '', name: '', unit_id: '', category: '',
-  min_stock: 0, default_cost: 0, description: '', is_active: true,
+  min_stock: 0, default_cost: 0, description: '', branch_id: '', is_active: true,
 };
 
 export function RawMaterialsPage() {
@@ -48,6 +50,7 @@ export function RawMaterialsPage() {
     table: 'raw_materials',
     select: '*, unit:units(*)',
     order: { column: 'name', ascending: true },
+    branch_id: branchFilter,
     pageSize: 100,
   });
   const [inventory, setInventory] = useState<RawMaterialInventory[]>([]);
@@ -98,13 +101,13 @@ export function RawMaterialsPage() {
   const filteredStock = inventory.filter((i) => !stockBranch || i.branch_id === stockBranch);
   const filteredBatches = batches.filter((b) => !stockBranch || b.branch_id === stockBranch);
 
-  const openAdd = () => { setForm(EMPTY_FORM); setModalOpen(true); };
+  const openAdd = () => { setForm({ ...EMPTY_FORM, branch_id: branchFilter || '' }); setModalOpen(true); };
   const openEdit = (m: RawMaterial) => {
     setForm({
       id: m.id, code: m.code, name: m.name, unit_id: m.unit_id || '',
       category: m.category || '', min_stock: Number(m.min_stock),
       default_cost: Number(m.default_cost), description: m.description || '',
-      is_active: m.is_active,
+      branch_id: m.branch_id || branchFilter || '', is_active: m.is_active,
     });
     setModalOpen(true);
   };
@@ -119,6 +122,7 @@ export function RawMaterialsPage() {
       min_stock: form.min_stock,
       default_cost: form.default_cost,
       description: form.description.trim() || null,
+      branch_id: form.branch_id || branchFilter || null,
       is_active: form.is_active,
     };
     if (form.id) {
@@ -182,6 +186,7 @@ export function RawMaterialsPage() {
     )},
     { key: 'unit', header: t('unit'), render: (m) => unitLabel(m.unit_id) },
     { key: 'category', header: t('category'), render: (m) => m.category || '-' },
+    { key: 'branch', header: t('branch'), render: (m) => <BranchBadge name={branchLabel(m.branch_id)} /> },
     { key: 'min_stock', header: t('minStock'), render: (m) => formatNumber(Number(m.min_stock)) },
     { key: 'default_cost', header: t('defaultCost'), render: (m) => formatNumber(Number(m.default_cost), 2) },
     { key: 'is_active', header: t('status'), render: (m) => (
@@ -307,6 +312,17 @@ export function RawMaterialsPage() {
             {units.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.symbol || u.code})</option>)}
           </Select>
           <Input label={t('category')} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+          {branchFilter ? (
+            <div>
+              <label className="block text-sm font-medium text-ui-muted mb-1">{t('branch')}</label>
+              <div className="min-h-11 flex items-center"><BranchBadge name={branchLabel(form.branch_id || branchFilter)} /></div>
+            </div>
+          ) : (
+            <Select label={t('branch')} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>
+              <option value="">--</option>
+              {branches.map((br) => <option key={br.id} value={br.id}>{br.name}</option>)}
+            </Select>
+          )}
           <Input label={t('minStock')} type="number" step="0.0001" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: parseFloat(e.target.value) || 0 })} />
           <Input label={t('defaultCost')} type="number" step="0.01" value={form.default_cost} onChange={(e) => setForm({ ...form, default_cost: parseFloat(e.target.value) || 0 })} />
           <div className="sm:col-span-2">
