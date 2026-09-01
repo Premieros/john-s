@@ -4,9 +4,8 @@ import { supabase } from '@/api';
 // Unified, reusable paginated-rows hook (audit M7). Every list/table page that
 // previously issued an unbounded `.select('*')` (or a silent `.limit(N)`)
 // should use this hook so each HTTP request is capped at `pageSize` rows and
-// the user can explicitly load more. Behaviour is intentionally kept simple:
-// rows are accumulated across pages (append-on-demand), so the existing
-// client-side search/filter keeps working over everything loaded so far.
+// the user can explicitly load more. Search, when configured, is executed on
+// the server so pagination/counts always refer to the complete matching set.
 export interface PaginatedQueryOptions {
   /** Table name, e.g. 'sales'. */
   table: string;
@@ -18,6 +17,8 @@ export interface PaginatedQueryOptions {
   branch_id?: string | null;
   /** Additional equality filters: [{ column: 'status', value: 'open' }]. */
   filters?: { column: string; value: unknown }[];
+  /** Optional server-side text search over one or more plain columns. */
+  search?: { term: string; columns: string[] };
   /** Rows fetched per HTTP request. Default 200. */
   pageSize?: number;
   /** Set to false to keep the hook idle (e.g. no branch selected yet). Default true. */
@@ -39,9 +40,16 @@ export interface UsePaginatedRowsResult<T> {
 
 type FilterBuilder = ReturnType<ReturnType<typeof supabase.from>['select']>;
 
+function safeSearchTerm(value: string): string {
+  // `.or()` uses PostgREST filter syntax, so remove syntax separators while
+  // keeping ordinary user text, spaces, Arabic, digits, barcode and SKU data.
+  return value.trim().replace(/[(),]/g, ' ').replace(/\s+/g, ' ');
+}
+
 export function usePaginatedRows<T>(opts: PaginatedQueryOptions): UsePaginatedRowsResult<T> {
-  const { table, select = '*', order, branch_id, filters, pageSize = 200, enabled = true } = opts;
+  const { table, select = '*', order, branch_id, filters, search, pageSize = 200, enabled = true } = opts;
   const filterKey = JSON.stringify(filters ?? []);
+  const searchKey = JSON.stringify({ term: search?.term ?? '', columns: search?.columns ?? [] });
   const orderKey = order?.column ?? '';
   const orderAsc = order?.ascending !== false;
 
@@ -57,10 +65,16 @@ export function usePaginatedRows<T>(opts: PaginatedQueryOptions): UsePaginatedRo
       let bq = q;
       if (branch_id) bq = bq.eq('branch_id', branch_id);
       for (const f of filters ?? []) bq = bq.eq(f.column, f.value);
+      const term = safeSearchTerm(search?.term ?? '');
+      const columns = (search?.columns ?? []).filter((column) => /^[a-zA-Z0-9_]+$/.test(column));
+      if (term && columns.length > 0) {
+        const filter = columns.map((column) => `${column}.ilike.*${term}*`).join(',');
+        bq = bq.or(filter);
+      }
       return bq;
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by stable filterKey; `filters` identity changes each render
-    [branch_id, filterKey]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by stable serialized option values
+    [branch_id, filterKey, searchKey]
   );
 
   const buildDataQuery = useCallback(
