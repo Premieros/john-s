@@ -35,7 +35,7 @@
   - force close shift
   - void order عند الحاجة
 - اختبار E2E كامل بحساب Cashier فعلي + Manager فعلي.
-- التأكد من نجاح CI النهائي بعد آخر تعديل لـ `CashierDiscountApprovalCard`.
+- التأكد من نجاح CI النهائي بعد إصلاح اختبارات التكامل المرتبطة بتشديد `process_sale` وRLS.
 
 ممنوع اعتبار نظام الموافقات "مكتمل بالكامل" قبل إنهاء البنود السابقة.
 
@@ -48,6 +48,8 @@
 - منع تحديث `sale_items` مباشرة.
 - تقييد تحديث `sales` للمدير/الصلاحيات المناسبة.
 - خصم الكاشير مربوط بموافقة مع مطابقة النوع والقيمة والإجمالي الفرعي.
+- اختبارات التكامل تم تعديلها كي تستخدم مستخدماً مصادقاً عليه بدلاً من تجاوز شرط `AUTH_REQUIRED`.
+- مصفوفة RLS أصبحت تختبر صراحة أن الكاشير لا يستطيع تعديل `sales` مباشرة وأن `sale_items` غير قابلة لـUPDATE/DELETE عبر RLS.
 
 أولوية حرجة متبقية:
 - **إعادة احتساب الأسعار و subtotal / total على الخادم** بدلاً من الثقة الكاملة في القيم القادمة من العميل.
@@ -122,6 +124,7 @@
 - `send_to_kitchen` أصبح state-only ولا يخصم المخزون.
 - الخصم الفعلي للمخزون يتم مرة واحدة عند البيع عبر `process_sale` -> `deduct_sale_unit_inventory`.
 - مسار المخزون الحالي يعتمد `inventory_units`.
+- اختبار KDS المركب تم تعديله ليستدعي `process_sale` تحت هوية الكاشير المصادق عليها، مع إبقاء شرط `AUTH_REQUIRED` الإنتاجي كما هو.
 
 متبقي للمراجعة المستقبلية:
 - يوجد legacy schema قديم مرتبط بالمواد الخام/التصنيع.
@@ -140,18 +143,50 @@
   5. browser smoke
   6. deploy
 
-آخر مشكلة معروفة قبل تحديث هذا الملف:
-- اختبارات `PaymentPanel` فشلت لأن `CashierDiscountApprovalCard` كان يستخدم `useAuth()` بدون `AuthProvider` في الاختبارات.
-- تم تجهيز بديل يزيل هذا الاعتماد المباشر.
-- يجب التحقق من آخر Commit وتشغيل `Verify main` بعد رفع التعديل.
+### آخر حالة موثقة
+`Verify main #19` على commit `4e63610696be3043d228fe42d52e676a397ced8c`:
+- Frontend verify: **ناجح بالكامل**.
+  - lint ✅
+  - typecheck ✅
+  - typecheck:all ✅
+  - unit tests: 331/331 ✅
+  - build ✅
+- Schema verification: **ناجح بالكامل**.
+  - Tables 60/60 ✅
+  - Functions 65/65 ✅
+  - Contract RPCs 95/95 ✅
+  - Contract tables 55/55 ✅
+- DB integration: فشل 9 اختبارات فقط بسبب أن الاختبارات القديمة لم تكن متوافقة مع تشديد الموافقات/RLS، وليس بسبب فشل migration.
+
+### الإصلاحات التي تم دفعها بعد #19
+- `7e8ca2b177d8648e515e017b631c30860cfb8aab`
+  - مصادقة fixture لاختبارات `process_sale_order_settlement` بدلاً من تجاوز `AUTH_REQUIRED`.
+- `1d1542b936bfb493207bb3eeccb261643652951a`
+  - مصادقة fixture لاختبارات authoritative pricing.
+- `197dab1751d19ffbcb4d035c9c6f65272ac78ac0`
+  - تشغيل settlement داخل اختبار KDS بهوية الكاشير الحالية.
+- `60dbf2801ffa5d959763a9f6d94994f37fc7fbca`
+  - تحديث مصفوفة RLS لتتوقع منع cashier UPDATE على `sales` ومنع UPDATE/DELETE على `sale_items` لكل authenticated caller.
+
+مهم:
+- لم يتم إضعاف RLS.
+- لم يتم حذف أو skip أي اختبار.
+- لم يتم إضافة bypass إنتاجي لشرط `AUTH_REQUIRED`.
+- الخطوة الحالية: انتظار/فحص أحدث `Verify main` بعد هذه commits، ثم معالجة أي فشل متبقٍ فقط.
 
 ---
 
 ## 7) ترتيب العمل القادم
 
 ### P0 — إغلاق العمل المفتوح الحالي
-- تحقق من آخر CI بعد تعديل `CashierDiscountApprovalCard`.
-- إصلاح أي فشل فقط، بدون إضافة تغييرات جانبية.
+الحالة: **قيد التحقق النهائي**.
+- ✅ إصلاح frontend/unit regression الخاص بـ `CashierDiscountApprovalCard`.
+- ✅ frontend verify أصبح أخضر بالكامل في #19.
+- ✅ تحديد أن الفشل المتبقي كان fixtures/expectations قديمة بعد cashier hardening.
+- ✅ تحديث اختبارات settlement/pricing/KDS لتستخدم auth حقيقي في CI.
+- ✅ تحديث RLS matrix لتختبر الحماية الجديدة بدلاً من توقع الصلاحيات القديمة.
+- ⏳ التحقق من أحدث CI بعد commits السابقة.
+- ⏳ browser smoke + deploy بعد نجاح DB job.
 
 ### P1 — إكمال نظام الموافقات
 - Print/reprint integration.
