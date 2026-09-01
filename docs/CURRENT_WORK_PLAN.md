@@ -225,3 +225,16 @@ Commit:
 
 Commit الإصلاح:
 `2e9bb33ba17580b44d806be07a8788ce4d93b468` — `fix: hide internal migration text from inventory unit description`.
+
+
+---
+
+### Branch visibility — Products + Raw Materials ✅
+- تحقق إنتاجي: المنتجات **352/352** لديها `branch_id`، والخامات **215/215** لديها `branch_id`، ولا توجد سجلات بدون فرع.
+- كل بيانات Excel الحالية موجودة على **فرع نادي سموحة** فقط؛ لم يتم نسخها تلقائيًا إلى الفرع الرئيسي.
+- أُنشئ `BranchBadge` موحد في `src/components/BranchBadge.tsx`.
+- `ProductsPage` تعرض الفرع في الجدول وداخل نافذة التعديل.
+- `RawMaterialsPage` تعرض الفرع في الجدول وداخل نافذة الإضافة/التعديل.
+- قائمة الخامات أصبحت تطبق `branchFilter` صراحةً.
+- إنشاء/تعديل الخامة يرسل `branch_id` صراحةً، مع اختيار الفرع للمدير العام وإظهاره ثابتًا للمستخدم المحصور بفرعه.
+- هذه أول شريحة مكتملة من P3؛ بقية الصفحات branch-scoped ما زالت ضمن الخطة.
