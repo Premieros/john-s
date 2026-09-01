@@ -15,6 +15,7 @@ import { usePaginatedRows } from '@/hooks/usePaginatedRows';
 import { Button } from '@/components/Button';
 import { Input, Textarea, Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
+import { BranchBadge } from '@/components/BranchBadge';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import type { Shift, RpcResult } from '@/lib/types';
@@ -134,7 +135,7 @@ export function ShiftsPage() {
 
   const columns: Column<Shift>[] = [
     { key: 'opened_at', header: t('openedAt'), render: (r) => <span className="text-sm text-ui-muted">{formatDateTime(r.opened_at, lang)}</span> },
-    { key: 'branch', header: t('branch'), render: (r) => r.branch?.name || '-' },
+    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={r.branch?.name || '-'} /> },
     { key: 'cashier', header: t('cashier'), render: (r) => r.cashier?.full_name || r.cashier?.email || '-' },
     { key: 'status', header: t('shiftStatus'), render: (r) => (
       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${

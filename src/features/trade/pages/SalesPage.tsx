@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Trash2, FileText, Edit2, RotateCcw } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
@@ -10,12 +10,14 @@ import { Button } from '@/components/Button';
 import { Select, Textarea } from '@/components/Input';
 import { Modal } from '@/components/Modal';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { BranchBadge } from '@/components/BranchBadge';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { useBranchFilter } from '@/lib/useBranchFilter';
 import { useCan } from '@/lib/permissions';
 import { useSettings } from '@/context/SettingsContext';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
+import { useBranches } from '@/hooks/useBranches';
 import type { Customer } from '@/lib/types';
 
 interface SaleRow {
@@ -29,6 +31,7 @@ interface SaleRow {
   notes: string | null;
   created_at: string;
   customer_id: string | null;
+  branch_id: string;
   customer?: { name: string } | null;
   sale_items?: { id: string; product_id: string | null; unit_name: string; quantity: number; unit_price: number; discount_amount: number; refunded_quantity: number; refunded_amount: number; total: number; product?: { name: string } | null }[];
 }
@@ -40,7 +43,7 @@ export function SalesPage() {
   const can = useCan();
   const { rows: items, loading, error, total, hasMore, loadMore, loadingMore, refresh: reloadSales } = usePaginatedRows<SaleRow>({
     table: 'sales',
-    select: 'id, invoice_number, total, paid_amount, refunded_amount, payment_method, status, notes, created_at, customer_id, customer:customers(name), sale_items(id, product_id, unit_name, quantity, unit_price, discount_amount, refunded_quantity, refunded_amount, total, product:products(name))',
+    select: 'id, invoice_number, total, paid_amount, refunded_amount, payment_method, status, notes, created_at, customer_id, branch_id, customer:customers(name), sale_items(id, product_id, unit_name, quantity, unit_price, discount_amount, refunded_quantity, refunded_amount, total, product:products(name))',
     order: { column: 'created_at', ascending: false },
     branch_id: branchFilter,
     pageSize: 100,
@@ -50,6 +53,7 @@ export function SalesPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteSelectedConfirm, setDeleteSelectedConfirm] = useState(false);
   const { effectiveSettings } = useSettings();
+  const { branches } = useBranches();
   const currency = effectiveSettings(branchFilter)?.currency || 'EGP';
   const [viewSale, setViewSale] = useState<SaleRow | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -198,6 +202,7 @@ export function SalesPage() {
     )},
     { key: 'created_at', header: t('date'), render: (r) => <span className="text-sm text-ui-subtle">{formatDateTime(r.created_at, lang)}</span> },
     { key: 'customer', header: t('customer'), render: (r) => r.customer?.name || '-' },
+    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branches.find((b) => b.id === r.branch_id)?.name || '-'} /> },
     { key: 'total', header: t('total'), render: (r) => <span className="font-semibold text-ui-text">{formatCurrency(r.total, currency, lang)}</span> },
     { key: 'paid_amount', header: isAr ? 'المدفوع' : 'Paid', render: (r) => formatCurrency(r.paid_amount, currency, lang) },
     { key: 'payment_method', header: isAr ? 'طريقة الدفع' : 'Payment', render: (r) => (
