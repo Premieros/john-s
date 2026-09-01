@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Trash2, Eye, Send, Check, X, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/api';
@@ -12,6 +12,7 @@ import { DataTable, type Column } from '@/components/DataTable';
 import { Button } from '@/components/Button';
 import { Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
+import { BranchBadge } from '@/components/BranchBadge';
 import { formatDate } from '@/lib/format';
 import { useCan } from '@/lib/permissions';
 import { useBranches } from '@/hooks/useBranches';
@@ -156,6 +157,7 @@ export function PurchaseRequestsPage() {
   const columns: Column<PurchaseRequestRow & { supplier?: Supplier }>[] = [
     { key: 'request_number', header: t('requestNumber'), render: (r) => <span className="font-medium text-ui-text">{r.request_number}</span> },
     { key: 'supplier', header: t('supplier'), render: (r) => r.supplier?.name || '-' },
+    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branches.find((b) => b.id === r.branch_id)?.name || '-'} /> },
     { key: 'priority', header: t('priority'), render: (r) => <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-ui-warning-soft text-ui-warning capitalize">{t(`priority${r.priority.charAt(0).toUpperCase() + r.priority.slice(1)}` as keyof typeof import('@/lib/i18n').translations.ar)}</span> },
     { key: 'expected_date', header: t('expectedDate'), render: (r) => (r.expected_date ? formatDate(r.expected_date, lang) : '-') },
     { key: 'created_at', header: t('date'), render: (r) => formatDate(r.created_at, lang) },

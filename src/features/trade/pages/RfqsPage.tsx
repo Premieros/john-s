@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Trash2, Eye, Send, X, BadgeCheck, Scale, Check } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
@@ -11,6 +11,7 @@ import { DataTable, type Column } from '@/components/DataTable';
 import { Button } from '@/components/Button';
 import { Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
+import { BranchBadge } from '@/components/BranchBadge';
 import { formatDate, formatCurrency } from '@/lib/format';
 import { useCan } from '@/lib/permissions';
 import { useBranches } from '@/hooks/useBranches';
@@ -213,6 +214,7 @@ export function RfqsPage() {
 
   const columns: Column<RfqRow>[] = [
     { key: 'rfq_number', header: t('rfqNumber'), render: (r) => <span className="font-medium text-ui-text">{r.rfq_number}</span> },
+    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branches.find((b) => b.id === r.branch_id)?.name || '-'} /> },
     { key: 'due_date', header: t('dueDate'), render: (r) => (r.due_date ? formatDate(r.due_date, lang) : '-') },
     { key: 'created_at', header: t('date'), render: (r) => formatDate(r.created_at, lang) },
     { key: 'status', header: t('status'), render: (r) => <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${STATUS_STYLES[r.status] || ''}`}>{t(r.status as keyof typeof import('@/lib/i18n').translations.ar)}</span> },

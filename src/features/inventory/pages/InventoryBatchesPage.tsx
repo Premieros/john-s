@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Layers, AlertTriangle, Clock } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
@@ -12,6 +12,7 @@ import { DataTable, type Column } from '@/components/DataTable';
 import { Button } from '@/components/Button';
 import { Input, Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
+import { BranchBadge } from '@/components/BranchBadge';
 import { formatNumber, formatDate } from '@/lib/format';
 import { daysUntilExpiry, expiryStatus } from '@/lib/inventoryExpiry';
 import { logAudit } from '@/lib/audit';
@@ -166,6 +167,7 @@ export function InventoryBatchesPage() {
     )},
     { key: 'batch_number', header: t('batchNumber'), render: (b) => b.batch_number || '-' },
     { key: 'warehouse', header: t('warehouse'), render: (b) => b.warehouse?.name || '-' },
+    { key: 'branch', header: t('branch'), render: (b) => <BranchBadge name={b.branch?.name || '-'} /> },
     { key: 'quantity', header: t('quantity'), render: (b) => formatNumber(Number(b.quantity)) },
     { key: 'unit_cost', header: t('unitCost'), render: (b) => formatNumber(Number(b.unit_cost), 2) },
     { key: 'production_date', header: t('productionDate'), render: (b) => (b.production_date ? formatDate(b.production_date, lang) : '-') },
