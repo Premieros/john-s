@@ -44,7 +44,7 @@ const EMPTY_CART: CartItem[] = [];
 const VALID_PAYMENT_METHODS: PosPaymentMethod[] = ['cash', 'card', 'transfer', 'credit'];
 
 export function usePosOrder(input: UsePosOrderInput) {
-  const { branchId, orderId, customers, effSettings, isCashier, activeShift, products, stockMap } = input;
+  const { branchId, orderId, customers, effSettings, isCashier, activeShift, stockMap } = input;
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
   const { user } = useAuth();
