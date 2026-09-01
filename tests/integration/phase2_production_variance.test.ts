@@ -12,9 +12,11 @@ describe.skipIf(skip)('Phase 2 — production enhancements', () => {
   const whId = randomUUID();
   const rmId = randomUUID();
   const unitId = randomUUID();
+  const testUserId = randomUUID();
+  const testEmail = `phase2-prod-${testUserId}@example.test`;
 
   async function asAdmin<T>(fn: () => Promise<T>): Promise<T> {
-    await client.query(`SELECT set_config('app.user_id', $1, true)`, [randomUUID()]);
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [testUserId]);
     await client.query(`SET LOCAL ROLE service_role`);
     await client.query(`SAVEPOINT phase2_production_admin`);
     try {
@@ -54,6 +56,18 @@ describe.skipIf(skip)('Phase 2 — production enhancements', () => {
     await client.query('BEGIN');
     await client.query(`ALTER TABLE public.users DISABLE TRIGGER trg_users_role_guard`);
     await client.query(`INSERT INTO public.branches (id, name) VALUES ($1, 'Phase2 Prod')`, [branchId]);
+    await client.query(
+      `INSERT INTO auth.users (id, email, role, aud, instance_id, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+       VALUES ($1, $2, 'authenticated', 'authenticated', gen_random_uuid(), '{}'::jsonb, '{}'::jsonb, now(), now())
+       ON CONFLICT (id) DO NOTHING`,
+      [testUserId, testEmail]
+    );
+    await client.query(
+      `INSERT INTO public.users (id, email, full_name, role, branch_id, is_active)
+       VALUES ($1, $2, 'Phase2 Production User', 'owner', $3, true)
+       ON CONFLICT (id) DO UPDATE SET email=EXCLUDED.email, role='owner', branch_id=EXCLUDED.branch_id, is_active=true`,
+      [testUserId, testEmail, branchId]
+    );
     await client.query(`INSERT INTO public.warehouses (id, name, branch_id) VALUES ($1, 'WH', $2)`, [whId, branchId]);
     await client.query(`INSERT INTO public.raw_materials (id, code, name, min_stock, default_cost, is_active, branch_id) VALUES ($1, 'RM-P', 'Flour', 0, 5, true, $2)`, [rmId, branchId]);
     await client.query(`INSERT INTO public.inventory_units (id, code, name, unit_type, branch_id, cost_price, is_active) VALUES ($1, 'IU-MFG', 'Bread Mix', 'manufactured', $2, 0, true)`, [unitId, branchId]);
@@ -63,8 +77,8 @@ describe.skipIf(skip)('Phase 2 — production enhancements', () => {
     // produce_inventory_unit silently ignored shortages; the canonical flow now
     // rejects production when ingredients are unavailable.
     await client.query(
-      `SELECT public._raw_add($1, $2, 100, 5, 'PHASE2-RM', NULL, NULL, 'opening', 'opening', NULL, 'PHASE2-RM', NULL)`,
-      [rmId, branchId]
+      `SELECT public._raw_add($1, $2, 100, 5, 'PHASE2-RM', NULL, NULL, 'opening', 'opening', NULL, 'PHASE2-RM', $3)`,
+      [rmId, branchId, testUserId]
     );
   });
 
