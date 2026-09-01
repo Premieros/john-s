@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Bell, Check, X } from 'lucide-react';
 import { supabase } from '@/api';
 import { useAuth } from '@/context/AuthContext';
-import { useCan } from '@/lib/permissions';
-
 
 type ApprovalRequest = {
   id: string;
@@ -30,7 +28,6 @@ const labels: Record<string, { ar: string; en: string }> = {
 
 export function ApprovalInbox({ ar }: { ar: boolean }) {
   const { user } = useAuth();
-  const can = useCan();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<ApprovalRequest[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
