@@ -27,9 +27,51 @@ export async function sendOrderToKitchen(p: {
   activeSendLocks.add(orderId);
 
   try {
-    // 1. Attempt database-level atomic RPC consumption first
+    // 1. Attempt database-level atomic send_to_kitchen RPC first
     try {
-      const rpcRes = await rpc<{ success: boolean; error?: string; order_id?: string; items_processed?: number }>(
+      const rpcRes = await rpc<{
+        success: boolean;
+        error?: string;
+        detail?: string;
+        order_id?: string;
+        sent?: KitchenSendItem[];
+        items_sent_count?: number;
+        items_processed?: number;
+        all_sent?: boolean;
+      }>(
+        'send_to_kitchen',
+        {
+          p_order_id: orderId,
+          p_sent_by: p.p_sent_by || null,
+        }
+      );
+
+      if (rpcRes.data && rpcRes.data.success) {
+        const sentItems = rpcRes.data.sent || [];
+        const count = rpcRes.data.items_sent_count ?? sentItems.length ?? rpcRes.data.items_processed ?? 0;
+        return {
+          success: true,
+          order_id: orderId,
+          sent: sentItems,
+          items_sent_count: count,
+          all_sent: rpcRes.data.all_sent ?? true,
+        };
+      }
+
+      if (rpcRes.data && !rpcRes.data.success && rpcRes.data.error) {
+        return {
+          success: false,
+          error: rpcRes.data.error,
+          detail: rpcRes.data.detail || rpcRes.data.error,
+        };
+      }
+    } catch (rpcErr) {
+      console.warn('send_to_kitchen RPC failed, attempting consume_order_kitchen_inventory or client transaction fallback:', rpcErr);
+    }
+
+    // 1b. Attempt consume_order_kitchen_inventory RPC fallback
+    try {
+      const rpcRes = await rpc<{ success: boolean; error?: string; detail?: string; order_id?: string; items_processed?: number; sent?: KitchenSendItem[]; items_sent_count?: number; all_sent?: boolean }>(
         'consume_order_kitchen_inventory',
         {
           p_order_id: orderId,
@@ -38,6 +80,16 @@ export async function sendOrderToKitchen(p: {
       );
 
       if (rpcRes.data && rpcRes.data.success) {
+        if (rpcRes.data.sent && rpcRes.data.sent.length > 0) {
+          return {
+            success: true,
+            order_id: orderId,
+            sent: rpcRes.data.sent,
+            items_sent_count: rpcRes.data.items_sent_count ?? rpcRes.data.sent.length,
+            all_sent: rpcRes.data.all_sent ?? true,
+          };
+        }
+
         // Fetch current items and products to return rich KitchenSendResult for UI
         const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
         const orderItems = (items as OrderItem[]) || [];
@@ -63,11 +115,13 @@ export async function sendOrderToKitchen(p: {
           notes: item.notes || null,
         }));
 
+        const count = rpcRes.data.items_sent_count ?? rpcRes.data.items_processed ?? sentItems.length;
+
         return {
           success: true,
           order_id: orderId,
           sent: sentItems,
-          items_sent_count: sentItems.length,
+          items_sent_count: count,
           all_sent: true,
         };
       }

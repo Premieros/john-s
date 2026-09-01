@@ -538,28 +538,23 @@ export function usePosOrder(input: UsePosOrderInput) {
     }
     setKitchenSending(true);
     try {
-      let targetOrderId = activeOrderId;
-      let targetOrderNumber = activeOrderNumber;
-      if (!targetOrderId) {
-        const { ok, orderId: newId, orderNumber: newNum } = await persistCart('open');
-        if (!ok || !newId) return false;
-        targetOrderId = newId;
-        targetOrderNumber = newNum;
-      }
+      const { ok, orderId: targetOrderId, orderNumber: targetOrderNumber } = await persistCart('open');
+      if (!ok || !targetOrderId) return false;
+
       const res = await sendOrderToKitchen({ p_order_id: targetOrderId, p_sent_by: null });
       if (!res.success) {
         show(res.detail || res.error || t('error'), 'error');
         return false;
       }
       setActiveOrderId(targetOrderId);
-      setActiveOrderNumber(targetOrderNumber);
+      if (targetOrderNumber) setActiveOrderNumber(targetOrderNumber);
       setKitchenSentItems(res.sent || []);
       const sentCount = res.items_sent_count || 0;
       if (sentCount > 0) {
         show(`${t('sendToKitchen')} (${sentCount})`, 'success');
         if (effSettings) {
           const html = buildKitchenTicketHtml({
-            orderNumber: targetOrderNumber,
+            orderNumber: targetOrderNumber || activeOrderNumber,
             tableName: activeTable?.name || null,
             orderTypeLabel: t(ORDER_TYPE_KEY[orderType]),
             guestCount,
@@ -576,7 +571,7 @@ export function usePosOrder(input: UsePosOrderInput) {
     } finally {
       setKitchenSending(false);
     }
-  }, [cart.length, completing, orderLoading, kitchenSending, branchId, orderType, tableId, activeOrderId, activeOrderNumber, persistCart, effSettings, activeTable, guestCount, t, isAr, show]);
+  }, [cart.length, completing, orderLoading, kitchenSending, branchId, orderType, tableId, activeOrderNumber, persistCart, effSettings, activeTable, guestCount, t, isAr, show]);
 
   const printKitchenTicket = useCallback(() => {
     if (cart.length === 0 || !effSettings) return;
