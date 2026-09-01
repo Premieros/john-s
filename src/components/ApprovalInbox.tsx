@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, Check, X } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/api';
 import { useAuth } from '@/context/AuthContext';
 import { useCan } from '@/lib/permissions';
+
 
 type ApprovalRequest = {
   id: string;
