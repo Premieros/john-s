@@ -1,0 +1,82 @@
+name: Update current work plan 20260902
+
+on:
+  push:
+    paths:
+      - '.github/workflows/update-current-work-plan-20260902.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-log:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Append current status
+        run: |
+          cat >> docs/CURRENT_WORK_PLAN.md <<'EOF'
+
+---
+
+## تحديث 2026-09-02 — KDS / الموافقات / P3 ✅
+
+### Production schema drift — مغلق ✅
+- اكتُشف أن Production لا يحتوي `order_kitchen_voids` و`cancel_sent_order_item` رغم وجود Migration في المستودع.
+- طُبقت Migration `cancel_sent_item_approval` على Production ثم تم التحقق من الجدول وRLS والدالة وtrigger الحماية.
+- لم يتم تخطي أو إضعاف RLS لمعالجة الانحراف.
+
+### KDS quantity delta — مكتمل على Production ✅
+- Migration: `20260902051000_kitchen_quantity_delta.sql`.
+- أضيف `order_kitchen_sends.sent_quantity` مع CHECK يمنع القيم السالبة.
+- زيادة نفس `order_item_id` من 1 إلى 3 ترسل للمطبخ +2 فقط، بدل إعادة إرسال السطر كاملًا.
+- approved kitchen void يخفض `sent_quantity` عبر `trg_sync_kitchen_sent_quantity_after_void` حتى تُحسب الزيادة التالية من صافي ما وصل للمطبخ.
+- Verify main run `33570934419`: App + DB/Integration/Security/RLS + Browser Smoke = SUCCESS.
+- طُبقت Migration على Production وتم التحقق من العمود والدوال والtrigger والقيد، وعدد القيم السالبة = 0.
+
+### Manager approvals — توسعة P1 ✅
+المكتمل الآن Server-side مع التدقيق:
+- Discount.
+- Reprint.
+- Cancel sent item.
+- Refund.
+- Change payment method.
+- Force close shift.
+- Open drawer authorization/audit.
+
+ملاحظة: فتح درج النقدية الفيزيائي يحتاج Printer/Hardware bridge؛ النظام الحالي ينجز الإذن/الموافقة/Audit ولا يدّعي إرسال نبضة Hardware بدون bridge.
+
+المتبقي في P1: Cashier/Manager E2E شامل، تحسين `REPRINT_APPROVAL_PENDING`، وVoid order فقط إذا بقي له مسار مستقل عن cancel/refund.
+
+### P3 Branch visibility — تقدم كبير ✅
+مكتمل في الواجهات الرئيسية التالية:
+- Products + Raw Materials.
+- Sales / invoices / refund rows + Shifts.
+- Purchases + Receipts.
+- Purchase Requests + RFQs.
+- Receiving Backorders: أضيف `branch_id` إلى نوع البيانات والواجهة ونافذة الاستلام.
+- Inventory + Warehouses + Transfers.
+- Inventory Batches + Inventory Ledger.
+
+Migration الجديدة للـBackorders:
+`20260902052000_purchase_backorders_branch_visibility.sql`
+- تعيد `branch_id` من `get_purchase_backorders`.
+- تحافظ على branch isolation الموجود.
+- تقوي SECURITY DEFINER إلى `search_path = public, pg_temp`.
+- تمنع EXECUTE من `PUBLIC/anon` وتبقيه لـ`authenticated/service_role`.
+- لها regression test مستقل: `purchase_backorders_branch_visibility.test.ts`.
+
+المتبقي في P3: Users/Parties، Reports، والطباعة/المستندات التي لا يظهر فيها الفرع بوضوح، مع فحص أي صفحات مخزون فرعية أخرى قبل اعتبار P3 مغلقًا.
+
+### الحالة التالية
+- لا تُطبق Migration Backorders على Production قبل Verify أخضر على HEAD النظيف.
+- بعد P3: P4 Products/POS server-side search + pagination + cache consistency ثم E2E نهائي.
+EOF
+          git config user.name "Premier Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/CURRENT_WORK_PLAN.md
+          git diff --cached --check
+          git commit -m "docs: record KDS approvals and P3 progress"
+          git push
