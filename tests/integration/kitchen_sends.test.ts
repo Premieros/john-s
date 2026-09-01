@@ -15,6 +15,7 @@ describe.skipIf(skip)('send_to_kitchen + order_kitchen_sends (048)', () => {
   async function createOrder(items = itemJson([{ product_id: prodA, quantity: 1 }])) { const t = await makeTable(); return asUser(async () => { const res = await client.query(`SELECT public.create_order($1, 'dine_in', $2, NULL, 2, NULL, $3::jsonb, 100, 0, 'amount', 0, 100, $4) AS r`, [branchId, t, items, cashierId]); return res.rows[0].r; }); }
   async function sendToKitchen(orderId: string) { return asUser(async () => { const res = await client.query(`SELECT public.send_to_kitchen($1) AS r`, [orderId]); return res.rows[0].r; }); }
   async function sendRows(orderId: string): Promise<number> { return (await client.query(`SELECT count(*)::int AS c FROM public.order_kitchen_sends WHERE order_id = $1`, [orderId])).rows[0].c; }
+  async function batchQty(unitId = unitA): Promise<number> { return Number((await client.query(`SELECT quantity FROM public.inventory_unit_batches WHERE unit_id = $1 AND warehouse_id = $2`, [unitId, whId])).rows[0].quantity); }
 
   const orgId = randomUUID();
   beforeAll(async () => {
@@ -39,6 +40,70 @@ describe.skipIf(skip)('send_to_kitchen + order_kitchen_sends (048)', () => {
   it('a re-send is a no-op: zero new rows, no duplicates', async () => { const created = await createOrder(); expect(created.success).toBe(true); const orderId = created.order_id!; const first = await sendToKitchen(orderId); expect(first.items_sent_count).toBe(1); const second = await sendToKitchen(orderId); expect(second.success).toBe(true); expect(second.items_sent_count).toBe(0); expect(second.all_sent).toBe(true); expect(await sendRows(orderId)).toBe(1); const r = await client.query(`SELECT count(*)::int AS c FROM (SELECT order_item_id, count(*) AS n FROM public.order_kitchen_sends WHERE order_id = $1 GROUP BY order_item_id HAVING count(*) > 1) dup`, [orderId]); expect(r.rows[0].c).toBe(0); });
   it('update_order preserves line ids: a same-cart re-persist does not re-send (069)', async () => { const created = await createOrder(); expect(created.success).toBe(true); const orderId = created.order_id!; const first = await sendToKitchen(orderId); expect(first.items_sent_count).toBe(1); expect(await sendRows(orderId)).toBe(1); await asUser(async () => { const res = await client.query(`SELECT public.update_order($1, 'dine_in', NULL, NULL, 2, NULL, $2::jsonb, 100, 0, 'amount', 0, 100, 'held') AS r`, [orderId, itemJson([{ product_id: prodA, quantity: 1 }])]); expect(res.rows[0].r.success).toBe(true); }); const second = await sendToKitchen(orderId); expect(second.success).toBe(true); expect(second.items_sent_count).toBe(0); expect(second.all_sent).toBe(true); expect(await sendRows(orderId)).toBe(1); const lines = await client.query(`SELECT count(*)::int AS c, count(*) FILTER (WHERE EXISTS (SELECT 1 FROM public.order_kitchen_sends s WHERE s.order_item_id = public.order_items.id))::int AS sent FROM public.order_items WHERE order_id = $1`, [orderId]); expect(lines.rows[0].c).toBe(1); expect(lines.rows[0].sent).toBe(1); });
   it('resume + add item + send + payment: only the new line reaches KDS, sale settles the full cart (ERP-01)', async () => { const created = await createOrder(); expect(created.success).toBe(true); const orderId = created.order_id!; await sendToKitchen(orderId); expect(await sendRows(orderId)).toBe(1); const cart = itemJson([{ product_id: prodA, quantity: 1 }, { product_id: prodB, quantity: 1 }]); await asUser(async () => { const res = await client.query(`SELECT public.update_order($1, 'dine_in', NULL, NULL, 2, NULL, $2::jsonb, 200, 0, 'amount', 0, 200, 'held') AS r`, [orderId, cart]); expect(res.rows[0].r.success).toBe(true); }); const sent = await sendToKitchen(orderId); expect(sent.success).toBe(true); if (!sent.success) throw new Error(JSON.stringify(sent)); expect(sent.items_sent_count).toBe(1); expect(sent.sent).toHaveLength(1); expect(sent.sent![0].product_id).toBe(prodB); expect(await sendRows(orderId)).toBe(2); await client.query(`SELECT public.ensure_chart_of_accounts($1)`, [branchId]); await client.query(`SELECT public.seed_account_mappings($1)`, [branchId]); const sale = await asUser(async () => client.query(`SELECT public.process_sale($1, $2, $3, NULL, NULL, 200, 0, 'amount', 0, 0, 200, 200, 'cash', 'completed', $4::jsonb, NULL, 'takeaway', NULL, $5) AS r`, [`INV-${randomUUID()}`, branchId, whId, cart, orderId])); expect(sale.rows[0].r.success).toBe(true); if (!sale.rows[0].r.success) throw new Error(JSON.stringify(sale.rows[0].r)); const saleLines = await client.query(`SELECT count(*)::int AS c FROM public.sale_items WHERE sale_id = $1`, [sale.rows[0].r.sale_id]); expect(saleLines.rows[0].c).toBe(2); const closed = await sendToKitchen(orderId); expect(closed.success).toBe(false); expect(closed.error).toBe('ORDER_NOT_EDITABLE'); });
+
+  it('cashier sent-item void requires approval, blocks bypass, and never restores inventory', async () => {
+    const created = await createOrder(itemJson([{ product_id: prodA, quantity: 2 }]));
+    expect(created.success).toBe(true);
+    const orderId = created.order_id!;
+    const sent = await sendToKitchen(orderId);
+    expect(sent.success).toBe(true);
+    expect(sent.items_sent_count).toBe(1);
+
+    const stockBefore = await batchQty();
+    expect(stockBefore).toBe(100);
+
+    const first = await asUser(async () => client.query(
+      `SELECT public.cancel_sent_order_item($1, $2, 1, 'customer changed mind') AS r`,
+      [orderId, prodA],
+    ));
+    const pending = first.rows[0].r as { success: boolean; error?: string; request_id?: string };
+    expect(pending.success).toBe(false);
+    expect(pending.error).toBe('MANAGER_APPROVAL_REQUIRED');
+    expect(pending.request_id).toBeTruthy();
+    expect(await batchQty()).toBe(stockBefore);
+
+    // A cashier cannot bypass the approval RPC by shrinking the already-sent
+    // cart through update_order; the sent-line mutation trigger blocks it.
+    const bypass = await asUser(async () => client.query(
+      `SELECT public.update_order($1, 'dine_in', NULL, NULL, 2, NULL, $2::jsonb, 100, 0, 'amount', 0, 100, 'held') AS r`,
+      [orderId, itemJson([{ product_id: prodA, quantity: 1 }])],
+    ));
+    expect(bypass.rows[0].r.success).toBe(false);
+    expect(String(bypass.rows[0].r.detail || '')).toContain('SENT_ITEM_APPROVAL_REQUIRED');
+    expect(await batchQty()).toBe(stockBefore);
+
+    // Simulate the manager decision itself as the CI session owner. The
+    // approval RPC is tested separately; this test focuses on the cancellation
+    // boundary and inventory invariant.
+    await client.query(
+      `UPDATE public.approval_requests SET status='approved', decided_at=now() WHERE id=$1`,
+      [pending.request_id],
+    );
+
+    const approved = await asUser(async () => client.query(
+      `SELECT public.cancel_sent_order_item($1, $2, 1, 'customer changed mind') AS r`,
+      [orderId, prodA],
+    ));
+    const result = approved.rows[0].r as { success: boolean; remaining_quantity?: number; inventory_changed?: boolean };
+    expect(result.success).toBe(true);
+    expect(Number(result.remaining_quantity)).toBe(1);
+    expect(result.inventory_changed).toBe(false);
+    expect(await batchQty()).toBe(stockBefore);
+
+    const line = await client.query(`SELECT quantity FROM public.order_items WHERE order_id=$1 AND product_id=$2`, [orderId, prodA]);
+    expect(Number(line.rows[0].quantity)).toBe(1);
+    const voids = await client.query(`SELECT quantity, reason FROM public.order_kitchen_voids WHERE order_id=$1 AND product_id=$2`, [orderId, prodA]);
+    expect(voids.rows).toHaveLength(1);
+    expect(Number(voids.rows[0].quantity)).toBe(1);
+    const approval = await client.query(`SELECT status FROM public.approval_requests WHERE id=$1`, [pending.request_id]);
+    expect(approval.rows[0].status).toBe('consumed');
+
+    const resend = await sendToKitchen(orderId);
+    expect(resend.success).toBe(true);
+    expect(resend.items_sent_count).toBe(0);
+    expect(await batchQty()).toBe(stockBefore);
+  });
+
   it('send_to_kitchen rejects a completed order (ORDER_NOT_EDITABLE)', async () => { const created = await createOrder(); expect(created.success).toBe(true); await client.query(`UPDATE public.orders SET status = 'completed' WHERE id = $1`, [created.order_id]); const sent = await sendToKitchen(created.order_id!); expect(sent.success).toBe(false); expect(sent.error).toBe('ORDER_NOT_EDITABLE'); });
   it('set_order_status cannot reopen a completed order (H4 ORDER_CLOSED)', async () => { const created = await createOrder(); expect(created.success).toBe(true); await client.query(`UPDATE public.orders SET status = 'completed' WHERE id = $1`, [created.order_id]); const res = await asUser(async () => client.query(`SELECT public.set_order_status($1, 'open') AS r`, [created.order_id])); expect(res.rows[0].r.success).toBe(false); expect(res.rows[0].r.error).toBe('ORDER_CLOSED'); const order = await client.query(`SELECT status FROM public.orders WHERE id = $1`, [created.order_id]); expect(order.rows[0].status).toBe('completed'); });
   it('order_kitchen_sends is readable under RLS within the caller branch', async () => { const created = await createOrder(); expect(created.success).toBe(true); await sendToKitchen(created.order_id!); const r = await asUser(async () => client.query(`SELECT count(*)::int AS c FROM public.order_kitchen_sends WHERE order_id = $1`, [created.order_id])); expect(r.rows[0].c).toBe(1); });
