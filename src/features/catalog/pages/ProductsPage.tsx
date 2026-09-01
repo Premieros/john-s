@@ -35,15 +35,16 @@ export function ProductsPage() {
   const { show } = useToast();
   const can = useCan();
   const branchFilter = useBranchFilter();
+  const [search, setSearch] = useState('');
   const { rows: products, loading, total, hasMore, loadMore, loadingMore, refresh: reloadProducts } = usePaginatedRows<Product>({
     table: 'products',
     select: '*, category:categories(*)',
     order: { column: 'created_at', ascending: false },
     branch_id: branchFilter,
+    search: { term: search, columns: ['name', 'name_en', 'barcode', 'sku'] },
     pageSize: 100,
   });
   const [categories, setCategories] = useState<Category[]>([]);
-  const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -105,9 +106,7 @@ export function ProductsPage() {
 
   useEffect(() => { loadMeta(); }, [loadMeta]);
 
-  const filtered = products.filter((p) =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode?.includes(search) || p.sku?.includes(search)
-  );
+  const filtered = products;
 
   const availableToAdd = stockComponents.filter(
     (s) => s.product_id !== editing?.id && !productComponents.some((c) => c.component_product_id === s.product_id)
