@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PackageOpen, Save, History, Trophy } from 'lucide-react';
 import * as api from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -8,9 +8,11 @@ import { DesignSurface, DesignPageHeader, DesignPanel } from '@/components/desig
 import { DataTable, type Column } from '@/components/DataTable';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
+import { BranchBadge } from '@/components/BranchBadge';
 import { formatDate, formatCurrency } from '@/lib/format';
 import { useCan } from '@/lib/permissions';
 import { useSettings } from '@/context/SettingsContext';
+import { useBranches } from '@/hooks/useBranches';
 import type { RpcResult, PurchaseBackorderRow, PurchaseReceiptRow, SupplierEvaluationRow, ReceiveLineInput } from '@/lib/types';
 
 interface ReceivingLine {
@@ -30,6 +32,7 @@ export function ReceivingPage() {
   const branchFilter = useBranchFilter();
   const { show } = useToast();
   const can = useCan();
+  const { branches } = useBranches();
   const { effectiveSettings } = useSettings();
   const currency = effectiveSettings(branchFilter)?.currency || 'EGP';
   const [tab, setTab] = useState<Tab>('backorders');
@@ -132,6 +135,7 @@ export function ReceivingPage() {
     { key: 'receipt_number', header: t('receiptNumber'), render: (r) => <span className="font-medium text-ui-text">{r.receipt_number}</span> },
     { key: 'invoice_number', header: t('purchaseOrder'), render: (r) => r.invoice_number },
     { key: 'supplier_name', header: t('supplier'), render: (r) => r.supplier_name },
+    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branches.find((b) => b.id === r.branch_id)?.name || '-'} /> },
     { key: 'item_count', header: t('itemsReceived'), render: (r) => r.item_count },
     { key: 'total_quantity', header: t('receivedQty'), render: (r) => r.total_quantity },
     { key: 'received_at', header: t('receivedAt'), render: (r) => formatDate(r.received_at, lang) },

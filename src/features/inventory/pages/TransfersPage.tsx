@@ -13,6 +13,7 @@ import { DataTable, type Column } from '@/components/DataTable';
 import { Button } from '@/components/Button';
 import { Input, Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
+import { BranchBadge } from '@/components/BranchBadge';
 import { formatDateTime } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
@@ -231,7 +232,7 @@ export function TransfersPage() {
     )},
     { key: 'from', header: t('fromWarehouse'), render: (tr) => tr.from_warehouse?.name || '-' },
     { key: 'to', header: t('toWarehouse'), render: (tr) => tr.to_warehouse?.name || '-' },
-    { key: 'branch', header: t('branch'), render: (tr) => tr.branch?.name || '-' },
+    { key: 'branch', header: t('branch'), render: (tr) => <BranchBadge name={tr.branch?.name || '-'} /> },
     { key: 'status', header: t('status'), render: (tr) => statusPill(tr.status) },
     { key: 'requested_at', header: t('requestedAt'), render: (tr) => formatDateTime(tr.requested_at, lang) },
     { key: 'actions', header: t('actions'), render: (tr) => (

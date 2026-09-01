@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Edit2, AlertTriangle, Download, Trash2 } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
@@ -11,10 +11,12 @@ import { Button } from '@/components/Button';
 import { Input, Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { BranchBadge } from '@/components/BranchBadge';
 import { formatNumber } from '@/lib/format';
 import { exportToExcel } from '@/lib/excel';
 import { logAudit } from '@/lib/audit';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
+import { useBranches } from '@/hooks/useBranches';
 import type { Inventory, Warehouse } from '@/lib/types';
 
 export function InventoryPage() {
@@ -22,6 +24,7 @@ export function InventoryPage() {
   const isAr = lang === 'ar';
   const { show } = useToast();
   const can = useCan();
+  const { branches } = useBranches();
   const { rows: items, loading, error, total, hasMore, loadMore, loadingMore, refresh: reloadInventory } = usePaginatedRows<Inventory>({
     table: 'inventory',
     select: '*, product:products(*), warehouse:warehouses(*)',
@@ -105,7 +108,7 @@ export function InventoryPage() {
   const handleExport = () => {
     exportToExcel(items.map((i) => ({
       Product: i.product?.name || '', Barcode: i.product?.barcode || '',
-      Warehouse: i.warehouse?.name || '', Quantity: i.quantity,
+      Warehouse: i.warehouse?.name || '', Branch: branches.find((b) => b.id === i.warehouse?.branch_id)?.name || '', Quantity: i.quantity,
       LowStockThreshold: i.product?.low_stock_threshold || 0,
     })), 'inventory');
   };
@@ -131,6 +134,7 @@ export function InventoryPage() {
       </div>
     )},
     { key: 'warehouse', header: t('warehouse'), render: (i) => i.warehouse?.name || '-' },
+    { key: 'branch', header: t('branch'), render: (i) => <BranchBadge name={branches.find((b) => b.id === i.warehouse?.branch_id)?.name || '-'} /> },
     { key: 'quantity', header: t('quantity'), render: (i) => {
       const isLow = i.quantity < (i.product?.low_stock_threshold || 5);
       return (

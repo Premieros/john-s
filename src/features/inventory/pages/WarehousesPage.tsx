@@ -11,6 +11,7 @@ import { Button } from '@/components/Button';
 import { Input, Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { BranchBadge } from '@/components/BranchBadge';
 import { logAudit } from '@/lib/audit';
 import { useBranchFilter } from '@/lib/useBranchFilter';
 import { useCan } from '@/lib/permissions';
@@ -75,7 +76,7 @@ export function WarehousesPage() {
 
   const columns: Column<Warehouse>[] = [
     { key: 'name', header: t('name'), render: (w) => <span className="font-medium text-ui-text">{w.name}</span> },
-    { key: 'branch', header: t('branch'), render: (w) => (w as Warehouse & { branch?: Branch }).branch?.name || '-' },
+    { key: 'branch', header: t('branch'), render: (w) => <BranchBadge name={(w as Warehouse & { branch?: Branch }).branch?.name || '-'} /> },
     { key: 'address', header: t('address'), render: (w) => w.address || '-' },
     { key: 'is_active', header: t('status'), render: (w) => (
       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${w.is_active ? 'bg-ui-success-soft text-ui-success' : 'bg-ui-page-alt text-ui-subtle dark:text-ui-subtle'}`}>

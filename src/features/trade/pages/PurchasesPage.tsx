@@ -12,6 +12,7 @@ import { DataTable, type Column } from '@/components/DataTable';
 import { Button } from '@/components/Button';
 import { Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
+import { BranchBadge } from '@/components/BranchBadge';
 import { formatCurrency, formatDate, generateInvoiceNumber } from '@/lib/format';
 import { exportToExcel } from '@/lib/excel';
 import { logAudit } from '@/lib/audit';
@@ -226,6 +227,7 @@ export function PurchasesPage() {
   const columns: Column<Purchase>[] = [
     { key: 'invoice_number', header: t('invoice'), render: (p) => <span className="font-medium text-ui-text">{p.invoice_number}</span> },
     { key: 'supplier', header: t('supplier'), render: (p) => (p as Purchase & { supplier?: Supplier }).supplier?.name || '-' },
+    { key: 'branch', header: t('branch'), render: (p) => <BranchBadge name={branches.find((b) => b.id === p.branch_id)?.name || '-'} /> },
     { key: 'created_at', header: t('date'), render: (p) => formatDate(p.created_at, lang) },
     { key: 'total', header: t('total'), render: (p) => <span className="font-semibold text-ui-text">{formatCurrency(p.total, currency, lang)}</span> },
     { key: 'status', header: t('status'), render: (p) => <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-ui-success-soft text-ui-success capitalize">{p.status}</span> },
