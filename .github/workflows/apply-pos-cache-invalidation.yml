@@ -1,0 +1,64 @@
+name: Apply POS catalog cache invalidation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-pos-cache-invalidation.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch catalog mutation pages
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path('src/features/catalog/pages/ProductsPage.tsx')
+          s = p.read_text()
+          imp = "import { usePaginatedRows } from '@/hooks/usePaginatedRows';\n"
+          add = imp + "import { invalidatePosCatalogCache } from '@/core/offline/invalidatePosCatalogCache';\n"
+          if "invalidatePosCatalogCache" not in s:
+              if imp not in s: raise SystemExit('ProductsPage import marker missing')
+              s = s.replace(imp, add, 1)
+
+          save_marker = "    show(t('saveSuccess'), 'success');\n    setModalOpen(false);\n    reloadProducts();"
+          save_new = "    show(t('saveSuccess'), 'success');\n    setModalOpen(false);\n    await invalidatePosCatalogCache();\n    reloadProducts();"
+          if save_marker in s:
+              s = s.replace(save_marker, save_new, 1)
+
+          remove_marker = "    setDeleteId(null);\n    reloadProducts();"
+          remove_new = "    setDeleteId(null);\n    await invalidatePosCatalogCache();\n    reloadProducts();"
+          if remove_marker in s:
+              s = s.replace(remove_marker, remove_new, 1)
+
+          import_marker = "      else { show(`${payload.length} ${t('import')} OK`, 'success'); reloadProducts(); }"
+          import_new = "      else { show(`${payload.length} ${t('import')} OK`, 'success'); await invalidatePosCatalogCache(); reloadProducts(); }"
+          if import_marker in s:
+              s = s.replace(import_marker, import_new, 1)
+          p.write_text(s)
+
+          w = Path('src/features/catalog/pages/ProductSetupWizardPage.tsx')
+          x = w.read_text()
+          wimp = "import { useGuidedWorkflow } from '@/core/guard';\n"
+          wadd = wimp + "import { invalidatePosCatalogCache } from '@/core/offline/invalidatePosCatalogCache';\n"
+          if "invalidatePosCatalogCache" not in x:
+              if wimp not in x: raise SystemExit('Wizard import marker missing')
+              x = x.replace(wimp, wadd, 1)
+          log_marker = "      await logAudit('create', 'products', productId, { name: form.name, unit_count: totalUnitCount, product_type: derivedProductType });\n      show(t('saveSuccess'), 'success');"
+          log_new = "      await logAudit('create', 'products', productId, { name: form.name, unit_count: totalUnitCount, product_type: derivedProductType });\n      await invalidatePosCatalogCache();\n      show(t('saveSuccess'), 'success');"
+          if log_marker in x:
+              x = x.replace(log_marker, log_new, 1)
+          w.write_text(x)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/catalog/pages/ProductsPage.tsx src/features/catalog/pages/ProductSetupWizardPage.tsx
+          git commit -m "fix: invalidate POS catalog cache after product changes"
+          git push
