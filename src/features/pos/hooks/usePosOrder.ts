@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
 import { computePosTotals, computeLineDiscount, type PosPaymentMethod } from '@/lib/posMath';
 import { logAudit } from '@/lib/audit';
-import type { CartItem, Customer, DiningTable, Order, OrderItem, OrderType, Product, ProductComponent, RpcResult, Settings } from '@/lib/types';
+import type { CartItem, Customer, DiningTable, Order, OrderItem, OrderType, Product, RpcResult, Settings } from '@/lib/types';
 import { ORDER_TYPE_KEY } from '../utils/orderTypes';
 import { cartToItems, orderItemsToCart } from '../utils/cart';
 import { buildReceiptHtml, buildKitchenTicketHtml, openPrintWindow, type ReceiptData } from '../utils/printing';
@@ -31,8 +31,6 @@ export interface UsePosOrderInput {
   activeShift: ActiveShiftInfo | null;
   products: Product[];
   stockMap: Record<string, number>;
-  sellableStock: Record<string, number>;
-  recipeMap: Record<string, ProductComponent[]>;
 }
 
 interface PersistResult {
@@ -46,7 +44,7 @@ const EMPTY_CART: CartItem[] = [];
 const VALID_PAYMENT_METHODS: PosPaymentMethod[] = ['cash', 'card', 'transfer', 'credit'];
 
 export function usePosOrder(input: UsePosOrderInput) {
-  const { branchId, orderId, customers, effSettings, isCashier, activeShift, products, stockMap, sellableStock, recipeMap } = input;
+  const { branchId, orderId, customers, effSettings, isCashier, activeShift, products, stockMap } = input;
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
   const { user } = useAuth();
@@ -149,11 +147,7 @@ export function usePosOrder(input: UsePosOrderInput) {
     return () => { cancelled = true; };
   }, [tableId]);
 
-  const getStock = useCallback((productId: string) => {
-    const prod = products.find((x) => x.id === productId);
-    if (prod?.product_type === 'manufactured') return sellableStock[productId] || 0;
-    return stockMap[productId] || 0;
-  }, [products, sellableStock, stockMap]);
+  const getStock = useCallback((productId: string) => stockMap[productId] || 0, [stockMap]);
 
   const addToCart = useCallback((
     product: Product,
@@ -162,12 +156,8 @@ export function usePosOrder(input: UsePosOrderInput) {
     discount = 0
   ) => {
     const stock = getStock(product.id);
-    if (product.product_type === 'manufactured' && (recipeMap[product.id]?.length || 0) === 0) {
-      show(`${product.name}: ${t('noRecipe')}`, 'error');
-      return;
-    }
     const inCart = cart.find((i) => i.product.id === product.id)?.quantity || 0;
-    if (inCart + quantity > stock && stock > 0) {
+    if (inCart + quantity > stock) {
       show(`${product.name}: ${t('insufficientStock')} (${stock})`, 'error');
       return;
     }
@@ -189,11 +179,11 @@ export function usePosOrder(input: UsePosOrderInput) {
         },
       ];
     });
-  }, [getStock, recipeMap, cart, show, t]);
+  }, [getStock, cart, show, t]);
 
   const updateQty = useCallback((productId: string, delta: number) => {
     const stock = getStock(productId);
-    if (delta > 0 && stock > 0) {
+    if (delta > 0) {
       const inCart = cart.find((i) => i.product.id === productId)?.quantity || 0;
       if (inCart + delta > stock) { show(`${t('insufficientStock')} (${stock})`, 'error'); return; }
     }
@@ -202,7 +192,7 @@ export function usePosOrder(input: UsePosOrderInput) {
 
   const setQty = useCallback((productId: string, qty: number) => {
     const stock = getStock(productId);
-    if (stock > 0 && qty > stock) { show(`${t('insufficientStock')} (${stock})`, 'error'); qty = stock; }
+    if (qty > stock) { show(`${t('insufficientStock')} (${stock})`, 'error'); qty = stock; }
     setCart((prev) => prev.map((i) => (i.product.id === productId ? { ...i, quantity: Math.max(1, qty) } : i)));
   }, [getStock, show, t]);
 

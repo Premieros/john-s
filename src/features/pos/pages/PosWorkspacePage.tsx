@@ -127,43 +127,33 @@ export function PosWorkspacePage() {
       setStockMap({});
       return;
     }
-    const { data: warehouses } = await supabase.from('warehouses').select('id').eq('branch_id', branchId).eq('is_active', true);
-    const warehouseIds = (warehouses || []).map((w: { id: string }) => w.id);
-    if (warehouseIds.length === 0) {
+    const { data: warehouses } = await supabase
+      .from('warehouses')
+      .select('id')
+      .eq('branch_id', branchId)
+      .eq('is_active', true);
+    const warehouseId = ((warehouses || []) as { id: string }[])[0]?.id || null;
+    if (!warehouseId) {
       setStockMap({});
       return;
     }
-    const { data: inv } = await supabase.from('inventory').select('product_id, quantity').in('warehouse_id', warehouseIds);
+    const { data, error } = await supabase.rpc('get_pos_product_availability', {
+      p_branch_id: branchId,
+      p_warehouse_id: warehouseId,
+      p_cap: 100000,
+    });
+    if (error) {
+      setStockMap({});
+      return;
+    }
     const map: Record<string, number> = {};
-    for (const row of (inv || []) as { product_id: string; quantity: number }[]) {
-      map[row.product_id] = (map[row.product_id] || 0) + Number(row.quantity);
+    for (const row of (data || []) as { product_id: string; available_quantity: number | string }[]) {
+      map[row.product_id] = Number(row.available_quantity) || 0;
     }
     setStockMap(map);
   }, []);
 
-  const sellableStock = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const p of products) {
-      if (p.product_type !== 'manufactured') continue;
-      const comps = recipeMap[p.id] || [];
-      if (comps.length === 0) {
-        map[p.id] = 0;
-        continue;
-      }
-      let min = Infinity;
-      for (const c of comps) {
-        const perUnit = Number(c.quantity) || 0;
-        if (perUnit <= 0) {
-          min = 0;
-          break;
-        }
-        const possible = (stockMap[c.component_product_id] || 0) / perUnit;
-        if (possible < min) min = possible;
-      }
-      map[p.id] = min === Infinity ? 0 : Math.floor(min);
-    }
-    return map;
-  }, [products, recipeMap, stockMap]);
+  const sellableStock = stockMap;
 
   const pos = usePosOrder({
     branchId: effectiveBranch,
@@ -174,8 +164,6 @@ export function PosWorkspacePage() {
     activeShift,
     products,
     stockMap,
-    sellableStock,
-    recipeMap,
   });
 
   const live = useActiveOrders(effectiveBranch);
