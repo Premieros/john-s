@@ -134,11 +134,10 @@ export function SalesPage() {
     const result = data as { success: boolean; error?: string; detail?: string; refunded_amount?: number } | null;
     if (!result?.success) {
       if (result?.error === 'APPROVAL_REQUIRED' && canRequestRefundApproval) {
-        const { data: approvalData, error: approvalError } = await supabase.rpc('request_approval', {
-          p_branch_id: refundSale.branch_id,
+        const { data: approvalData, error: approvalError } = await supabase.rpc('request_manager_approval', {
           p_action_type: 'refund',
-          p_target_type: 'sale',
-          p_target_id: refundSale.id,
+          p_entity_type: 'sale',
+          p_entity_id: refundSale.id,
           p_payload: {
             items: p_items,
             reason: refundReason.trim() || null,
@@ -146,7 +145,6 @@ export function SalesPage() {
             invoice_number: refundSale.invoice_number,
           },
           p_reason: refundReason.trim() || (isAr ? 'طلب مرتجع من الكاشير' : 'Cashier refund request'),
-          p_expires_in_seconds: 600,
         });
         if (approvalError) {
           show(approvalError.message, 'error');
