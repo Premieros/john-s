@@ -15,4 +15,12 @@ export const shifts = {
   close(p: { p_shift_id: string; p_actual_amount: number; p_notes: string | null }): ApiResult<RpcResult> {
     return rpc<RpcResult>('close_shift', p);
   },
+
+  forceClose(p: { p_shift_id: string; p_actual_amount: number | null; p_reason: string | null }): ApiResult<RpcResult> {
+    return rpc<RpcResult>('force_close_shift', p);
+  },
+
+  authorizeOpenDrawer(p: { p_shift_id: string; p_reason: string | null }): ApiResult<RpcResult & { authorized?: boolean; hardware_action_required?: boolean }> {
+    return rpc<RpcResult & { authorized?: boolean; hardware_action_required?: boolean }>('authorize_open_drawer', p);
+  },
 };
