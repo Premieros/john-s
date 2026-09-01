@@ -1,4 +1,4 @@
-﻿import { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { Plus, Edit2, Trash2, Download, Upload } from 'lucide-react';
 import { supabase } from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -11,6 +11,7 @@ import { DataTable, type Column } from '@/components/DataTable';
 import { Button } from '@/components/Button';
 import { Input, Select, Textarea } from '@/components/Input';
 import { Modal } from '@/components/Modal';
+import { BranchBadge } from '@/components/BranchBadge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { formatCurrency } from '@/lib/format';
 import { exportToExcel, importFromExcel } from '@/lib/excel';
@@ -74,7 +75,7 @@ export function CustomersPage() {
     reloadCustomers();
   };
 
-  const handleExport = () => exportToExcel(items.map((c) => ({ Name: c.name, Phone: c.phone || '', Email: c.email || '', Address: c.address || '', TaxNumber: c.tax_number || '', Balance: c.balance })), 'customers');
+  const handleExport = () => exportToExcel(items.map((c) => ({ Name: c.name, Branch: branches.find((b) => b.id === c.branch_id)?.name || '', Phone: c.phone || '', Email: c.email || '', Address: c.address || '', TaxNumber: c.tax_number || '', Balance: c.balance })), 'customers');
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -90,6 +91,7 @@ export function CustomersPage() {
 
   const columns: Column<Customer>[] = [
     { key: 'name', header: t('name'), render: (c) => <span className="font-medium text-ui-text">{c.name}</span> },
+    { key: 'branch', header: t('branch'), render: (c) => <BranchBadge name={branches.find((b) => b.id === c.branch_id)?.name || '-'} /> },
     { key: 'phone', header: t('phone'), render: (c) => c.phone || '-' },
     { key: 'email', header: t('emailField'), render: (c) => c.email || '-' },
     { key: 'address', header: t('address'), render: (c) => c.address || '-' },

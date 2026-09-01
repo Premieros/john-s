@@ -12,6 +12,7 @@ import { DataTable, type Column } from '@/components/DataTable';
 import { Button } from '@/components/Button';
 import { Input, Select, Textarea } from '@/components/Input';
 import { Modal } from '@/components/Modal';
+import { BranchBadge } from '@/components/BranchBadge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { formatDate, formatCurrency } from '@/lib/format';
 import { exportToExcel } from '@/lib/excel';
@@ -85,7 +86,7 @@ export function SuppliersPage() {
     reloadSuppliers();
   };
 
-  const handleExport = () => exportToExcel(items.map((s) => ({ Name: s.name, Phone: s.phone || '', Email: s.email || '', Address: s.address || '', TaxNumber: s.tax_number || '', Balance: s.balance })), 'suppliers');
+  const handleExport = () => exportToExcel(items.map((s) => ({ Name: s.name, Branch: branches.find((b) => b.id === s.branch_id)?.name || '', Phone: s.phone || '', Email: s.email || '', Address: s.address || '', TaxNumber: s.tax_number || '', Balance: s.balance })), 'suppliers');
 
   const loadEvaluation = async () => {
     setEvLoading(true);
@@ -102,6 +103,7 @@ export function SuppliersPage() {
 
   const columns: Column<Supplier>[] = [
     { key: 'name', header: t('name'), render: (s) => <span className="font-medium text-ui-text">{s.name}</span> },
+    { key: 'branch', header: t('branch'), render: (s) => <BranchBadge name={branches.find((b) => b.id === s.branch_id)?.name || '-'} /> },
     { key: 'phone', header: t('phone'), render: (s) => s.phone || '-' },
     { key: 'email', header: t('emailField'), render: (s) => s.email || '-' },
     { key: 'address', header: t('address'), render: (s) => s.address || '-' },

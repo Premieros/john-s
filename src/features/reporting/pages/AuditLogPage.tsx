@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { ScrollText } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { DesignSurface, DesignPageHeader } from '@/components/design/DesignSurface';
@@ -7,16 +7,22 @@ import { DesignPanel } from '@/components/design/DesignPanel';
 import { DesignPagination } from '@/components/design/DesignPagination';
 import { DesignLoadingState, DesignEmptyState } from '@/components/design/DesignStates';
 import { DataTable, type Column } from '@/components/DataTable';
+import { BranchBadge } from '@/components/BranchBadge';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
+import { useBranches } from '@/hooks/useBranches';
+import { useBranchFilter } from '@/lib/useBranchFilter';
 import { formatDateTime } from '@/lib/format';
 import type { AuditLog } from '@/lib/types';
 
 export function AuditLogPage() {
   const { t, lang } = useLanguage();
   const [search, setSearch] = useState('');
+  const branchFilter = useBranchFilter();
+  const { branches } = useBranches();
   const { rows: items, loading, total, hasMore, loadMore, loadingMore } = usePaginatedRows<AuditLog>({
     table: 'audit_log',
     order: { column: 'created_at', ascending: false },
+    branch_id: branchFilter,
     pageSize: 200,
   });
 
@@ -25,6 +31,7 @@ export function AuditLogPage() {
   const columns: Column<AuditLog>[] = [
     { key: 'created_at', header: t('date'), render: (a) => <span className="text-sm text-ui-muted">{formatDateTime(a.created_at, lang)}</span> },
     { key: 'user_email', header: t('user'), render: (a) => a.user_email || '-' },
+    { key: 'branch', header: t('branch'), render: (a) => <BranchBadge name={branches.find((b) => b.id === a.branch_id)?.name || '-'} /> },
     { key: 'action', header: t('action'), render: (a) => (
       <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
         a.action === 'create' ? 'bg-ui-success-soft text-ui-success' :

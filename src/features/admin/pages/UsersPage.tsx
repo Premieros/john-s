@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Edit2, Plus, Shield, Trash2 } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
@@ -12,6 +12,7 @@ import { DataTable, type Column } from '@/components/DataTable';
 import { Button } from '@/components/Button';
 import { Input, Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
+import { BranchBadge } from '@/components/BranchBadge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { formatDate } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
@@ -174,7 +175,7 @@ export function UsersPage() {
         <Shield className="w-3 h-3" /> {roleMeta[u.role]?.[lang] || u.role}
       </span>
     )},
-    { key: 'branch', header: t('branch'), render: (u) => branches.find((b) => b.id === u.branch_id)?.name || '-' },
+    { key: 'branch', header: t('branch'), render: (u) => <BranchBadge name={branches.find((b) => b.id === u.branch_id)?.name || '-'} /> },
     { key: 'is_active', header: t('status'), render: (u) => (
       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.is_active ? 'bg-ui-success-soft text-ui-success' : 'bg-ui-page-alt text-ui-subtle dark:text-ui-subtle'}`}>
         {u.is_active ? t('active') : t('inactive')}
