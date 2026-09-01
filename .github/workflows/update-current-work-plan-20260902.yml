@@ -17,63 +17,7 @@ jobs:
           fetch-depth: 0
       - name: Append current status
         run: |
-          cat >> docs/CURRENT_WORK_PLAN.md <<'EOF'
-
----
-
-## تحديث 2026-09-02 — KDS / الموافقات / P3 ✅
-
-### Production schema drift — مغلق ✅
-- اكتُشف أن Production لا يحتوي `order_kitchen_voids` و`cancel_sent_order_item` رغم وجود Migration في المستودع.
-- طُبقت Migration `cancel_sent_item_approval` على Production ثم تم التحقق من الجدول وRLS والدالة وtrigger الحماية.
-- لم يتم تخطي أو إضعاف RLS لمعالجة الانحراف.
-
-### KDS quantity delta — مكتمل على Production ✅
-- Migration: `20260902051000_kitchen_quantity_delta.sql`.
-- أضيف `order_kitchen_sends.sent_quantity` مع CHECK يمنع القيم السالبة.
-- زيادة نفس `order_item_id` من 1 إلى 3 ترسل للمطبخ +2 فقط، بدل إعادة إرسال السطر كاملًا.
-- approved kitchen void يخفض `sent_quantity` عبر `trg_sync_kitchen_sent_quantity_after_void` حتى تُحسب الزيادة التالية من صافي ما وصل للمطبخ.
-- Verify main run `33570934419`: App + DB/Integration/Security/RLS + Browser Smoke = SUCCESS.
-- طُبقت Migration على Production وتم التحقق من العمود والدوال والtrigger والقيد، وعدد القيم السالبة = 0.
-
-### Manager approvals — توسعة P1 ✅
-المكتمل الآن Server-side مع التدقيق:
-- Discount.
-- Reprint.
-- Cancel sent item.
-- Refund.
-- Change payment method.
-- Force close shift.
-- Open drawer authorization/audit.
-
-ملاحظة: فتح درج النقدية الفيزيائي يحتاج Printer/Hardware bridge؛ النظام الحالي ينجز الإذن/الموافقة/Audit ولا يدّعي إرسال نبضة Hardware بدون bridge.
-
-المتبقي في P1: Cashier/Manager E2E شامل، تحسين `REPRINT_APPROVAL_PENDING`، وVoid order فقط إذا بقي له مسار مستقل عن cancel/refund.
-
-### P3 Branch visibility — تقدم كبير ✅
-مكتمل في الواجهات الرئيسية التالية:
-- Products + Raw Materials.
-- Sales / invoices / refund rows + Shifts.
-- Purchases + Receipts.
-- Purchase Requests + RFQs.
-- Receiving Backorders: أضيف `branch_id` إلى نوع البيانات والواجهة ونافذة الاستلام.
-- Inventory + Warehouses + Transfers.
-- Inventory Batches + Inventory Ledger.
-
-Migration الجديدة للـBackorders:
-`20260902052000_purchase_backorders_branch_visibility.sql`
-- تعيد `branch_id` من `get_purchase_backorders`.
-- تحافظ على branch isolation الموجود.
-- تقوي SECURITY DEFINER إلى `search_path = public, pg_temp`.
-- تمنع EXECUTE من `PUBLIC/anon` وتبقيه لـ`authenticated/service_role`.
-- لها regression test مستقل: `purchase_backorders_branch_visibility.test.ts`.
-
-المتبقي في P3: Users/Parties، Reports، والطباعة/المستندات التي لا يظهر فيها الفرع بوضوح، مع فحص أي صفحات مخزون فرعية أخرى قبل اعتبار P3 مغلقًا.
-
-### الحالة التالية
-- لا تُطبق Migration Backorders على Production قبل Verify أخضر على HEAD النظيف.
-- بعد P3: P4 Products/POS server-side search + pagination + cache consistency ثم E2E نهائي.
-EOF
+          python -c "import base64,pathlib; p=pathlib.Path('docs/CURRENT_WORK_PLAN.md'); p.write_bytes(p.read_bytes()+base64.b64decode('Ci0tLQoKIyMg2KrYrdiv2YrYqyAyMDI2LTA5LTAyIOKAlCBLRFMgLyDYp9mE2YXZiNin2YHZgtin2KogLyBQMyDinIUKCiMjIyBQcm9kdWN0aW9uIHNjaGVtYSBkcmlmdCDigJQg2YXYutmE2YIg4pyFCi0g2KfZg9iq2Y/YtNmBINij2YYgUHJvZHVjdGlvbiDZhNinINmK2K3YqtmI2YogYG9yZGVyX2tpdGNoZW5fdm9pZHNgINmIYGNhbmNlbF9zZW50X29yZGVyX2l0ZW1gINix2LrZhSDZiNis2YjYryBNaWdyYXRpb24g2YHZiiDYp9mE2YXYs9iq2YjYr9i5LgotINi32Y/YqNmC2KogTWlncmF0aW9uIGBjYW5jZWxfc2VudF9pdGVtX2FwcHJvdmFsYCDYudmE2YkgUHJvZHVjdGlvbiDYq9mFINiq2YUg2KfZhNiq2K3ZgtmCINmF2YYg2KfZhNis2K/ZiNmEINmIUkxTINmI2KfZhNiv2KfZhNipINmIdHJpZ2dlciDYp9mE2K3Zhdin2YrYqS4KLSDZhNmFINmK2KrZhSDYqtiu2LfZiiDYo9mIINil2LbYudin2YEgUkxTINmE2YXYudin2YTYrNipINin2YTYp9mG2K3Ysdin2YEuCgojIyMgS0RTIHF1YW50aXR5IGRlbHRhIOKAlCDZhdmD2KrZhdmEINi52YTZiSBQcm9kdWN0aW9uIOKchQotIE1pZ3JhdGlvbjogYDIwMjYwOTAyMDUxMDAwX2tpdGNoZW5fcXVhbnRpdHlfZGVsdGEuc3FsYC4KLSDYo9i22YrZgSBgb3JkZXJfa2l0Y2hlbl9zZW5kcy5zZW50X3F1YW50aXR5YCDZhdi5IENIRUNLINmK2YXZhti5INin2YTZgtmK2YUg2KfZhNiz2KfZhNio2KkuCi0g2LLZitin2K/YqSDZhtmB2LMgYG9yZGVyX2l0ZW1faWRgINmF2YYgMSDYpdmE2YkgMyDYqtix2LPZhCDZhNmE2YXYt9io2K4gKzIg2YHZgti32Iwg2KjYr9mEINil2LnYp9iv2Kkg2KXYsdiz2KfZhCDYp9mE2LPYt9ixINmD2KfZhdmE2YvYpy4KLSBhcHByb3ZlZCBraXRjaGVuIHZvaWQg2YrYrtmB2LYgYHNlbnRfcXVhbnRpdHlgINi52KjYsSBgdHJnX3N5bmNfa2l0Y2hlbl9zZW50X3F1YW50aXR5X2FmdGVyX3ZvaWRgINit2KrZiSDYqtmP2K3Ys9ioINin2YTYstmK2KfYr9ipINin2YTYqtin2YTZitipINmF2YYg2LXYp9mB2Yog2YXYpyDZiNi12YQg2YTZhNmF2LfYqNiuLgotIFZlcmlmeSBtYWluIHJ1biBgMzM1NzA5MzQ0MTlgOiBBcHAgKyBEQi9JbnRlZ3JhdGlvbi9TZWN1cml0eS9STFMgKyBCcm93c2VyIFNtb2tlID0gU1VDQ0VTUy4KLSDYt9mP2KjZgtiqIE1pZ3JhdGlvbiDYudmE2YkgUHJvZHVjdGlvbiDZiNiq2YUg2KfZhNiq2K3ZgtmCINmF2YYg2KfZhNi52YXZiNivINmI2KfZhNiv2YjYp9mEINmI2KfZhHRyaWdnZXIg2YjYp9mE2YLZitiv2Iwg2YjYudiv2K8g2KfZhNmC2YrZhSDYp9mE2LPYp9mE2KjYqSA9IDAuCgojIyMgTWFuYWdlciBhcHByb3ZhbHMg4oCUINiq2YjYs9i52KkgUDEg4pyFCtin2YTZhdmD2KrZhdmEINin2YTYotmGIFNlcnZlci1zaWRlINmF2Lkg2KfZhNiq2K/ZgtmK2YI6Ci0gRGlzY291bnQuCi0gUmVwcmludC4KLSBDYW5jZWwgc2VudCBpdGVtLgotIFJlZnVuZC4KLSBDaGFuZ2UgcGF5bWVudCBtZXRob2QuCi0gRm9yY2UgY2xvc2Ugc2hpZnQuCi0gT3BlbiBkcmF3ZXIgYXV0aG9yaXphdGlvbi9hdWRpdC4KCtmF2YTYp9it2LjYqTog2YHYqtitINiv2LHYrCDYp9mE2YbZgtiv2YrYqSDYp9mE2YHZitiy2YrYp9im2Yog2YrYrdiq2KfYrCBQcmludGVyL0hhcmR3YXJlIGJyaWRnZdibINin2YTZhti42KfZhSDYp9mE2K3Yp9mE2Yog2YrZhtis2LIg2KfZhNil2LDZhi/Yp9mE2YXZiNin2YHZgtipL0F1ZGl0INmI2YTYpyDZitiv2ZHYudmKINil2LHYs9in2YQg2YbYqNi22KkgSGFyZHdhcmUg2KjYr9mI2YYgYnJpZGdlLgoK2KfZhNmF2KrYqNmC2Yog2YHZiiBQMTogQ2FzaGllci9NYW5hZ2VyIEUyRSDYtNin2YXZhNiMINiq2K3Ys9mK2YYgYFJFUFJJTlRfQVBQUk9WQUxfUEVORElOR2DYjCDZiFZvaWQgb3JkZXIg2YHZgti3INil2LDYpyDYqNmC2Yog2YTZhyDZhdiz2KfYsSDZhdiz2KrZgtmEINi52YYgY2FuY2VsL3JlZnVuZC4KCiMjIyBQMyBCcmFuY2ggdmlzaWJpbGl0eSDigJQg2KrZgtiv2YUg2YPYqNmK2LEg4pyFCtmF2YPYqtmF2YQg2YHZiiDYp9mE2YjYp9is2YfYp9iqINin2YTYsdim2YrYs9mK2Kkg2KfZhNiq2KfZhNmK2Kk6Ci0gUHJvZHVjdHMgKyBSYXcgTWF0ZXJpYWxzLgotIFNhbGVzIC8gaW52b2ljZXMgLyByZWZ1bmQgcm93cyArIFNoaWZ0cy4KLSBQdXJjaGFzZXMgKyBSZWNlaXB0cy4KLSBQdXJjaGFzZSBSZXF1ZXN0cyArIFJGUXMuCi0gUmVjZWl2aW5nIEJhY2tvcmRlcnM6INij2LbZitmBIGBicmFuY2hfaWRgINil2YTZiSDZhtmI2Lkg2KfZhNio2YrYp9mG2KfYqiDZiNin2YTZiNin2KzZh9ipINmI2YbYp9mB2LDYqSDYp9mE2KfYs9iq2YTYp9mFLgotIEludmVudG9yeSArIFdhcmVob3VzZXMgKyBUcmFuc2ZlcnMuCi0gSW52ZW50b3J5IEJhdGNoZXMgKyBJbnZlbnRvcnkgTGVkZ2VyLgoKTWlncmF0aW9uINin2YTYrNiv2YrYr9ipINmE2YTZgEJhY2tvcmRlcnM6CmAyMDI2MDkwMjA1MjAwMF9wdXJjaGFzZV9iYWNrb3JkZXJzX2JyYW5jaF92aXNpYmlsaXR5LnNxbGAKLSDYqti52YrYryBgYnJhbmNoX2lkYCDZhdmGIGBnZXRfcHVyY2hhc2VfYmFja29yZGVyc2AuCi0g2KrYrdin2YHYuSDYudmE2YkgYnJhbmNoIGlzb2xhdGlvbiDYp9mE2YXZiNis2YjYry4KLSDYqtmC2YjZiiBTRUNVUklUWSBERUZJTkVSINil2YTZiSBgc2VhcmNoX3BhdGggPSBwdWJsaWMsIHBnX3RlbXBgLgotINiq2YXZhti5IEVYRUNVVEUg2YXZhiBgUFVCTElDL2Fub25gINmI2KrYqNmC2YrZhyDZhNmAYGF1dGhlbnRpY2F0ZWQvc2VydmljZV9yb2xlYC4KLSDZhNmH2KcgcmVncmVzc2lvbiB0ZXN0INmF2LPYqtmC2YQ6IGBwdXJjaGFzZV9iYWNrb3JkZXJzX2JyYW5jaF92aXNpYmlsaXR5LnRlc3QudHNgLgoK2KfZhNmF2KrYqNmC2Yog2YHZiiBQMzogVXNlcnMvUGFydGllc9iMIFJlcG9ydHPYjCDZiNin2YTYt9io2KfYudipL9in2YTZhdiz2KrZhtiv2KfYqiDYp9mE2KrZiiDZhNinINmK2LjZh9ixINmB2YrZh9inINin2YTZgdix2Lkg2KjZiNi22YjYrdiMINmF2Lkg2YHYrdi1INij2Yog2LXZgdit2KfYqiDZhdiu2LLZiNmGINmB2LHYudmK2Kkg2KPYrtix2Ykg2YLYqNmEINin2LnYqtio2KfYsSBQMyDZhdi62YTZgtmL2KcuCgojIyMg2KfZhNit2KfZhNipINin2YTYqtin2YTZitipCi0g2YTYpyDYqtmP2LfYqNmCIE1pZ3JhdGlvbiBCYWNrb3JkZXJzINi52YTZiSBQcm9kdWN0aW9uINmC2KjZhCBWZXJpZnkg2KPYrti22LEg2LnZhNmJIEhFQUQg2KfZhNmG2LjZitmBLgotINio2LnYryBQMzogUDQgUHJvZHVjdHMvUE9TIHNlcnZlci1zaWRlIHNlYXJjaCArIHBhZ2luYXRpb24gKyBjYWNoZSBjb25zaXN0ZW5jeSDYq9mFIEUyRSDZhtmH2KfYptmKLgo='))"
           git config user.name "Premier Bot"
           git config user.email "actions@users.noreply.github.com"
           git add docs/CURRENT_WORK_PLAN.md
