@@ -9,8 +9,10 @@ import type { RunResult } from './rls';
 //
 // Seeds two fully isolated branches via seedRlsFixture and then proves, for
 // every branch-scoped table and every DML command, that:
-//   * admins (super_admin/owner) can see and write every branch;
+//   * admins can access every branch where the table's write policy permits it;
 //   * branch staff see exactly their own branch and are rejected on the other;
+//   * hardened financial rows may intentionally deny direct UPDATE/DELETE even
+//     inside the caller branch, forcing mutations through audited RPCs;
 //   * commands with no policy at all are denied even for admins;
 //   * child tables (no branch column) inherit the parent's isolation.
 //
@@ -71,6 +73,7 @@ interface BranchCtx {
 
 type WriteMode =
   | 'full' // branch staff may also write their own branch
+  | 'financialHeader' // own-branch INSERT allowed; direct UPDATE/DELETE cashier-denied
   | 'perm' // writes: admin OR can_permission('<module>.manage') AND own branch (branch_manager holds it)
   | 'permProduction' // writes: admin OR production.manage AND own branch (production_manager holds it)
   | 'adminWrite' // writes are admin-only
@@ -172,7 +175,9 @@ describe.skipIf(skip)('RLS branch isolation', () => {
     // Full access: branch staff can create/edit/delete their own branch rows.
     // (044: customers is gated by customers.manage, which the cashier role holds.)
     { name: 'customers', key: 'customers', mode: 'full', ins: (c) => `INSERT INTO public.customers (name, branch_id) VALUES ('C', '${c.branch}')`, upd: () => `SET name = 'probe'` },
-    { name: 'sales', key: 'sales', mode: 'full', ins: (c) => `INSERT INTO public.sales (invoice_number, branch_id, warehouse_id, subtotal, discount_amount, tax_amount, total, paid_amount, payment_method, status) VALUES ('${uniq('INV')}', '${c.branch}', '${c.wh}', 0, 0, 0, 0, 0, 'cash', 'completed')`, upd: () => `SET payment_method = 'cash'`, noDel: 'cashier' },
+    // 20260901193000: a cashier can create an own-branch sale through the sale
+    // flow but cannot directly mutate the financial header afterwards.
+    { name: 'sales', key: 'sales', mode: 'financialHeader', ins: (c) => `INSERT INTO public.sales (invoice_number, branch_id, warehouse_id, subtotal, discount_amount, tax_amount, total, paid_amount, payment_method, status) VALUES ('${uniq('INV')}', '${c.branch}', '${c.wh}', 0, 0, 0, 0, 0, 'cash', 'completed')`, upd: () => `SET payment_method = 'cash'`, noDel: 'cashier' },
     { name: 'purchases', key: 'purchases', mode: 'full', ins: (c) => `INSERT INTO public.purchases (invoice_number, supplier_id, branch_id, warehouse_id, subtotal, discount_amount, tax_amount, total, paid_amount, payment_method, status) VALUES ('${uniq('PINV')}', '${c.supp}', '${c.branch}', '${c.wh}', 0, 0, 0, 0, 0, 'cash', 'completed')`, upd: () => `SET payment_method = 'cash'`, noDel: 'cashier' },
     { name: 'warehouse_transfers', key: 'warehouse_transfers', mode: 'full', ins: (c) => `INSERT INTO public.warehouse_transfers (transfer_number, from_warehouse_id, to_warehouse_id, branch_id, status) VALUES ('${uniq('WT')}', '${c.wh}', '${c.whOther}', '${c.branch}', 'pending')`, upd: () => `SET notes = 'probe'`, noDel: 'all' },
     { name: 'dining_tables', key: 'dining_tables', mode: 'full', ins: (c) => `INSERT INTO public.dining_tables (name, branch_id, capacity, status) VALUES ('Probe', '${c.branch}', 4, 'vacant')`, upd: () => `SET name = 'probe'`, noDel: 'all' },
@@ -271,6 +276,18 @@ describe.skipIf(skip)('RLS branch isolation', () => {
           await runProbe(client, `${tbl.name} DELETE cashier other`, cashierId(), del(other), 'denied');
           await runProbe(client, `${tbl.name} DELETE admin other`, adminId(), del(other), 'ok');
         }
+        break;
+
+      case 'financialHeader':
+        if (tbl.ins) await runProbe(client, `${tbl.name} INSERT cashier→A`, cashierId(), tbl.ins(ctxA), 'ok');
+        if (tbl.upd) {
+          await runProbe(client, `${tbl.name} UPDATE admin own`, adminId(), upd(own), 'ok');
+          await runProbe(client, `${tbl.name} UPDATE cashier own`, cashierId(), upd(own), 'denied');
+          await runProbe(client, `${tbl.name} UPDATE cashier other`, cashierId(), upd(other), 'denied');
+        }
+        await runProbe(client, `${tbl.name} DELETE cashier own`, cashierId(), del(own), 'denied');
+        await runProbe(client, `${tbl.name} DELETE cashier other`, cashierId(), del(other), 'denied');
+        await runProbe(client, `${tbl.name} DELETE admin other`, adminId(), del(other), 'ok');
         break;
 
       case 'adminWrite':
@@ -552,7 +569,7 @@ describe.skipIf(skip)('RLS branch isolation', () => {
       key: string;
       parent: string;
       fk: string;
-      mode: 'parentWrite' | 'adminWrite' | 'permRecipes' | 'adminInsOnly' | 'adminInsUpd' | 'shiftOps';
+      mode: 'parentWrite' | 'immutableSaleItem' | 'adminWrite' | 'permRecipes' | 'adminInsOnly' | 'adminInsUpd' | 'shiftOps';
       ins: (ownParent: string, otherParent: string) => { sql: string; paramsA: unknown[]; paramsB: unknown[] };
       noDel?: 'all' | 'cashier';
       updSet?: string;
@@ -560,7 +577,9 @@ describe.skipIf(skip)('RLS branch isolation', () => {
 
     const CHILDREN: ChildSpec[] = [
       {
-        name: 'sale_items', key: 'sale_items', parent: 'sales', fk: 'sale_id', mode: 'parentWrite',
+        // Sale lines are append-only for authenticated callers after checkout;
+        // corrections/refunds must go through controlled RPCs, never raw DML.
+        name: 'sale_items', key: 'sale_items', parent: 'sales', fk: 'sale_id', mode: 'immutableSaleItem',
         ins: () => ({ sql: `INSERT INTO public.sale_items (sale_id, product_id, unit_name, quantity, unit_price, total) VALUES ($1, $2, 'piece', 1, 20, 20)`, paramsA: [ids.saleA, ids.prodA], paramsB: [ids.saleB, ids.prodB] }),
       },
       {
@@ -640,6 +659,18 @@ describe.skipIf(skip)('RLS branch isolation', () => {
               await runProbe(client, `${ch.name} DELETE cashier other`, cashierId(), del(other), 'denied');
               await runProbe(client, `${ch.name} DELETE admin other`, adminId(), del(other), 'ok');
             }
+            break;
+
+          case 'immutableSaleItem':
+            await runProbe(client, `${ch.name} INSERT cashier own parent`, cashierId(), sql, 'ok', paramsA);
+            await runProbe(client, `${ch.name} INSERT cashier other parent`, cashierId(), sql, 'denied', paramsB);
+            await runProbe(client, `${ch.name} INSERT admin other parent`, adminId(), sql, 'ok', paramsB);
+            await runProbe(client, `${ch.name} UPDATE cashier own`, cashierId(), upd(own, `SET quantity = 2`), 'denied');
+            await runProbe(client, `${ch.name} UPDATE cashier other`, cashierId(), upd(other, `SET quantity = 2`), 'denied');
+            await runProbe(client, `${ch.name} UPDATE admin own`, adminId(), upd(own, `SET quantity = 2`), 'denied');
+            await runProbe(client, `${ch.name} DELETE cashier own`, cashierId(), del(own), 'denied');
+            await runProbe(client, `${ch.name} DELETE cashier other`, cashierId(), del(other), 'denied');
+            await runProbe(client, `${ch.name} DELETE admin other`, adminId(), del(other), 'denied');
             break;
 
           case 'adminWrite':
