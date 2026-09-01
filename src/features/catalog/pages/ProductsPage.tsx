@@ -23,6 +23,7 @@ import { useCan } from '@/lib/permissions';
 import { useSettings } from '@/context/SettingsContext';
 import { useBranches } from '@/hooks/useBranches';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
+import { invalidatePosCatalogCache } from '@/core/offline/invalidatePosCatalogCache';
 import type { Product, Category, ProductUnit, ProductComponentInput } from '@/lib/types';
 
 const UNIT_NAMES = ['piece', 'carton', 'box', 'pack', 'kg', 'liter', 'meter', 'gram'];
@@ -222,6 +223,7 @@ export function ProductsPage() {
     }
     show(t('saveSuccess'), 'success');
     setModalOpen(false);
+    await invalidatePosCatalogCache();
     reloadProducts();
   };
 
@@ -244,6 +246,7 @@ export function ProductsPage() {
     if (error) show(error.message, 'error');
     else { show(t('deleteSuccess'), 'success'); await logAudit('delete', 'products', deleteId); }
     setDeleteId(null);
+    await invalidatePosCatalogCache();
     reloadProducts();
   };
 
@@ -281,7 +284,7 @@ export function ProductsPage() {
       if (payload.length === 0) { show('No valid rows', 'error'); return; }
       const { error } = await supabase.from('products').insert(payload);
       if (error) show(error.message, 'error');
-      else { show(`${payload.length} ${t('import')} OK`, 'success'); reloadProducts(); }
+      else { show(`${payload.length} ${t('import')} OK`, 'success'); await invalidatePosCatalogCache(); reloadProducts(); }
     } catch (err) {
       show(String(err), 'error');
     }

@@ -13,6 +13,7 @@ import { useCan } from '@/lib/permissions';
 import { generateBarcode } from '@/lib/format';
 import { logAudit } from '@/lib/audit';
 import { useGuidedWorkflow } from '@/core/guard';
+import { invalidatePosCatalogCache } from '@/core/offline/invalidatePosCatalogCache';
 import type { Category, Product, InventoryUnit } from '@/lib/types';
 
 type SetupUnit = { id: string; mode: 'existing' | 'new'; name: string; code: string; unit_type: 'ready' | 'manufactured'; quantity: number; cost_price: number; sale_price: number; recipe: { raw_material_id: string; quantity: number; wastage_percent: number }[] };
@@ -72,6 +73,7 @@ export function ProductSetupWizardPage() {
         if (le) throw le;
       }
       await logAudit('create', 'products', productId, { name: form.name, unit_count: totalUnitCount, product_type: derivedProductType });
+      await invalidatePosCatalogCache();
       show(t('saveSuccess'), 'success');
       if (guidedContext?.missingStep.key.includes('product')) {
         setTimeout(() => {
