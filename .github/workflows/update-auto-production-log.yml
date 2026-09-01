@@ -1,0 +1,61 @@
+name: Update auto production work log
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/update-auto-production-log.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-log:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Append work log
+        shell: bash
+        run: |
+          cat >> docs/CURRENT_WORK_PLAN.md <<'EOF'
+
+---
+
+## 13) التوفر من المكونات + التصنيع التلقائي عند البيع — منفذ ✅
+
+Migration:
+`supabase/migrations/20260902010000_auto_produce_sale_availability.sql`
+
+تم اعتماد قاعدة التشغيل التالية:
+- الخامات والمصنعات هي مصدر الحقيقة لتوفر المنتج النهائي.
+- المنتج ذو الوصفة لا يعتمد على رقم مخزون نهائي مستقل.
+- `check_product_availability` يفحص الخامات المباشرة والوحدات المصنّعة والمصنّع داخل مصنع قبل البيع.
+- `get_pos_product_availability` يحسب الكمية القابلة للبيع فعليًا لكل منتج في الفرع/المخزن.
+- إذا احتاج البيع وحدة manufactured ولا يوجد منها مخزون كافٍ، `_ensure_inventory_unit_stock` يصنع مقدار النقص تلقائيًا فقط، ويدعم الاعتماد المتداخل، ثم يخصم الوحدة من البيع.
+- المنتج الجاهز بلا وصفة يبقى معتمدًا على `inventory_batches` الخاصة به.
+- `deduct_sale_unit_inventory` ينفذ preflight قبل أي mutation لمنع خصم جزئي أو تصنيع غير قابل للإكمال.
+- لا يوجد خصم مزدوج: خامات المصنع تخصم وقت التصنيع، والبيع يخصم المصنع الناتج؛ أما الخامات المباشرة للمنتج فتخصم عند البيع.
+
+الواجهة:
+- POS أصبح يقرأ `get_pos_product_availability` بدل مخزون المنتج القديم.
+- المنتج ذو `available_quantity = 0` لا يمكن إضافته للسلة.
+- كمية POS تمثل أقصى عدد وحدات يمكن بيعها من المكونات الفعلية في المخزن الحالي.
+
+الاختبارات:
+- أضيف اختبار integration مباشر لحالة: خامات متوفرة + لا يوجد مخزون manufactured مسبقًا → البيع ينتج النقص تلقائيًا → يخصمه → يعيد حساب الكمية المتبقية.
+- تم تحديث Playwright fixture ليحاكي RPC التوفر الجديد بدل جدول `inventory` القديم.
+- Verify main #82 على `6d51d8befa90045ad6052a5453fc99db678e2c52`: **SUCCESS**.
+- Deploy #84 على نفس commit: **SUCCESS**.
+- lint ✅ typecheck ✅ unit ✅ build ✅ canonical migrations/schema ✅ integration/security/RLS ✅ Browser Smoke ✅.
+
+Production:
+- تم تطبيق Migration `auto_produce_sale_availability` على Supabase Production بنجاح بتاريخ 2026-09-02.
+- الفحص الفعلي على الفرع/المخزن المستورد: المنتجات النشطة **335**، المتاح حاليًا **0**، غير المتاح **335**.
+- سبب 0/335: لا توجد مشتريات/أرصدة خامات أو منتجات جاهزة فعلية حتى الآن؛ وهذا سلوك مقصود يمنع البيع بدون مخزون.
+- بعد إدخال أول مشتريات حقيقية، التوفر يعاد حسابه آليًا من الخامات/المصنعات ولا يحتاج تشغيل تصنيع يدوي مسبق للبيع.
+EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/CURRENT_WORK_PLAN.md
+          git commit -m "docs: record automatic sale production rollout"
+          git push
