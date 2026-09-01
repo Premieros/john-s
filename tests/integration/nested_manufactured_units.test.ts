@@ -13,12 +13,14 @@ describe.skipIf(skip)('Nested manufactured units', () => {
   const rawId = randomUUID();
   const childUnitId = randomUUID();
   const parentUnitId = randomUUID();
+  const testUserId = randomUUID();
+  const testEmail = `nested-mfg-${testUserId}@example.test`;
 
   const q = async <T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> =>
     (await client.query(sql, params)).rows as T[];
 
   async function asAdmin<T>(fn: () => Promise<T>): Promise<T> {
-    await client.query(`SELECT set_config('app.user_id', $1, true)`, [randomUUID()]);
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [testUserId]);
     await client.query(`SET LOCAL ROLE service_role`);
     await client.query(`SAVEPOINT nested_mfg_admin`);
     try {
@@ -39,7 +41,20 @@ describe.skipIf(skip)('Nested manufactured units', () => {
     client = openDb(dbUrl!);
     await client.connect();
     await client.query('BEGIN');
+    await client.query(`ALTER TABLE public.users DISABLE TRIGGER trg_users_role_guard`);
     await client.query(`INSERT INTO public.branches (id, name) VALUES ($1, 'Nested MFG Branch')`, [branchId]);
+    await client.query(
+      `INSERT INTO auth.users (id, email, role, aud, instance_id, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+       VALUES ($1, $2, 'authenticated', 'authenticated', gen_random_uuid(), '{}'::jsonb, '{}'::jsonb, now(), now())
+       ON CONFLICT (id) DO NOTHING`,
+      [testUserId, testEmail]
+    );
+    await client.query(
+      `INSERT INTO public.users (id, email, full_name, role, branch_id, is_active)
+       VALUES ($1, $2, 'Nested Manufacturing User', 'owner', $3, true)
+       ON CONFLICT (id) DO UPDATE SET email=EXCLUDED.email, role='owner', branch_id=EXCLUDED.branch_id, is_active=true`,
+      [testUserId, testEmail, branchId]
+    );
     await client.query(`INSERT INTO public.warehouses (id, name, branch_id) VALUES ($1, 'Nested WH', $2)`, [warehouseId, branchId]);
     await client.query(
       `INSERT INTO public.raw_materials (id, code, name, min_stock, default_cost, is_active, branch_id)
@@ -47,8 +62,8 @@ describe.skipIf(skip)('Nested manufactured units', () => {
       [rawId, branchId]
     );
     await client.query(
-      `SELECT public._raw_add($1, $2, 20, 4, 'NEST-RAW', NULL, NULL, 'opening', 'opening', NULL, 'NEST-RAW', NULL)`,
-      [rawId, branchId]
+      `SELECT public._raw_add($1, $2, 20, 4, 'NEST-RAW', NULL, NULL, 'opening', 'opening', NULL, 'NEST-RAW', $3)`,
+      [rawId, branchId, testUserId]
     );
     await client.query(
       `INSERT INTO public.inventory_units (id, code, name, unit_type, branch_id, cost_price, is_active)
