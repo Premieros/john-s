@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const SUPABASE_ORIGIN = 'https://lwnsdsncmlsroiswgoga.supabase.co';
+const SUPABASE_ORIGIN = process.env.VITE_SUPABASE_URL || 'https://azzdesuowpdcoflmyezn.supabase.co';
 const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 const BRANCH_ID = '00000000-0000-0000-0000-000000000010';
 const PRODUCT_ID = '00000000-0000-0000-0000-000000000020';

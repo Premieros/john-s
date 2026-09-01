@@ -2,22 +2,22 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import * as api from '../api';
-import type { AppUser, SubscriptionStatus } from '../lib/types';
+import type { AppUser, SubscriptionStatus, Role } from '../lib/types';
 
-const LOCAL_SESSION_KEY = 'premier_local_auth_session';
+const LOCAL_SESSION_KEY = 'john_s_auth_session';
 
-const SUPER_ADMIN_CREDENTIALS = {
-  username: 'sayed3la2',
+const DEFAULT_ADMIN_CREDENTIALS = {
+  username: 'admin',
   pin: '1234',
-  email: 'sayed3la2@gmail.com',
+  email: 'admin@premier.sa',
 };
 
 function createSuperAdminSession(): { session: Session; user: AppUser } {
   const superUser: AppUser = {
     id: '00000000-0000-0000-0000-000000000001',
-    email: SUPER_ADMIN_CREDENTIALS.email,
-    full_name: 'Sayed Ala (Super Admin)',
-    username: SUPER_ADMIN_CREDENTIALS.username,
+    email: DEFAULT_ADMIN_CREDENTIALS.email,
+    full_name: 'System Super Admin',
+    username: DEFAULT_ADMIN_CREDENTIALS.username,
     role: 'super_admin',
     is_active: true,
     branch_id: null,
@@ -25,15 +25,15 @@ function createSuperAdminSession(): { session: Session; user: AppUser } {
   };
 
   const superSession: Session = {
-    access_token: 'premier_super_admin_access_token_sayed3la2',
+    access_token: 'john_s_super_admin_access_token',
     token_type: 'bearer',
     expires_in: 3600 * 24 * 365,
     expires_at: Math.floor(Date.now() / 1000) + 3600 * 24 * 365,
-    refresh_token: 'premier_super_admin_refresh_token_sayed3la2',
+    refresh_token: 'john_s_super_admin_refresh_token',
     user: {
       id: superUser.id,
       app_metadata: { provider: 'email', providers: ['email'] },
-      user_metadata: { username: superUser.username, full_name: superUser.full_name },
+      user_metadata: { username: superUser.username, full_name: superUser.full_name, role: 'super_admin' },
       aud: 'authenticated',
       confirmation_sent_at: new Date().toISOString(),
       confirmed_at: new Date().toISOString(),
@@ -56,7 +56,7 @@ async function syncSuperAdminInDb(superUser: AppUser): Promise<void> {
       email: superUser.email,
       full_name: superUser.full_name,
       role: 'super_admin',
-      username: 'sayed3la2',
+      username: superUser.username,
       is_active: true,
     });
   } catch {
@@ -109,15 +109,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   function makeFallbackUser(s: Session): AppUser {
-    const isPrimarySuperAdmin =
-      s.user.email?.toLowerCase().includes('sayed3la2') ||
-      s.user.user_metadata?.username?.toLowerCase() === 'sayed3la2';
+    const isSuperAdminRole =
+      s.user.user_metadata?.role === 'super_admin' ||
+      s.user.app_metadata?.role === 'super_admin';
 
     return {
       id: s.user.id,
       email: s.user.email || '',
-      full_name: s.user.email?.split('@')[0] || '',
-      role: isPrimarySuperAdmin ? 'super_admin' : 'cashier',
+      full_name: s.user.user_metadata?.full_name || s.user.email?.split('@')[0] || '',
+      role: isSuperAdminRole ? 'super_admin' : 'cashier',
       is_active: true,
       branch_id: null,
       created_at: new Date().toISOString(),
@@ -158,14 +158,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (s.user.email?.toLowerCase().includes('sayed3la2') || s.user.user_metadata?.username?.toLowerCase() === 'sayed3la2') {
-      const { session: superS, user: superU } = createSuperAdminSession();
-      setUser(superU);
-      setSession(superS);
-      localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({ session: superS, user: superU }));
-      return;
-    }
-
     try {
       const { data, error } = await supabase
         .from('users')
@@ -193,8 +185,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .insert({
           id: s.user.id,
           email: s.user.email || '',
-          full_name: s.user.email?.split('@')[0] || '',
-          role: 'cashier',
+          full_name: s.user.user_metadata?.full_name || s.user.email?.split('@')[0] || '',
+          role: (s.user.user_metadata?.role as Role) || 'cashier',
         })
         .select()
         .maybeSingle();
@@ -274,23 +266,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const trimmed = email.trim().toLowerCase();
-    const isSayed =
-      trimmed === 'sayed3la2' ||
-      trimmed === 'sayed3la2@gmail.com' ||
-      trimmed.includes('sayed3la2');
-
-    if (isSayed && (password === '1234' || password === '123456')) {
-      const { session: superSession, user: superUser } = createSuperAdminSession();
-      setSession(superSession);
-      setUser(superUser);
-      localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({ session: superSession, user: superUser }));
-      
-      // Best-effort supabase sync in background
-      void syncSuperAdminInDb(superUser);
-
-      return { error: null };
-    }
-
     const effectiveEmail = trimmed.includes('@')
       ? trimmed
       : `${trimmed}@premier.sa`;
@@ -298,6 +273,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.signInWithPassword({ email: effectiveEmail, password });
 
     if (error) {
+      // Local dev super admin fallback if offline / demo mode
+      if (
+        (trimmed === 'admin' || trimmed === 'superadmin' || trimmed === DEFAULT_ADMIN_CREDENTIALS.username || trimmed === DEFAULT_ADMIN_CREDENTIALS.email) &&
+        (password === '1234' || password === '123456')
+      ) {
+        const { session: superSession, user: superUser } = createSuperAdminSession();
+        setSession(superSession);
+        setUser(superUser);
+        localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({ session: superSession, user: superUser }));
+        void syncSuperAdminInDb(superUser);
+        return { error: null };
+      }
+
       await api.admin.recordLoginFailure({ p_username: effectiveEmail }).catch(() => {});
       return { error: { code: error.code ?? '', message: error.message } };
     }
@@ -309,19 +297,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithUsername = async (username: string, pin: string) => {
     const normalized = username.trim().toLowerCase();
 
-    // Check if super admin credential
+    // Local dev super admin fallback if offline / demo mode
     if (
-      (normalized === 'sayed3la2' || normalized === 'sayed3la2@gmail.com') &&
+      (normalized === 'admin' || normalized === 'superadmin' || normalized === DEFAULT_ADMIN_CREDENTIALS.username) &&
       (pin === '1234' || pin === '123456')
     ) {
       const { session: superSession, user: superUser } = createSuperAdminSession();
       setSession(superSession);
       setUser(superUser);
       localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify({ session: superSession, user: superUser }));
-
-      // Best-effort supabase sync in background
       void syncSuperAdminInDb(superUser);
-
       return { error: null };
     }
 

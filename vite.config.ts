@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 
-// Premier is deployed as a GitHub Pages project site at /sayed/.
+// Deployed as a GitHub Pages project site at /john-s/ or root.
 export default defineConfig({
   base: process.env.VITE_BASE_PATH || './',
   plugins: [react()],
