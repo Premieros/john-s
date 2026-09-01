@@ -1,0 +1,96 @@
+name: Apply P3 procurement inventory branch badges
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-p3-procurement-inventory-branch-badges.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch branch visibility
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def patch(path, fn):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8-sig')
+              n = fn(s)
+              if n != s:
+                  p.write_text(n, encoding='utf-8')
+
+          def purchases(s):
+              if "import { BranchBadge } from '@/components/BranchBadge';" not in s:
+                  s = s.replace("import { Modal } from '@/components/Modal';", "import { Modal } from '@/components/Modal';\nimport { BranchBadge } from '@/components/BranchBadge';")
+              anchor = "    { key: 'supplier', header: t('supplier'), render: (p) => (p as Purchase & { supplier?: Supplier }).supplier?.name || '-' },\n"
+              if anchor in s and "{ key: 'branch', header: t('branch')" not in s:
+                  s = s.replace(anchor, anchor + "    { key: 'branch', header: t('branch'), render: (p) => <BranchBadge name={branches.find((b) => b.id === p.branch_id)?.name || '-'} /> },\n", 1)
+              return s
+
+          def warehouses(s):
+              if "import { BranchBadge } from '@/components/BranchBadge';" not in s:
+                  s = s.replace("import { ConfirmDialog } from '@/components/ConfirmDialog';", "import { ConfirmDialog } from '@/components/ConfirmDialog';\nimport { BranchBadge } from '@/components/BranchBadge';")
+              s = s.replace("{ key: 'branch', header: t('branch'), render: (w) => (w as Warehouse & { branch?: Branch }).branch?.name || '-' },", "{ key: 'branch', header: t('branch'), render: (w) => <BranchBadge name={(w as Warehouse & { branch?: Branch }).branch?.name || '-'} /> },")
+              return s
+
+          def transfers(s):
+              if "import { BranchBadge } from '@/components/BranchBadge';" not in s:
+                  s = s.replace("import { Modal } from '@/components/Modal';", "import { Modal } from '@/components/Modal';\nimport { BranchBadge } from '@/components/BranchBadge';")
+              s = s.replace("{ key: 'branch', header: t('branch'), render: (tr) => tr.branch?.name || '-' },", "{ key: 'branch', header: t('branch'), render: (tr) => <BranchBadge name={tr.branch?.name || '-'} /> },")
+              return s
+
+          def inventory(s):
+              if "import { BranchBadge } from '@/components/BranchBadge';" not in s:
+                  s = s.replace("import { ConfirmDialog } from '@/components/ConfirmDialog';", "import { ConfirmDialog } from '@/components/ConfirmDialog';\nimport { BranchBadge } from '@/components/BranchBadge';")
+              if "import { useBranches } from '@/hooks/useBranches';" not in s:
+                  s = s.replace("import { usePaginatedRows } from '@/hooks/usePaginatedRows';", "import { usePaginatedRows } from '@/hooks/usePaginatedRows';\nimport { useBranches } from '@/hooks/useBranches';")
+              anchor = "  const can = useCan();\n"
+              if anchor in s and "  const { branches } = useBranches();\n" not in s:
+                  s = s.replace(anchor, anchor + "  const { branches } = useBranches();\n", 1)
+              anchor = "    { key: 'warehouse', header: t('warehouse'), render: (i) => i.warehouse?.name || '-' },\n"
+              if anchor in s and "{ key: 'branch', header: t('branch')" not in s:
+                  s = s.replace(anchor, anchor + "    { key: 'branch', header: t('branch'), render: (i) => <BranchBadge name={branches.find((b) => b.id === i.warehouse?.branch_id)?.name || '-'} /> },\n", 1)
+              s = s.replace("Warehouse: i.warehouse?.name || '', Quantity: i.quantity,", "Warehouse: i.warehouse?.name || '', Branch: branches.find((b) => b.id === i.warehouse?.branch_id)?.name || '', Quantity: i.quantity,")
+              return s
+
+          def receiving(s):
+              if "import { BranchBadge } from '@/components/BranchBadge';" not in s:
+                  s = s.replace("import { Modal } from '@/components/Modal';", "import { Modal } from '@/components/Modal';\nimport { BranchBadge } from '@/components/BranchBadge';")
+              if "import { useBranches } from '@/hooks/useBranches';" not in s:
+                  s = s.replace("import { useSettings } from '@/context/SettingsContext';", "import { useSettings } from '@/context/SettingsContext';\nimport { useBranches } from '@/hooks/useBranches';")
+              anchor = "  const can = useCan();\n"
+              if anchor in s and "  const { branches } = useBranches();\n" not in s:
+                  s = s.replace(anchor, anchor + "  const { branches } = useBranches();\n", 1)
+              anchor = "    { key: 'supplier_name', header: t('supplier'), render: (r) => r.supplier_name },\n"
+              # Add only to receipts table, whose row type explicitly contains branch_id.
+              idx = s.find("  const rColumns: Column<PurchaseReceiptRow>[] = [")
+              if idx != -1:
+                  tail = s[idx:]
+                  if "{ key: 'branch', header: t('branch')" not in tail.split("  ];", 1)[0]:
+                      pos = tail.find(anchor)
+                      if pos != -1:
+                          abspos = idx + pos
+                          s = s[:abspos] + anchor + "    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branches.find((b) => b.id === r.branch_id)?.name || '-'} /> },\n" + s[abspos + len(anchor):]
+              return s
+
+          patch('src/features/trade/pages/PurchasesPage.tsx', purchases)
+          patch('src/features/trade/pages/ReceivingPage.tsx', receiving)
+          patch('src/features/inventory/pages/WarehousesPage.tsx', warehouses)
+          patch('src/features/inventory/pages/TransfersPage.tsx', transfers)
+          patch('src/features/inventory/pages/InventoryPage.tsx', inventory)
+          PY
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/trade/pages/PurchasesPage.tsx src/features/trade/pages/ReceivingPage.tsx src/features/inventory/pages/WarehousesPage.tsx src/features/inventory/pages/TransfersPage.tsx src/features/inventory/pages/InventoryPage.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: show branch badges across procurement inventory"
+          git push
