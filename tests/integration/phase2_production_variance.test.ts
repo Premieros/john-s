@@ -58,6 +58,14 @@ describe.skipIf(skip)('Phase 2 — production enhancements', () => {
     await client.query(`INSERT INTO public.raw_materials (id, code, name, min_stock, default_cost, is_active, branch_id) VALUES ($1, 'RM-P', 'Flour', 0, 5, true, $2)`, [rmId, branchId]);
     await client.query(`INSERT INTO public.inventory_units (id, code, name, unit_type, branch_id, cost_price, is_active) VALUES ($1, 'IU-MFG', 'Bread Mix', 'manufactured', $2, 0, true)`, [unitId, branchId]);
     await client.query(`INSERT INTO public.inventory_unit_recipes (unit_id, raw_material_id, quantity, wastage_percent) VALUES ($1, $2, 2, 5)`, [unitId, rmId]);
+
+    // Production must be backed by real raw-material stock. Older versions of
+    // produce_inventory_unit silently ignored shortages; the canonical flow now
+    // rejects production when ingredients are unavailable.
+    await client.query(
+      `SELECT public._raw_add($1, $2, 100, 5, 'PHASE2-RM', NULL, NULL, 'opening', 'opening', NULL, 'PHASE2-RM', NULL)`,
+      [rmId, branchId]
+    );
   });
 
   afterAll(async () => {
