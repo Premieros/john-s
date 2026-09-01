@@ -22,7 +22,7 @@ afterAll(async () => {
 });
 
 describe('refund manager approval gate', () => {
-  it('process_refund contains the approval gate and one-time consumption guard', async () => {
+  it('process_refund contains the approval gate, one-time consumption and original payment-method preservation', async () => {
     if (!canRun) return;
     const r = await client.query(`
       SELECT pg_get_functiondef(p.oid) AS def
@@ -41,6 +41,8 @@ describe('refund manager approval gate', () => {
     expect(def).toContain('FOR UPDATE SKIP LOCKED');
     expect(def).toContain("status = 'consumed'");
     expect(def).toContain('REFUND_APPROVAL_CONSUME_FAILED');
+    expect(def).toContain('payment_method');
+    expect(def).toContain("COALESCE(v_sale.payment_method, 'cash')");
   });
 
   it('approval_requests schema accepts refund and exposes the canonical requester/entity columns', async () => {
