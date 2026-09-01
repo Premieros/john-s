@@ -19,43 +19,37 @@ jobs:
         run: |
           python3 <<'PY'
           from pathlib import Path
+          import re
+
           p = Path('src/features/catalog/pages/ProductsPage.tsx')
           s = p.read_text()
-          old = """  const can = useCan();
-          const branchFilter = useBranchFilter();
-          const { rows: products, loading, total, hasMore, loadMore, loadingMore, refresh: reloadProducts } = usePaginatedRows<Product>({
-            table: 'products',
-            select: '*, category:categories(*)',
-            order: { column: 'created_at', ascending: false },
-            branch_id: branchFilter,
-            pageSize: 100,
-          });
-          const [categories, setCategories] = useState<Category[]>([]);
-          const [search, setSearch] = useState('');
-          """
-          new = """  const can = useCan();
-          const branchFilter = useBranchFilter();
-          const [search, setSearch] = useState('');
-          const { rows: products, loading, total, hasMore, loadMore, loadingMore, refresh: reloadProducts } = usePaginatedRows<Product>({
-            table: 'products',
-            select: '*, category:categories(*)',
-            order: { column: 'created_at', ascending: false },
-            branch_id: branchFilter,
-            search: { term: search, columns: ['name', 'name_en', 'barcode', 'sku'] },
-            pageSize: 100,
-          });
-          const [categories, setCategories] = useState<Category[]>([]);
-          """
-          if old not in s:
-              raise SystemExit('ProductsPage hook block not found')
-          s = s.replace(old, new, 1)
-          old_filter = """  const filtered = products.filter((p) =>
-            !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.barcode?.includes(search) || p.sku?.includes(search)
-          );
-          """
-          if old_filter not in s:
-              raise SystemExit('client-side products filter block not found')
-          s = s.replace(old_filter, "  const filtered = products;\n", 1)
+
+          marker = "  const branchFilter = useBranchFilter();\n"
+          if marker not in s:
+              raise SystemExit('branchFilter marker not found')
+          if "  const [search, setSearch] = useState('');\n" not in s:
+              raise SystemExit('search state not found')
+          s = s.replace("  const [search, setSearch] = useState('');\n", '', 1)
+          s = s.replace(marker, marker + "  const [search, setSearch] = useState('');\n", 1)
+
+          needle = "    branch_id: branchFilter,\n    pageSize: 100,"
+          if needle not in s:
+              raise SystemExit('paginated hook options marker not found')
+          s = s.replace(
+              needle,
+              "    branch_id: branchFilter,\n    search: { term: search, columns: ['name', 'name_en', 'barcode', 'sku'] },\n    pageSize: 100,",
+              1,
+          )
+
+          pattern = re.compile(
+              r"  const filtered = products\.filter\(\(p\) =>\n"
+              r"    !search \|\| p\.name\.toLowerCase\(\)\.includes\(search\.toLowerCase\(\)\) \|\| p\.barcode\?\.includes\(search\) \|\| p\.sku\?\.includes\(search\)\n"
+              r"  \);\n"
+          )
+          s, count = pattern.subn("  const filtered = products;\n", s, count=1)
+          if count != 1:
+              raise SystemExit('client filter marker not found')
+
           p.write_text(s)
           PY
           git config user.name "github-actions[bot]"
