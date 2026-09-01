@@ -26,19 +26,9 @@ export function usePosPermissions(): PosPermissions {
   return useMemo<PosPermissions>(() => {
     if (isAdmin) {
       return {
-        canViewPos: true,
-        canCreateOrder: true,
-        canEditOrder: true,
-        canDeleteItem: true,
-        canApplyDiscount: true,
-        canDiscount: true,
-        canChangePrice: true,
-        canHoldOrder: true,
-        canCancelOrder: true,
-        canRefund: true,
-        canCloseShift: true,
-        canPrint: true,
-        canChangeBranch: true,
+        canViewPos: true, canCreateOrder: true, canEditOrder: true, canDeleteItem: true,
+        canApplyDiscount: true, canDiscount: true, canChangePrice: true, canHoldOrder: true,
+        canCancelOrder: true, canRefund: true, canCloseShift: true, canPrint: true, canChangeBranch: true,
       };
     }
 
@@ -49,12 +39,12 @@ export function usePosPermissions(): PosPermissions {
       canViewPos: isCashier || isManager,
       canCreateOrder: isCashier || isManager,
       canEditOrder: isCashier || isManager,
-      canDeleteItem: isCashier || isManager,
-      canApplyDiscount: isCashier || isManager,
-      canDiscount: isCashier || isManager,
+      canDeleteItem: isManager,
+      canApplyDiscount: isManager,
+      canDiscount: isManager,
       canChangePrice: isManager,
       canHoldOrder: isCashier || isManager,
-      canCancelOrder: isCashier || isManager,
+      canCancelOrder: isManager,
       canRefund: isManager,
       canCloseShift: isCashier || isManager,
       canPrint: true,
