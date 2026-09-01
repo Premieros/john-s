@@ -26,6 +26,9 @@ import type { Product, Category, ProductUnit, ProductComponentInput } from '@/li
 
 const UNIT_NAMES = ['piece', 'carton', 'box', 'pack', 'kg', 'liter', 'meter', 'gram'];
 
+type OperationalIngredient = { raw_material_id: string; quantity: number; raw_material?: { name: string } | null };
+type LinkedInventoryUnit = { unit_id: string; quantity: number; unit?: { id: string; name: string; unit_type: 'ready' | 'manufactured'; cost_price: number } | null };
+
 export function ProductsPage() {
   const { t, lang } = useLanguage();
   const { show } = useToast();
@@ -62,6 +65,9 @@ export function ProductsPage() {
   const [stockComponents, setStockComponents] = useState<{ product_id: string; name: string; total: number; cost_price: number }[]>([]);
   const [componentSel, setComponentSel] = useState('');
   const [componentQty, setComponentQty] = useState(1);
+  const [recipeIngredients, setRecipeIngredients] = useState<OperationalIngredient[]>([]);
+  const [recipeYield, setRecipeYield] = useState(1);
+  const [linkedInventoryUnits, setLinkedInventoryUnits] = useState<LinkedInventoryUnit[]>([]);
 
   const loadStockComponents = useCallback(async () => {
     let invQuery = supabase.from('inventory').select('product_id, quantity, product:products(id, name, cost_price, is_active)');
@@ -118,6 +124,38 @@ export function ProductsPage() {
     ]);
     setUnits((u.data as ProductUnit[]) || [{ id: '', product_id: p.id, unit_name: 'piece', unit_name_en: 'piece', conversion_factor: 1, sale_price: p.sale_price, cost_price: p.cost_price, barcode: p.barcode || '', is_base: true, created_at: '' }]);
     setProductComponents(((comps.data as { component_product_id: string; quantity: number }[] | null) || []).map((c) => ({ component_product_id: c.component_product_id, quantity: Number(c.quantity) || 1 })));
+
+    const effectiveProductBranch = p.branch_id || branchFilter || '';
+    let recipeRows: OperationalIngredient[] = [];
+    let currentYield = 1;
+    if (effectiveProductBranch) {
+      const { data: recipe } = await supabase
+        .from('recipes')
+        .select('id,yield_quantity')
+        .eq('product_id', p.id)
+        .eq('branch_id', effectiveProductBranch)
+        .eq('is_active', true)
+        .order('version', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (recipe?.id) {
+        currentYield = Number(recipe.yield_quantity) || 1;
+        const { data: recipeItems } = await supabase
+          .from('recipe_items')
+          .select('raw_material_id,quantity,raw_material:raw_materials(name)')
+          .eq('recipe_id', recipe.id);
+        recipeRows = ((recipeItems || []) as unknown as OperationalIngredient[]).map((row) => ({ ...row, quantity: Number(row.quantity) || 0 }));
+      }
+    }
+    const { data: inventoryLinks } = await supabase
+      .from('product_unit_links')
+      .select('unit_id,quantity,unit:inventory_units(id,name,unit_type,cost_price)')
+      .eq('product_id', p.id);
+    setRecipeYield(currentYield);
+    setRecipeIngredients(recipeRows);
+    setLinkedInventoryUnits(((inventoryLinks || []) as unknown as LinkedInventoryUnit[]).map((row) => ({ ...row, quantity: Number(row.quantity) || 0 })));
+
     setComponentSel('');
     setComponentQty(1);
     setModalOpen(true);
@@ -125,7 +163,7 @@ export function ProductsPage() {
 
   const save = async () => {
     if (!form.name) { show(t('required') + ': ' + t('name'), 'error'); return; }
-    if (form.product_type === 'manufactured' && productComponents.length === 0) {
+    if (form.product_type === 'manufactured' && productComponents.length === 0 && recipeIngredients.length === 0 && linkedInventoryUnits.length === 0) {
       show(t('manufacturedRequiresComponents'), 'error');
       return;
     }
@@ -358,8 +396,70 @@ export function ProductsPage() {
           </div>
           <Textarea label={t('description')} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} />
 
-          {/* Components (manufactured products) */}
-          {form.product_type === 'manufactured' && (
+          {/* Canonical operational composition: recipes + inventory unit links */}
+          {editing && (
+            <div data-testid="product-operational-composition" className="rounded-xl border border-brand-200 dark:border-brand-800/50 bg-brand-50/40 dark:bg-brand-900/10 p-4 space-y-4">
+              <div>
+                <h3 className="font-semibold text-ui-text">{lang === 'ar' ? 'مكونات التشغيل الفعلية' : 'Operational composition'}</h3>
+                <p className="mt-1 text-xs text-ui-subtle">
+                  {lang === 'ar' ? 'هذه البيانات هي التي يعتمد عليها التصنيع وخصم المخزون فعلياً.' : 'These are the components actually used by manufacturing and inventory deduction.'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="rounded-lg border border-ui-border bg-ui-surface p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold text-ui-text">{lang === 'ar' ? 'الخامات المباشرة' : 'Direct raw materials'}</h4>
+                    <span className="text-xs text-ui-subtle">{recipeIngredients.length}</span>
+                  </div>
+                  {recipeIngredients.length === 0 ? (
+                    <p className="text-sm text-ui-subtle">{lang === 'ar' ? 'لا توجد خامات مباشرة في الوصفة.' : 'No direct raw materials in the recipe.'}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {recipeIngredients.map((row) => (
+                        <div key={row.raw_material_id} className="flex items-center justify-between gap-3 rounded-md bg-ui-page-alt px-3 py-2">
+                          <span className="text-sm font-medium text-ui-text">{row.raw_material?.name || row.raw_material_id}</span>
+                          <span className="text-xs font-semibold text-ui-muted">{formatNumber(row.quantity / (recipeYield || 1))} / {lang === 'ar' ? 'وحدة بيع' : 'sale unit'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-ui-border bg-ui-surface p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold text-ui-text">{lang === 'ar' ? 'الوحدات المخزنية المرتبطة' : 'Linked inventory units'}</h4>
+                    <span className="text-xs text-ui-subtle">{linkedInventoryUnits.length}</span>
+                  </div>
+                  {linkedInventoryUnits.length === 0 ? (
+                    <p className="text-sm text-ui-subtle">{lang === 'ar' ? 'لا توجد وحدات مخزنية مرتبطة بالمنتج.' : 'No inventory units are linked to this product.'}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {linkedInventoryUnits.map((row) => (
+                        <div key={row.unit_id} className="flex items-center justify-between gap-3 rounded-md bg-ui-page-alt px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-ui-text">{row.unit?.name || row.unit_id}</p>
+                            <p className="text-xs text-ui-subtle">
+                              {row.unit?.unit_type === 'manufactured'
+                                ? (lang === 'ar' ? 'وحدة مصنّعة' : 'Manufactured unit')
+                                : (lang === 'ar' ? 'وحدة جاهزة' : 'Ready unit')}
+                            </p>
+                          </div>
+                          <div className="text-end">
+                            <p className="text-xs font-semibold text-ui-muted">{formatNumber(row.quantity)} / {lang === 'ar' ? 'وحدة بيع' : 'sale unit'}</p>
+                            <p className="text-xs text-ui-subtle">{lang === 'ar' ? 'تكلفة' : 'Cost'}: {formatCurrency(Number(row.unit?.cost_price || 0), currency, lang)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Legacy product-component editor is only shown when no canonical recipe/unit links exist. */}
+          {form.product_type === 'manufactured' && recipeIngredients.length === 0 && linkedInventoryUnits.length === 0 && (
             <div className="rounded-xl border border-purple-200 dark:border-purple-800/50 bg-purple-50/40 dark:bg-purple-900/10 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-ui-muted">{t('components')}</h3>
@@ -407,7 +507,10 @@ export function ProductsPage() {
           {/* Units */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-ui-muted">{t('units')}</h3>
+              <div>
+                <h3 className="font-semibold text-ui-muted">{lang === 'ar' ? 'وحدات البيع' : 'Sales units'}</h3>
+                <p className="text-xs text-ui-subtle mt-0.5">{lang === 'ar' ? 'قطعة / كرتونة / عبوة — منفصلة عن وحدات المخزون المصنّعة أعلاه.' : 'Piece / carton / pack — separate from manufactured inventory units above.'}</p>
+              </div>
               <Button size="sm" variant="outline" onClick={addUnit}><Plus className="w-4 h-4" /> {t('add')}</Button>
             </div>
             <div className="space-y-2">
