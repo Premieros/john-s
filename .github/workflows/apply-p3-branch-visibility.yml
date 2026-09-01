@@ -1,0 +1,71 @@
+name: Apply P3 branch visibility
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-p3-branch-visibility.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch branch visibility
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8-sig')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, got {count}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'src/features/trade/pages/PurchaseRequestsPage.tsx',
+              "import { Modal } from '@/components/Modal';\n",
+              "import { Modal } from '@/components/Modal';\nimport { BranchBadge } from '@/components/BranchBadge';\n",
+          )
+          replace_once(
+              'src/features/trade/pages/PurchaseRequestsPage.tsx',
+              "    { key: 'supplier', header: t('supplier'), render: (r) => r.supplier?.name || '-' },\n",
+              "    { key: 'supplier', header: t('supplier'), render: (r) => r.supplier?.name || '-' },\n    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branches.find((b) => b.id === r.branch_id)?.name || '-'} /> },\n",
+          )
+
+          replace_once(
+              'src/features/trade/pages/RfqsPage.tsx',
+              "import { Modal } from '@/components/Modal';\n",
+              "import { Modal } from '@/components/Modal';\nimport { BranchBadge } from '@/components/BranchBadge';\n",
+          )
+          replace_once(
+              'src/features/trade/pages/RfqsPage.tsx',
+              "    { key: 'rfq_number', header: t('rfqNumber'), render: (r) => <span className=\"font-medium text-ui-text\">{r.rfq_number}</span> },\n",
+              "    { key: 'rfq_number', header: t('rfqNumber'), render: (r) => <span className=\"font-medium text-ui-text\">{r.rfq_number}</span> },\n    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branches.find((b) => b.id === r.branch_id)?.name || '-'} /> },\n",
+          )
+
+          replace_once(
+              'src/features/inventory/pages/InventoryBatchesPage.tsx',
+              "import { Modal } from '@/components/Modal';\n",
+              "import { Modal } from '@/components/Modal';\nimport { BranchBadge } from '@/components/BranchBadge';\n",
+          )
+          replace_once(
+              'src/features/inventory/pages/InventoryBatchesPage.tsx',
+              "    { key: 'warehouse', header: t('warehouse'), render: (b) => b.warehouse?.name || '-' },\n",
+              "    { key: 'warehouse', header: t('warehouse'), render: (b) => b.warehouse?.name || '-' },\n    { key: 'branch', header: t('branch'), render: (b) => <BranchBadge name={b.branch?.name || '-'} /> },\n",
+          )
+          PY
+      - name: Commit patches
+        run: |
+          git config user.name "Premier Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/features/trade/pages/PurchaseRequestsPage.tsx src/features/trade/pages/RfqsPage.tsx src/features/inventory/pages/InventoryBatchesPage.tsx
+          git diff --cached --check
+          git commit -m "feat: show branch across procurement and batches"
+          git push
