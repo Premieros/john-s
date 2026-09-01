@@ -8,6 +8,7 @@ export interface RawMaterial {
   code: string;
   name: string;
   unit_id: string | null;
+  branch_id: string;
   category: string | null;
   min_stock: number;
   default_cost: number;
