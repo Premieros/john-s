@@ -1,0 +1,43 @@
+name: Fix raw material recipe query
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-raw-material-cost-query.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Patch InventoryUnitsPage
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = 'src/features/catalog/pages/InventoryUnitsPage.tsx';
+          let s = fs.readFileSync(path, 'utf8');
+          const oldText = "interface RawMaterialOption { id: string; name: string; cost_price?: number; }";
+          const newText = "interface RawMaterialOption { id: string; name: string; }";
+          if (!s.includes(oldText)) throw new Error('RawMaterialOption target not found');
+          s = s.replace(oldText, newText);
+          const oldQuery = "supabase.from('raw_materials').select('id,name,cost_price').eq('is_active', true).order('name')";
+          const newQuery = "supabase.from('raw_materials').select('id,name').eq('is_active', true).order('name')";
+          if (!s.includes(oldQuery)) throw new Error('raw_materials cost_price query target not found');
+          s = s.replace(oldQuery, newQuery);
+          fs.writeFileSync(path, s);
+          NODE
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/catalog/pages/InventoryUnitsPage.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: stop querying nonexistent raw material cost column"
+          git push
