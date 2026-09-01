@@ -1,0 +1,65 @@
+name: Apply P3 parties audit branch visibility
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-p3-parties-audit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch branch visibility
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def patch(path, replacements):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8-sig')
+              for old, new in replacements:
+                  count = text.count(old)
+                  if count != 1:
+                      raise SystemExit(f'{path}: expected one match, got {count}: {old[:100]!r}')
+                  text = text.replace(old, new, 1)
+              p.write_text(text, encoding='utf-8')
+
+          patch('src/features/admin/pages/UsersPage.tsx', [
+              ("import { Modal } from '@/components/Modal';\n", "import { Modal } from '@/components/Modal';\nimport { BranchBadge } from '@/components/BranchBadge';\n"),
+              ("    { key: 'branch', header: t('branch'), render: (u) => branches.find((b) => b.id === u.branch_id)?.name || '-' },\n", "    { key: 'branch', header: t('branch'), render: (u) => <BranchBadge name={branches.find((b) => b.id === u.branch_id)?.name || '-'} /> },\n"),
+          ])
+
+          patch('src/features/parties/pages/CustomersPage.tsx', [
+              ("import { Modal } from '@/components/Modal';\n", "import { Modal } from '@/components/Modal';\nimport { BranchBadge } from '@/components/BranchBadge';\n"),
+              ("  const handleExport = () => exportToExcel(items.map((c) => ({ Name: c.name, Phone: c.phone || '', Email: c.email || '', Address: c.address || '', TaxNumber: c.tax_number || '', Balance: c.balance })), 'customers');\n", "  const handleExport = () => exportToExcel(items.map((c) => ({ Name: c.name, Branch: branches.find((b) => b.id === c.branch_id)?.name || '', Phone: c.phone || '', Email: c.email || '', Address: c.address || '', TaxNumber: c.tax_number || '', Balance: c.balance })), 'customers');\n"),
+              ("    { key: 'name', header: t('name'), render: (c) => <span className=\"font-medium text-ui-text\">{c.name}</span> },\n", "    { key: 'name', header: t('name'), render: (c) => <span className=\"font-medium text-ui-text\">{c.name}</span> },\n    { key: 'branch', header: t('branch'), render: (c) => <BranchBadge name={branches.find((b) => b.id === c.branch_id)?.name || '-'} /> },\n"),
+          ])
+
+          patch('src/features/parties/pages/SuppliersPage.tsx', [
+              ("import { Modal } from '@/components/Modal';\n", "import { Modal } from '@/components/Modal';\nimport { BranchBadge } from '@/components/BranchBadge';\n"),
+              ("  const handleExport = () => exportToExcel(items.map((s) => ({ Name: s.name, Phone: s.phone || '', Email: s.email || '', Address: s.address || '', TaxNumber: s.tax_number || '', Balance: s.balance })), 'suppliers');\n", "  const handleExport = () => exportToExcel(items.map((s) => ({ Name: s.name, Branch: branches.find((b) => b.id === s.branch_id)?.name || '', Phone: s.phone || '', Email: s.email || '', Address: s.address || '', TaxNumber: s.tax_number || '', Balance: s.balance })), 'suppliers');\n"),
+              ("    { key: 'name', header: t('name'), render: (s) => <span className=\"font-medium text-ui-text\">{s.name}</span> },\n", "    { key: 'name', header: t('name'), render: (s) => <span className=\"font-medium text-ui-text\">{s.name}</span> },\n    { key: 'branch', header: t('branch'), render: (s) => <BranchBadge name={branches.find((b) => b.id === s.branch_id)?.name || '-'} /> },\n"),
+          ])
+
+          patch('src/features/reporting/pages/AuditLogPage.tsx', [
+              ("import { DataTable, type Column } from '@/components/DataTable';\n", "import { DataTable, type Column } from '@/components/DataTable';\nimport { BranchBadge } from '@/components/BranchBadge';\n"),
+              ("import { usePaginatedRows } from '@/hooks/usePaginatedRows';\n", "import { usePaginatedRows } from '@/hooks/usePaginatedRows';\nimport { useBranches } from '@/hooks/useBranches';\nimport { useBranchFilter } from '@/lib/useBranchFilter';\n"),
+              ("  const [search, setSearch] = useState('');\n", "  const [search, setSearch] = useState('');\n  const branchFilter = useBranchFilter();\n  const { branches } = useBranches();\n"),
+              ("    order: { column: 'created_at', ascending: false },\n    pageSize: 200,\n", "    order: { column: 'created_at', ascending: false },\n    branch_id: branchFilter,\n    pageSize: 200,\n"),
+              ("    { key: 'user_email', header: t('user'), render: (a) => a.user_email || '-' },\n", "    { key: 'user_email', header: t('user'), render: (a) => a.user_email || '-' },\n    { key: 'branch', header: t('branch'), render: (a) => <BranchBadge name={branches.find((b) => b.id === a.branch_id)?.name || '-'} /> },\n"),
+          ])
+          PY
+      - name: Commit patches
+        run: |
+          git config user.name "Premier Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/features/admin/pages/UsersPage.tsx src/features/parties/pages/CustomersPage.tsx src/features/parties/pages/SuppliersPage.tsx src/features/reporting/pages/AuditLogPage.tsx
+          git diff --cached --check
+          git commit -m "feat: show branch across users parties and audit"
+          git push
