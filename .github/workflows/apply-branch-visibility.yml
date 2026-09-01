@@ -1,0 +1,84 @@
+name: Apply branch visibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-branch-visibility.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Products and Raw Materials pages
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # ProductsPage
+          p = Path('src/features/catalog/pages/ProductsPage.tsx')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("import { ConfirmDialog } from '@/components/ConfirmDialog';", "import { ConfirmDialog } from '@/components/ConfirmDialog';\nimport { BranchBadge } from '@/components/BranchBadge';")
+          anchor = "  const currency = effectiveSettings(branchFilter)?.currency || 'EGP';\n"
+          repl = anchor + "  const branchLabel = (id: string | null | undefined) => branches.find((b) => b.id === id)?.name || '';\n"
+          if anchor not in s:
+              raise SystemExit('Products currency anchor not found')
+          s = s.replace(anchor, repl, 1)
+          anchor = "    { key: 'category', header: t('category'), render: (p) => p.category?.name || '-' },\n"
+          repl = anchor + "    { key: 'branch', header: t('branch'), render: (p) => <BranchBadge name={branchLabel(p.branch_id)} /> },\n"
+          if anchor not in s:
+              raise SystemExit('Products category column anchor not found')
+          s = s.replace(anchor, repl, 1)
+          old = """            {!branchFilter && (\n              <Select label={t('branch')} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>\n                <option value=\"\">--</option>\n                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}\n              </Select>\n            )}\n"""
+          new = """            {branchFilter ? (\n              <div>\n                <label className=\"block text-sm font-medium text-ui-muted mb-1\">{t('branch')}</label>\n                <div className=\"min-h-11 flex items-center\"><BranchBadge name={branchLabel(form.branch_id || branchFilter)} /></div>\n              </div>\n            ) : (\n              <Select label={t('branch')} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>\n                <option value=\"\">--</option>\n                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}\n              </Select>\n            )}\n"""
+          if old not in s:
+              raise SystemExit('Products branch modal block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+
+          # RawMaterialsPage
+          p = Path('src/features/manufacturing/pages/RawMaterialsPage.tsx')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("import { ConfirmDialog } from '@/components/ConfirmDialog';", "import { ConfirmDialog } from '@/components/ConfirmDialog';\nimport { BranchBadge } from '@/components/BranchBadge';")
+          s = s.replace("  description: string;\n  is_active: boolean;", "  description: string;\n  branch_id: string;\n  is_active: boolean;")
+          s = s.replace("  min_stock: 0, default_cost: 0, description: '', is_active: true,", "  min_stock: 0, default_cost: 0, description: '', branch_id: '', is_active: true,")
+          anchor = "    order: { column: 'name', ascending: true },\n    pageSize: 100,"
+          repl = "    order: { column: 'name', ascending: true },\n    branch_id: branchFilter,\n    pageSize: 100,"
+          if anchor not in s:
+              raise SystemExit('Raw materials pagination anchor not found')
+          s = s.replace(anchor, repl, 1)
+          s = s.replace("  const openAdd = () => { setForm(EMPTY_FORM); setModalOpen(true); };", "  const openAdd = () => { setForm({ ...EMPTY_FORM, branch_id: branchFilter || '' }); setModalOpen(true); };")
+          old = "      default_cost: Number(m.default_cost), description: m.description || '',\n      is_active: m.is_active,"
+          new = "      default_cost: Number(m.default_cost), description: m.description || '',\n      branch_id: m.branch_id || branchFilter || '', is_active: m.is_active,"
+          if old not in s:
+              raise SystemExit('Raw material edit form anchor not found')
+          s = s.replace(old, new, 1)
+          old = "      description: form.description.trim() || null,\n      is_active: form.is_active,"
+          new = "      description: form.description.trim() || null,\n      branch_id: form.branch_id || branchFilter || null,\n      is_active: form.is_active,"
+          if old not in s:
+              raise SystemExit('Raw material payload anchor not found')
+          s = s.replace(old, new, 1)
+          anchor = "    { key: 'category', header: t('category'), render: (m) => m.category || '-' },\n"
+          repl = anchor + "    { key: 'branch', header: t('branch'), render: (m) => <BranchBadge name={branchLabel(m.branch_id)} /> },\n"
+          if anchor not in s:
+              raise SystemExit('Raw materials category column anchor not found')
+          s = s.replace(anchor, repl, 1)
+          anchor = "          <Input label={t('category')} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />\n"
+          repl = anchor + "          {branchFilter ? (\n            <div>\n              <label className=\"block text-sm font-medium text-ui-muted mb-1\">{t('branch')}</label>\n              <div className=\"min-h-11 flex items-center\"><BranchBadge name={branchLabel(form.branch_id || branchFilter)} /></div>\n            </div>\n          ) : (\n            <Select label={t('branch')} value={form.branch_id} onChange={(e) => setForm({ ...form, branch_id: e.target.value })}>\n              <option value=\"\">--</option>\n              {branches.map((br) => <option key={br.id} value={br.id}>{br.name}</option>)}\n            </Select>\n          )}\n"
+          if anchor not in s:
+              raise SystemExit('Raw materials modal category anchor not found')
+          s = s.replace(anchor, repl, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/features/catalog/pages/ProductsPage.tsx src/features/manufacturing/pages/RawMaterialsPage.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "feat: show branch on products and raw materials"
+          git push
