@@ -371,74 +371,83 @@ export function usePosOrder(input: UsePosOrderInput) {
     }
   }, [activeOrderId, isAr, show]);
 
-  // Void a previously sent item from kitchen with audit logging
+  // Cancelling a sent kitchen line is a server-side approval operation. KDS is
+  // state-only, so this path must never restore/increase inventory.
   const voidSentItem = useCallback(async (productId: string, voidQuantity: number, reason: string): Promise<boolean> => {
     if (!activeOrderId) return false;
     try {
-      // Find item in cart
       const item = cart.find((i) => i.product.id === productId);
       if (!item) return false;
 
-      // Deduct quantity or remove from cart
-      if (item.quantity <= voidQuantity) {
-        setCart((prev) => prev.filter((i) => i.product.id !== productId));
-      } else {
-        setCart((prev) =>
-          prev.map((i) => (i.product.id === productId ? { ...i, quantity: i.quantity - voidQuantity } : i))
-        );
+      const { data, error } = await supabase.rpc('cancel_sent_order_item', {
+        p_order_id: activeOrderId,
+        p_product_id: productId,
+        p_quantity: voidQuantity,
+        p_reason: reason,
+      });
+
+      if (error) {
+        show(error.message, 'error');
+        return false;
       }
 
-      // Fetch active branch warehouse to restore stock if ready item
-      const warehouseId = await fetchBranchWarehouseId(branchId);
-      const timestamp = new Date().toISOString();
+      const result = (data ?? {}) as RpcResult & {
+        remaining_quantity?: number;
+        voided_quantity?: number;
+        inventory_changed?: boolean;
+        request_id?: string;
+        status?: string;
+        action?: string;
+      };
 
-      if (warehouseId && item.product) {
-        const { data: inv } = await supabase
-          .from('inventory')
-          .select('*')
-          .eq('product_id', productId)
-          .eq('warehouse_id', warehouseId)
-          .maybeSingle();
-
-        if (inv) {
-          await supabase
-            .from('inventory')
-            .update({ quantity: Number(inv.quantity) + voidQuantity, updated_at: timestamp })
-            .eq('id', inv.id);
-
-          try {
-            await supabase.from('inventory_movements').insert({
-              product_id: productId,
-              warehouse_id: warehouseId,
-              movement_type: 'pos_void_restore',
-              quantity: voidQuantity,
-              reference_id: activeOrderId,
-              notes: `Void reason: ${reason}`,
-              created_at: timestamp,
-            });
-          } catch {
-            // best effort
-          }
+      if (!result.success) {
+        if (result.error === 'MANAGER_APPROVAL_REQUIRED') {
+          show(
+            isAr
+              ? 'تم إرسال طلب إلغاء الصنف للمدير. بعد الموافقة أعد تنفيذ الإلغاء.'
+              : 'Manager approval request sent. Retry the void after approval.',
+            'success'
+          );
+          return false;
         }
+        show(result.detail || result.error || (isAr ? 'تعذر إلغاء الصنف' : 'Failed to void item'), 'error');
+        return false;
       }
 
-      // Append cancellation note to order notes
-      const cancelNote = `[إلغاء: ${voidQuantity} × ${item.product.name} - السبب: ${reason}]`;
-      const updatedNotes = orderNotes ? `${orderNotes}\n${cancelNote}` : cancelNote;
-      setOrderNotes(updatedNotes);
+      const remaining = Number(result.remaining_quantity ?? Math.max(0, item.quantity - voidQuantity));
+      setCart((prev) =>
+        remaining <= 0
+          ? prev.filter((i) => i.product.id !== productId)
+          : prev.map((i) => (i.product.id === productId ? { ...i, quantity: remaining } : i))
+      );
 
-      await supabase
-        .from('orders')
-        .update({ notes: updatedNotes, updated_at: timestamp })
-        .eq('id', activeOrderId);
+      // Keep the current-session sent snapshot visually aligned. Persistent KDS
+      // state/history remains authoritative in order_kitchen_sends/voids.
+      setKitchenSentItems((prev) =>
+        prev
+          .map((i) => {
+            if (i.product_id !== productId) return i;
+            const qty = Number(i.quantity || 0) - voidQuantity;
+            return { ...i, quantity: Math.max(0, qty) };
+          })
+          .filter((i) => Number(i.quantity || 0) > 0)
+      );
 
-      show(isAr ? `تم إلغاء الصنف (${item.product.name}) بنجاح` : `Item voided successfully`, 'success');
+      const cancelNote = `[إلغاء مطبخ: ${voidQuantity} × ${item.product.name} - السبب: ${reason}]`;
+      setOrderNotes((prev) => (prev ? `${prev}\n${cancelNote}` : cancelNote));
+
+      show(
+        isAr
+          ? `تم إلغاء الصنف (${item.product.name}) بدون أي تعديل على المخزون`
+          : `Item voided without changing inventory`,
+        'success'
+      );
       return true;
     } catch (err) {
       show(err instanceof Error ? err.message : 'Failed to void item', 'error');
       return false;
     }
-  }, [activeOrderId, cart, branchId, orderNotes, isAr, show]);
+  }, [activeOrderId, cart, isAr, show]);
 
   // Creates or updates the persisted order from the current cart.
   const persistCart = useCallback(async (status: 'open' | 'held'): Promise<PersistResult> => {
