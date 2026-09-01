@@ -253,3 +253,17 @@ Commit الإصلاح:
 - Commit التطبيق: `83ea36c99615139cf3f2445f2faa504b3f06043d`.
 - المكتمل في P3 حتى الآن: Products + Raw Materials + Sales/Invoices/Refund rows + Shifts.
 - المتبقي في P3: Purchases/Receiving/Procurement، Inventory/Warehouses/Transfers، Users/Parties، Reports، والطباعة/المستندات التي لا تعرض الفرع بعد.
+
+
+---
+
+### P3 Branch visibility — Procurement / Inventory ✅
+- baseline قبل هذه الدفعة: Verify main #66 وDeploy #68 على `bbcf76f8c60213579fc83a04b27efe680f22f143` = SUCCESS.
+- تم إضافة `BranchBadge` إلى `PurchasesPage` لكل فاتورة شراء باستخدام `purchase.branch_id`.
+- تم إضافة `BranchBadge` إلى جدول إيصالات الاستلام في `ReceivingPage` باستخدام `PurchaseReceiptRow.branch_id`.
+- لم يتم تخمين فرع Backorders؛ نوع `PurchaseBackorderRow` الحالي لا يعيد `branch_id`، وهذه فجوة Backend يجب إغلاقها من RPC قبل إظهار الفرع للمستخدم متعدد الفروع.
+- تم توحيد عرض الفرع في `WarehousesPage` و`TransfersPage` عبر `BranchBadge`.
+- تم إضافة فرع واضح لكل سجل في `InventoryPage` من فرع المخزن، وإضافة اسم الفرع أيضًا إلى تصدير Excel للمخزون.
+- Commit التطبيق: `388d89fc791035adb92949fd782ae356b4588fb9`.
+- المكتمل في P3 حتى الآن: Products + Raw Materials + Sales/Invoices/Refund rows + Shifts + Purchases + Receiving receipts + Inventory + Warehouses + Transfers.
+- المتبقي في P3: Backorders RPC branch identity، Purchase Requests/RFQs عند الحاجة، Users/Parties، Reports، والطباعة/المستندات التي لا تعرض الفرع بعد.
