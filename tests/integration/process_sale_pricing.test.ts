@@ -12,6 +12,7 @@ describe.skipIf(skip)('process_sale authoritative pricing (D13)', () => {
   const warehouseId = randomUUID();
   const productId = randomUUID();
   const unitId = randomUUID();
+  const actorId = randomUUID();
   const invoiceNumber = `D13-TEST-${Date.now()}`;
 
   beforeAll(async () => {
@@ -28,6 +29,21 @@ describe.skipIf(skip)('process_sale authoritative pricing (D13)', () => {
     );
     await client.query(`INSERT INTO public.product_unit_links (product_id, unit_id, quantity) VALUES ($1, $2, 1)`, [productId, unitId]);
     await client.query(`INSERT INTO public.inventory_unit_batches (unit_id, branch_id, warehouse_id, quantity, unit_cost) VALUES ($1, $2, $3, 10, 50)`, [unitId, branchId, warehouseId]);
+
+    // Keep the production AUTH_REQUIRED guard intact. CI authenticates through
+    // the auth stub's app.user_id GUC, so this test exercises the public RPC.
+    await client.query('ALTER TABLE public.users DISABLE TRIGGER trg_users_role_guard');
+    try {
+      await client.query(
+        `INSERT INTO public.users (id, email, username, full_name, role, branch_id, is_active)
+         VALUES ($1, $2, $3, 'D13 Pricing CI Admin', 'super_admin', NULL, true)`,
+        [actorId, `pricing-${actorId}@test.local`, `pricing-${actorId.slice(0, 8)}`],
+      );
+    } finally {
+      await client.query('ALTER TABLE public.users ENABLE TRIGGER trg_users_role_guard');
+    }
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [actorId]);
+
     await client.query(`SELECT public.ensure_chart_of_accounts($1)`, [branchId]);
     await client.query(`SELECT public.seed_account_mappings($1)`, [branchId]);
     await client.query(`UPDATE public.settings SET tax_enabled = false`);
