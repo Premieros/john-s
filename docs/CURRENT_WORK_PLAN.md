@@ -238,3 +238,18 @@ Commit الإصلاح:
 - قائمة الخامات أصبحت تطبق `branchFilter` صراحةً.
 - إنشاء/تعديل الخامة يرسل `branch_id` صراحةً، مع اختيار الفرع للمدير العام وإظهاره ثابتًا للمستخدم المحصور بفرعه.
 - هذه أول شريحة مكتملة من P3؛ بقية الصفحات branch-scoped ما زالت ضمن الخطة.
+
+
+---
+
+### إصلاح TypeScript لربط الخامات بالفروع ✅
+- أضيف `branch_id: string` إلى نوع `RawMaterial` في `src/lib/domains/types/manufacturing.ts` حتى يطابق مخطط قاعدة البيانات الفعلي واستخدام `RawMaterialsPage`.
+- Commit: `836f128f6eacfdae06f4b353a6b3f9e8cf9b6465`.
+
+### P3 Branch visibility — Sales / Refunds / Shifts ✅
+- تم توسيع `BranchBadge` إلى صفحة المبيعات/الفواتير، وهي نفس الصفحة التي تعرض وتنفذ المرتجعات.
+- استعلام `SalesPage` أصبح يجلب `branch_id` صراحةً، ويعرض اسم الفرع في كل صف.
+- تم تحويل عمود الفرع في `ShiftsPage` إلى `BranchBadge` الموحد بدل النص العادي.
+- Commit التطبيق: `83ea36c99615139cf3f2445f2faa504b3f06043d`.
+- المكتمل في P3 حتى الآن: Products + Raw Materials + Sales/Invoices/Refund rows + Shifts.
+- المتبقي في P3: Purchases/Receiving/Procurement، Inventory/Warehouses/Transfers، Users/Parties، Reports، والطباعة/المستندات التي لا تعرض الفرع بعد.
