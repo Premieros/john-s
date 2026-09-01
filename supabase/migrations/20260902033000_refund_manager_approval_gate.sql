@@ -88,7 +88,7 @@ BEGIN
     v_def := replace(v_def, v_old, v_new);
   END IF;
 
-  IF position("COALESCE(v_sale.payment_method, 'cash')" in v_def) = 0 THEN
+  IF position($needle$COALESCE(v_sale.payment_method, 'cash')$needle$ in v_def) = 0 THEN
     v_old := $old$VALUES (v_shift_id, 'refund', v_refund_total, 'cash', 'refund', p_sale_id, auth.uid());$old$;
     v_new := $new$VALUES (v_shift_id, 'refund', v_refund_total, COALESCE(v_sale.payment_method, 'cash'), 'refund', p_sale_id, auth.uid());$new$;
     IF position(v_old in v_def) = 0 THEN
