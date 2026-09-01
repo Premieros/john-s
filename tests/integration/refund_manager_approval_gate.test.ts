@@ -35,16 +35,17 @@ describe('refund manager approval gate', () => {
     expect(r.rowCount).toBe(1);
     const def = String(r.rows[0].def || '');
     expect(def).toContain("action_type = 'refund'");
-    expect(def).toContain("target_type = 'sale'");
+    expect(def).toContain("entity_type = 'sale'");
+    expect(def).toContain('requester_id = auth.uid()');
     expect(def).toContain('APPROVAL_REQUIRED');
     expect(def).toContain('FOR UPDATE SKIP LOCKED');
     expect(def).toContain("status = 'consumed'");
     expect(def).toContain('REFUND_APPROVAL_CONSUME_FAILED');
   });
 
-  it('approval_requests accepts refund as a controlled action type', async () => {
+  it('approval_requests schema accepts refund and exposes the canonical requester/entity columns', async () => {
     if (!canRun) return;
-    const r = await client.query(`
+    const constraintRows = await client.query(`
       SELECT pg_get_constraintdef(c.oid) AS def
       FROM pg_constraint c
       JOIN pg_class t ON t.oid = c.conrelid
@@ -53,7 +54,16 @@ describe('refund manager approval gate', () => {
         AND t.relname = 'approval_requests'
         AND c.contype = 'c'
     `);
-    const defs = r.rows.map((row) => String(row.def || '')).join('\n');
+    const defs = constraintRows.rows.map((row) => String(row.def || '')).join('\n');
     expect(defs).toContain('refund');
+
+    const columnRows = await client.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'approval_requests'
+        AND column_name IN ('requester_id','entity_type','entity_id')
+    `);
+    expect(columnRows.rows.map((row) => row.column_name).sort()).toEqual(['entity_id','entity_type','requester_id']);
   });
 });
