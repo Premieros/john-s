@@ -33,7 +33,10 @@ export function ApprovalInbox({ ar }: { ar: boolean }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<ApprovalRequest[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const allowed = can('approvals.review');
+ const allowed =
+  user?.role === 'branch_manager' ||
+  user?.role === 'owner' ||
+  user?.role === 'super_admin';
 
   const load = useCallback(async () => {
     if (!allowed || !user?.branch_id) return;
