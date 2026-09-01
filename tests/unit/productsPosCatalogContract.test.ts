@@ -15,9 +15,9 @@ describe('Products/POS catalog contract (P4)', () => {
 
     // The shared pagination hook must apply the search to the Supabase query,
     // not filter only the rows already loaded into the browser.
-    expect(paginatedRows).toContain("q = q.or(");
-    expect(paginatedRows).toContain("`${column}.ilike.%${escapedSearchTerm}%`");
-    expect(paginatedRows).toContain('.range(from, to)');
+    expect(paginatedRows).toContain("const filter = columns.map((column) => `${column}.ilike.*${term}*`).join(',')");
+    expect(paginatedRows).toContain('bq = bq.or(filter)');
+    expect(paginatedRows).toContain('return q.range(from, to)');
   });
 
   it('keeps POS catalog branch-scoped and active-only', () => {
