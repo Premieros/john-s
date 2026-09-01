@@ -48,6 +48,8 @@ export function ReceivingPage() {
   const [lines, setLines] = useState<ReceivingLine[]>([]);
   const [saving, setSaving] = useState(false);
 
+  const branchName = useCallback((branchId: string | null | undefined) => branches.find((b) => b.id === branchId)?.name || '-', [branches]);
+
   const loadBackorders = useCallback(async () => {
     setBoLoading(true);
     const { data } = await api.procurement.getPurchaseBackorders({ p_branch_id: branchFilter || null });
@@ -121,6 +123,7 @@ export function ReceivingPage() {
   const boColumns: Column<PurchaseBackorderRow>[] = [
     { key: 'invoice_number', header: t('purchaseOrder'), render: (r) => <span className="font-medium text-ui-text">{r.invoice_number}</span> },
     { key: 'supplier_name', header: t('supplier'), render: (r) => r.supplier_name },
+    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branchName(r.branch_id)} /> },
     { key: 'item_name', header: t('item'), render: (r) => r.item_name },
     { key: 'ordered_quantity', header: t('orderedQty'), render: (r) => r.ordered_quantity },
     { key: 'received_quantity', header: t('receivedQty'), render: (r) => r.received_quantity },
@@ -135,7 +138,7 @@ export function ReceivingPage() {
     { key: 'receipt_number', header: t('receiptNumber'), render: (r) => <span className="font-medium text-ui-text">{r.receipt_number}</span> },
     { key: 'invoice_number', header: t('purchaseOrder'), render: (r) => r.invoice_number },
     { key: 'supplier_name', header: t('supplier'), render: (r) => r.supplier_name },
-    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branches.find((b) => b.id === r.branch_id)?.name || '-'} /> },
+    { key: 'branch', header: t('branch'), render: (r) => <BranchBadge name={branchName(r.branch_id)} /> },
     { key: 'item_count', header: t('itemsReceived'), render: (r) => r.item_count },
     { key: 'total_quantity', header: t('receivedQty'), render: (r) => r.total_quantity },
     { key: 'received_at', header: t('receivedAt'), render: (r) => formatDate(r.received_at, lang) },
@@ -183,6 +186,7 @@ export function ReceivingPage() {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div><span className="text-ui-subtle">{t('purchaseOrder')}: </span><span className="font-medium">{receiveModal.invoice_number}</span></div>
               <div><span className="text-ui-subtle">{t('supplier')}: </span><span className="font-medium">{receiveModal.supplier_name}</span></div>
+              <div className="col-span-2 flex items-center gap-2"><span className="text-ui-subtle">{t('branch')}: </span><BranchBadge name={branchName(receiveModal.branch_id)} /></div>
             </div>
             <table className="w-full text-sm">
               <thead><tr className="border-b border-ui-border">
