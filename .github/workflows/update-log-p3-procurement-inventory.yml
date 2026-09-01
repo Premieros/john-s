@@ -1,0 +1,35 @@
+name: Record P3 procurement inventory branch visibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/update-log-p3-procurement-inventory.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-log:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Append work log
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('docs/CURRENT_WORK_PLAN.md')
+          s = p.read_text(encoding='utf-8')
+          marker = '### P3 Branch visibility — Procurement / Inventory ✅'
+          if marker not in s:
+              s += '''\n\n---\n\n### P3 Branch visibility — Procurement / Inventory ✅\n- baseline قبل هذه الدفعة: Verify main #66 وDeploy #68 على `bbcf76f8c60213579fc83a04b27efe680f22f143` = SUCCESS.\n- تم إضافة `BranchBadge` إلى `PurchasesPage` لكل فاتورة شراء باستخدام `purchase.branch_id`.\n- تم إضافة `BranchBadge` إلى جدول إيصالات الاستلام في `ReceivingPage` باستخدام `PurchaseReceiptRow.branch_id`.\n- لم يتم تخمين فرع Backorders؛ نوع `PurchaseBackorderRow` الحالي لا يعيد `branch_id`، وهذه فجوة Backend يجب إغلاقها من RPC قبل إظهار الفرع للمستخدم متعدد الفروع.\n- تم توحيد عرض الفرع في `WarehousesPage` و`TransfersPage` عبر `BranchBadge`.\n- تم إضافة فرع واضح لكل سجل في `InventoryPage` من فرع المخزن، وإضافة اسم الفرع أيضًا إلى تصدير Excel للمخزون.\n- Commit التطبيق: `388d89fc791035adb92949fd782ae356b4588fb9`.\n- المكتمل في P3 حتى الآن: Products + Raw Materials + Sales/Invoices/Refund rows + Shifts + Purchases + Receiving receipts + Inventory + Warehouses + Transfers.\n- المتبقي في P3: Backorders RPC branch identity، Purchase Requests/RFQs عند الحاجة، Users/Parties، Reports، والطباعة/المستندات التي لا تعرض الفرع بعد.\n'''
+              p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/CURRENT_WORK_PLAN.md
+          git diff --cached --quiet && exit 0
+          git commit -m "docs: record procurement inventory branch visibility"
+          git push
