@@ -13,6 +13,7 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
   const productId = randomUUID();
   const unitId = randomUUID();
   const tableId = randomUUID();
+  const actorId = randomUUID();
 
   const itemJson = (qty: number, price = 100) =>
     JSON.stringify([
@@ -85,6 +86,22 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
       `INSERT INTO public.dining_tables (id, name, branch_id, capacity, status) VALUES ($1, $2, $3, 4, 'vacant')`,
       [tableId, 'T1', branchId],
     );
+
+    // process_sale now intentionally requires an authenticated actor. The CI
+    // auth stub resolves auth.uid() from app.user_id, so authenticate this
+    // fixture instead of bypassing the production guard.
+    await client.query('ALTER TABLE public.users DISABLE TRIGGER trg_users_role_guard');
+    try {
+      await client.query(
+        `INSERT INTO public.users (id, email, username, full_name, role, branch_id, is_active)
+         VALUES ($1, $2, $3, '045 Settlement CI Admin', 'super_admin', NULL, true)`,
+        [actorId, `settlement-${actorId}@test.local`, `settlement-${actorId.slice(0, 8)}`],
+      );
+    } finally {
+      await client.query('ALTER TABLE public.users ENABLE TRIGGER trg_users_role_guard');
+    }
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [actorId]);
+
     await client.query(`SELECT public.ensure_chart_of_accounts($1)`, [branchId]);
     await client.query(`SELECT public.seed_account_mappings($1)`, [branchId]);
     await client.query(`UPDATE public.settings SET tax_enabled = false`);
