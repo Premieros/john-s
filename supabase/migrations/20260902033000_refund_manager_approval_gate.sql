@@ -3,6 +3,8 @@
 -- Other operators (cashier) require an approved, unexpired request that matches
 -- the exact sale, requester, branch and action. The approval row is locked for
 -- the whole refund transaction and consumed only after a successful refund.
+-- Also preserve the original payment method in shift refund movements so card
+-- refunds never reduce the physical cash drawer.
 
 DO $migration$
 DECLARE
@@ -55,8 +57,8 @@ BEGIN
         AND ar.consumed_at IS NULL
         AND ar.expires_at > now()
       ORDER BY ar.decided_at DESC NULLS LAST, ar.created_at DESC
-      FOR UPDATE SKIP LOCKED
-      LIMIT 1;
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED;
 
       IF v_approval_id IS NULL THEN
         RETURN jsonb_build_object(
@@ -71,6 +73,26 @@ BEGIN
 
     IF position(v_old in v_def) = 0 THEN
       RAISE EXCEPTION 'process_refund permission marker not found';
+    END IF;
+    v_def := replace(v_def, v_old, v_new);
+  END IF;
+
+  -- The original refund function did not select payment_method into v_sale and
+  -- hard-coded every shift refund as cash. Preserve the sale payment method.
+  IF position('payment_method, invoice_number' in v_def) = 0 THEN
+    v_old := 'SELECT id, branch_id, warehouse_id, status, total, paid_amount, customer_id, invoice_number';
+    v_new := 'SELECT id, branch_id, warehouse_id, status, total, paid_amount, customer_id, payment_method, invoice_number';
+    IF position(v_old in v_def) = 0 THEN
+      RAISE EXCEPTION 'process_refund sale select marker not found';
+    END IF;
+    v_def := replace(v_def, v_old, v_new);
+  END IF;
+
+  IF position("COALESCE(v_sale.payment_method, 'cash')" in v_def) = 0 THEN
+    v_old := $old$VALUES (v_shift_id, 'refund', v_refund_total, 'cash', 'refund', p_sale_id, auth.uid());$old$;
+    v_new := $new$VALUES (v_shift_id, 'refund', v_refund_total, COALESCE(v_sale.payment_method, 'cash'), 'refund', p_sale_id, auth.uid());$new$;
+    IF position(v_old in v_def) = 0 THEN
+      RAISE EXCEPTION 'process_refund shift payment marker not found';
     END IF;
     v_def := replace(v_def, v_old, v_new);
   END IF;
