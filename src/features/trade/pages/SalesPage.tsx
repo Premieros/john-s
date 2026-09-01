@@ -3,6 +3,7 @@ import { Trash2, FileText, Edit2, RotateCcw } from 'lucide-react';
 import { supabase } from '@/api';
 import * as api from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/Toast';
 import { DesignSurface, DesignPageHeader, DesignSearch, DesignPanel, DesignPagination } from '@/components/design';
 import { DataTable, type Column } from '@/components/DataTable';
@@ -39,6 +40,7 @@ interface SaleRow {
 export function SalesPage() {
   const { t, lang } = useLanguage();
   const { show } = useToast();
+  const { user } = useAuth();
   const branchFilter = useBranchFilter();
   const can = useCan();
   const { rows: items, loading, error, total, hasMore, loadMore, loadingMore, refresh: reloadSales } = usePaginatedRows<SaleRow>({
@@ -63,6 +65,8 @@ export function SalesPage() {
   const [refundReason, setRefundReason] = useState('');
   const [refunding, setRefunding] = useState(false);
   const isAr = lang === 'ar';
+  const canRequestRefundApproval = user?.role === 'cashier';
+  const canOpenRefund = can('refunds.approve') || canRequestRefundApproval;
 
   async function loadMeta() {
     const { data: customersRes } = await supabase.from('customers').select('*').order('name');
@@ -129,6 +133,33 @@ export function SalesPage() {
     if (error) { show(error.message, 'error'); return; }
     const result = data as { success: boolean; error?: string; detail?: string; refunded_amount?: number } | null;
     if (!result?.success) {
+      if (result?.error === 'APPROVAL_REQUIRED' && canRequestRefundApproval) {
+        const { data: approvalData, error: approvalError } = await supabase.rpc('request_approval', {
+          p_branch_id: refundSale.branch_id,
+          p_action_type: 'refund',
+          p_target_type: 'sale',
+          p_target_id: refundSale.id,
+          p_payload: {
+            items: p_items,
+            reason: refundReason.trim() || null,
+            refund_total: refundTotal(),
+            invoice_number: refundSale.invoice_number,
+          },
+          p_reason: refundReason.trim() || (isAr ? 'طلب مرتجع من الكاشير' : 'Cashier refund request'),
+          p_expires_in_seconds: 600,
+        });
+        if (approvalError) {
+          show(approvalError.message, 'error');
+          return;
+        }
+        const approvalResult = approvalData as { success?: boolean; error?: string; request_id?: string } | null;
+        if (!approvalResult?.success) {
+          show(approvalResult?.error || (isAr ? 'تعذر إرسال طلب الموافقة' : 'Could not request approval'), 'error');
+          return;
+        }
+        show(isAr ? 'تم إرسال طلب المرتجع للمدير. بعد الموافقة اضغط تنفيذ المرتجع مرة أخرى.' : 'Refund approval requested. After manager approval, submit the refund again.', 'success');
+        return;
+      }
       show(`${isAr ? 'فشل المرتجع' : 'Refund failed'}: ${result?.detail || result?.error || 'unknown'}`, 'error');
       return;
     }
@@ -233,7 +264,7 @@ export function SalesPage() {
             <Edit2 className="w-4 h-4" />
           </button>
         )}
-        {can('refunds.approve') && r.status !== 'returned' && (r.refunded_amount || 0) < r.total && (
+        {canOpenRefund && r.status !== 'returned' && (r.refunded_amount || 0) < r.total && (
           <button onClick={() => openRefund(r)} className="p-1.5 rounded-md hover:bg-ui-warning-soft text-ui-warning" title={isAr ? 'مرتجع' : 'Refund'}>
             <RotateCcw className="w-4 h-4" />
           </button>
