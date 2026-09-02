@@ -28,10 +28,7 @@ describe.skipIf(!dbUrl)('Permanent branch deletion', () => {
     targetUserId = randomUUID();
     managerId = randomUUID();
 
-    await client.query(
-      `INSERT INTO public.organizations (id, name) VALUES ($1, 'Delete Test Org')`,
-      [orgId],
-    );
+    await client.query(`INSERT INTO public.organizations (id, name) VALUES ($1, 'Delete Test Org')`, [orgId]);
     await client.query(
       `INSERT INTO public.branches (id, organization_id, name, is_active)
        VALUES ($1,$3,'Current Branch',true),($2,$3,'Target Branch',true)`,
@@ -83,41 +80,24 @@ describe.skipIf(!dbUrl)('Permanent branch deletion', () => {
   });
 
   it('does not allow branch_manager to permanently delete a branch', async () => {
-    const res = await runAsPersist(
-      client,
-      managerId,
-      `SELECT public.delete_branch_cascade($1) AS res`,
-      [targetBranchId],
-    );
+    const res = await runAsPersist(client, managerId, `SELECT public.delete_branch_cascade($1) AS res`, [targetBranchId]);
     expect((res.rows[0] as { res: Record<string, unknown> }).res.error).toBe('PERMISSION_DENIED');
   });
 
   it('does not allow owner to delete the branch assigned to their own profile', async () => {
-    const res = await runAsPersist(
-      client,
-      ownerId,
-      `SELECT public.delete_branch_cascade($1) AS res`,
-      [currentBranchId],
-    );
+    const res = await runAsPersist(client, ownerId, `SELECT public.delete_branch_cascade($1) AS res`, [currentBranchId]);
     expect((res.rows[0] as { res: Record<string, unknown> }).res.error).toBe('CANNOT_DELETE_CURRENT_BRANCH');
   });
 
   it('owner can hard-delete another accessible branch and its linked public users', async () => {
-    const res = await runAsPersist(
-      client,
-      ownerId,
-      `SELECT public.delete_branch_cascade($1) AS res`,
-      [targetBranchId],
-    );
-    expect((res.rows[0] as { res: Record<string, unknown> }).res.success).toBe(true);
+    const res = await runAsPersist(client, ownerId, `SELECT public.delete_branch_cascade($1) AS res`, [targetBranchId]);
+    const result = (res.rows[0] as { res: Record<string, unknown> }).res;
+    expect(result.success, JSON.stringify(result)).toBe(true);
 
     const branch = await client.query(`SELECT id FROM public.branches WHERE id=$1`, [targetBranchId]);
     expect(branch.rows).toHaveLength(0);
 
-    const linkedUsers = await client.query(
-      `SELECT id FROM public.users WHERE id = ANY($1::uuid[])`,
-      [[targetUserId, managerId]],
-    );
+    const linkedUsers = await client.query(`SELECT id FROM public.users WHERE id = ANY($1::uuid[])`, [[targetUserId, managerId]]);
     expect(linkedUsers.rows).toHaveLength(0);
   });
 });
