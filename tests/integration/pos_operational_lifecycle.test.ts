@@ -54,8 +54,10 @@ describe.skipIf(skip)('POS operational lifecycle release gate', () => {
 
     // The shared RLS fixture contains an open cashier shift for isolation tests.
     // Close only that fixture row directly, then exercise the real open/close RPCs below.
+    // No synthetic closing amount is written here: the canonical shifts schema stores
+    // the counted close value through the server-authoritative close RPC itself.
     await client.query(
-      `UPDATE public.shifts SET status = 'closed', closed_at = now(), closing_amount = opening_amount WHERE id = $1`,
+      `UPDATE public.shifts SET status = 'closed', closed_at = now() WHERE id = $1`,
       [ids.shiftA],
     );
 
