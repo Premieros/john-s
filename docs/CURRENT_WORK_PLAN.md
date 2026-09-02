@@ -1,292 +1,119 @@
 # CURRENT WORK PLAN — john-s
 
-> المرجع الرئيسي لحالة العمل. يُحدّث بعد كل إصلاح أو قرار معماري أو نتيجة CI مهمة.
+> المرجع الرئيسي لحالة العمل الحالية. يُحدّث بعد كل إصلاح أو قرار معماري أو نتيجة CI مهمة.
 
 آخر تحديث: 2026-09-02
 
-## 1) الحالة العامة
+## 1) الحالة العامة — Baseline أخضر ✅
 
-المشروع يعمل على `main` مع Supabase الإنتاجية.
+المشروع يعمل على `main` مع Supabase Production: `azzdesuowpdcoflmyezn`.
 
-آخر baseline مكتمل قبل إصلاح عرض تركيب المنتج:
-- Verify main #45 على `4e17122a19d50a7297102f19163c033669419019`: **SUCCESS**.
-- lint ✅ typecheck ✅ unit ✅ build ✅
-- canonical migrations / schema ✅
-- integration/security/RLS ✅
-- Playwright browser smoke ✅
-- Deploy #47 ✅
+Baseline المعتمد بعد الفحص الشامل:
+- HEAD الذي اجتاز البوابات: `d0249fb50da0733d6cbb5aa7e3a0481a2bfe21b1`.
+- Verify main #178 / run `33594520386`: **SUCCESS**.
+- App: lint ✅ typecheck ✅ typecheck:all ✅ unit ✅ build ✅
+- Fresh DB: canonical migrations ✅ schema verification ✅
+- Integration + Security + RLS regression ✅
+- Playwright Browser Smoke ✅
+- Deploy #180 / run `33594520436`: **SUCCESS**.
 
-الإصلاح الأحدث لعرض وحدة التصنيع الخاصة بالمنتج موجود في الكود، والتحقق النهائي بعد تنظيف الأدوات المؤقتة جارٍ على `main`.
+تم تطبيق آخر hardening أيضًا على Production، مع بقاء التسجيل العام مغلقًا.
 
 ---
 
-## 2) بيانات Excel الجديدة — مكتمل ✅
+## 2) سلامة Production — فحص شامل ✅
+
+نتائج الفحص المباشر:
+- مخزون سالب: **0**.
+- دفعات مخزون سالبة: **0**.
+- قيود محاسبية غير متوازنة: **0**.
+- Orphan sale/purchase/order items: **0**.
+- اختلافات إجماليات البيع: **0**.
+- اختلافات إجماليات الشراء: **0**.
+- استلام مشتريات أكبر من المطلوب: **0**.
+- خلل حالة الطاولات/الطلبات المفتوحة: **0**.
+- المنتجات القابلة للبيع ذات مسار مخزون: **335/335**.
+- جداول تشغيلية بدون RLS: **0**.
+- Supabase Security Advisor: لا توجد **ERRORS** حالية.
+
+تحذيرات الأداء المتبقية ليست Release Blockers؛ لم يتم حذف `unused indexes` عشوائيًا لأن الإنتاج حديث وقد لا تكون الإحصائيات ممثلة للاستخدام الحقيقي بعد.
+
+---
+
+## 3) Security Surface Hardening — مكتمل ✅
+
+Migrations الرئيسية في دفعة الإغلاق:
+- `20260902073000_final_security_surface_hardening.sql`
+- `20260902074000_final_anon_deny_by_default.sql`
+- `20260902075000_disable_legacy_privileged_client_rpcs.sql`
+- `20260902075500_lock_internal_accounting_and_legacy_kds_helpers.sql`
+- `20260902080000_remove_verified_duplicate_indexes.sql`
+- `20260902081000_final_branch_rpc_isolation.sql`
+- `20260902082000_allow_db_admin_internal_setup_helpers.sql`
+- `20260902083000_grant_service_role_internal_rpcs.sql`
+
+الحالة النهائية:
+- `anon` لا يملك صلاحيات مباشرة على جداول `public`.
+- الاستثناءان قبل تسجيل الدخول فقط: `get_login_email(text)` و`record_login_failure(text)`.
+- `register_tenant` مغلق أمام `anon` و`authenticated` ويعمل كـinternal provisioning فقط.
+- `bootstrap_initial_super_admin` مغلق أمام `anon` و`authenticated`.
+- `service_role` و`postgres` يحتفظان بالوصول الداخلي المطلوب بدون إعادة فتح RPCs للعميل.
+- `schema_migrations` مغلق عن العملاء مع RLS.
+- View `units` تعمل `security_invoker`.
+- `search_path` للدوال الحساسة مثبت إلى `public, pg_temp` حيث لزم.
+- دوال الخصم المباشر للمخزون، Audit helpers، Accounting seed helpers، وLegacy KDS inventory helpers ليست RPCs عامة للعميل.
+- تم إغلاق تسريب branch availability/RPCs التي كانت تقبل `branch_id` خارجيًا بدون تحقق كافٍ.
+- الاختبارات تثبت صراحةً أن `anon` لا يستطيع تشغيل Tenant provisioning.
+
+ملاحظة خارج الكود: Supabase Leaked Password Protection ما زالت إعدادًا من لوحة Auth وليست migration داخل المستودع.
+
+---
+
+## 4) بيانات التشغيل / Excel ✅
 
 - المنتجات: **352/352**.
 - الأقسام: **30/30**.
-- أسماء مكررة: **0**.
+- أسماء المنتجات المكررة: **0**.
 - منتجات بدون قسم: **0**.
-- الخامات المختلفة: **215**.
+- الخامات: **215**.
 - المنتجات ذات الوصفة: **265**.
-- أسطر الوصفات: **1205/1205**.
+- أسطر الوصفات: **1205**.
 - وصفات فارغة: **0**.
-- منتجات بلا وصفة في ملف المصدر: **87**.
+- منتجات بلا وصفة مصدر: **87**.
 
-### التكلفة
-- لا نعتمد تكلفة ثابتة مستوردة من Excel.
-- تكلفة الخامات تأتي من المشتريات/دفعات المخزون الفعلية.
-- تكلفة المصنع تنتقل من تكلفة مكوناته الفعلية أثناء الإنتاج.
+التكلفة لا تعتمد تكلفة Excel ثابتة؛ الخامات والمصنعات تعتمد على المشتريات والدفعات الفعلية.
 
 ---
 
-## 3) المصنعات / Semi-finished Components ✅
+## 5) Hybrid Inventory / Manufacturing ✅
 
-- المنتجات المصنعة الداخلية: **17**.
+- المنتجات المصنعة الداخلية: **17** ومخفية من POS كمنتجات بيع مستقلة.
 - `inventory_units` المصنعة: **17**.
-- مخفية من POS كمنتجات بيع مستقلة.
-- وصفات التصنيع الخام في `inventory_unit_recipes`.
-- المنتج النهائي الذي يستهلك مصنعًا يرتبط به عبر `product_unit_links`.
-- علاقات المنتج → المصنع من Excel: **52**.
+- علاقات Product → manufactured unit: **52**.
+- Nested manufacturing مدعوم عبر `inventory_unit_recipe_units`.
+- البيع يخصم مرة واحدة فقط من المسار الفعلي:
+  - direct raw recipe → خامات FIFO.
+  - manufactured unit → `inventory_unit_batches`.
+  - ready product → `inventory_batches/inventory`.
+- لا يوجد منتج قابل للبيع بلا مسار مخزون: **335/335**.
 
-### مصنع داخل مصنع ✅
-Migration:
-`supabase/migrations/20260901233000_nested_manufacturing_hybrid_sale_inventory.sql`
-
-تم دعم `inventory_unit_recipe_units(parent -> component manufactured unit)`.
-العلاقات الفعلية: **3**:
-1. `mash side` ← `ماش مصنع .` — 0.133452 دفعة.
-2. `penna white side` ← `صوص الفريدو تصنيع` — 0.062925 دفعة.
-3. `rice side` ← `ارز بسمتى مصنع.` — 0.053727 دفعة.
-
-`produce_inventory_unit` يستهلك الخامات والمصانع الفرعية FIFO، يرفض النقص قبل إتمام التصنيع، ويجمع التكلفة الفعلية في batch المصنع الناتج.
+قاعدة ثابتة: KDS لا يخصم المخزون؛ نقطة الخصم هي البيع.
 
 ---
 
-## 4) معمارية المخزون والبيع — Hybrid Inventory ✅
+## 6) KDS / Orders ✅
 
-### منتج بوصفة خامات مباشرة
-`Product -> recipe_items -> raw_materials`
-- البيع يخصم الخامات FIFO بعد Preflight.
-
-### منتج يستخدم مصنعًا
-`Product -> product_unit_links -> manufactured inventory_unit`
-- البيع يخصم المصنع من `inventory_unit_batches`.
-- خامات المصنع لا تخصم مرة ثانية عند البيع لأنها خصمت وقت التصنيع.
-
-### منتج جاهز بلا وصفة
-- يخصم من `inventory_batches/inventory` الخاصة بالمنتج الجاهز.
-
-التغطية الفعلية:
-- المنتجات القابلة للبيع: **335/335** لها مسار مخزون واضح.
-- وصفة خامات مباشرة: **196**.
-- تستخدم مصنعًا: **52**.
-- جاهزة بلا وصفة: **87**.
-- خارج دورة المخزون: **0**.
-- الـ17 المتبقية هي المصنعات الداخلية المخفية من POS.
+- `send_to_kitchen` State/Snapshot فقط.
+- `sent_quantity` يدعم Delta عند زيادة كمية سطر سبق إرساله.
+- Approved kitchen void يخفض الكمية المرسلة الصافية.
+- Legacy KDS inventory consumption/reversal RPCs مقفلة عن العميل.
+- Cancel sent item محمي Server-side ويمر عبر Manager Approval للكاشير عند الحاجة.
 
 ---
 
-## 5) عرض مكونات المنتج في الواجهة — مُصحح ✅
+## 7) Manager Approvals — P1 ✅ أساسيًا
 
-المشكلة المكتشفة:
-`ProductsPage` كانت تعرض النظام القديم `product_components/product_units`، بينما بيانات التشغيل المستوردة والفعلية موجودة في `recipes/recipe_items` و`product_unit_links/inventory_units`.
-
-تم التصحيح:
-- نافذة تعديل المنتج تعرض **الخامات المباشرة الفعلية** من أحدث Recipe نشطة.
-- تعرض **الوحدات المخزنية/المصنعة التي يستهلكها المنتج** من `product_unit_links`.
-- تفصل ذلك عن **وحدات البيع** مثل قطعة/كرتونة.
-- لا يتم نسخ البيانات إلى الجداول القديمة ولا إنشاء مخزون مكرر.
-
-Commit الأساسي:
-`481ae725a458f861a035343a85bc5dfecc849360` — `fix: show actual product recipes and inventory units`.
-
-### وحدة التصنيع الخاصة بالمنتج
-الصورة/الفحص كشف حالة `صوص بلو تشيز مصنع`:
-- المنتج Manufactured داخلي.
-- له وحدة تصنيع فعلية بنفس الاسم في `inventory_units`.
-- لها **4 خامات تصنيع**.
-- لم تكن تظهر لأن `product_unit_links` تمثل ما **يستهلكه** المنتج، وليست الوحدة التي **ينتجها** المنتج.
-
-تم إصلاح العرض بحيث المنتج المصنع يعرض أيضًا **وحدة التصنيع الخاصة به** عند تطابق الاسم والفرع، بدون إنشاء self-link في `product_unit_links` حتى لا يستهلك المنتج نفسه.
-
-Commit:
-`8535e64fd09b4fb92eeab7a86d9d2b25a0b91ced` — `fix: show product own manufacturing unit`.
-
-بعد الإصلاح، `صوص بلو تشيز مصنع` يجب أن يظهر له **1 وحدة مصنعة** بدل الرقم المضلل 0، بالإضافة إلى خاماته الأربع.
-
----
-
-## 6) KDS والمخزون ✅
-
-- `send_to_kitchen` State/Snapshot فقط ولا يخصم مخزونًا.
-- البيع هو نقطة الخصم الفعلية مرة واحدة.
-- Cancel sent item لا يعيد مخزونًا وهميًا.
-- `cancel_sent_order_item` محمي Server-side ويتطلب موافقة للكاشير.
-
-متبقي صغير:
-- اختبار Delta عند زيادة كمية سطر سبق إرساله للمطبخ.
-
----
-
-## 7) نظام موافقات المدير — P1
-
-مكتمل:
-- Discount approval.
-- Reprint approval + `authorize_sale_print`.
-- Cancel sent item approval.
-- Realtime/ApprovalInbox + استهلاك الموافقة مرة واحدة.
-
-متبقي:
-1. Refund approval.
-2. Change payment method approval.
-3. Open drawer approval.
-4. Force close shift approval.
-5. Void order إذا كان له مسار مستقل.
-6. Cashier/Manager E2E.
-7. تحسين رسالة `REPRINT_APPROVAL_PENDING`.
-
----
-
-## 8) حماية البيع — P2
-
-مكتمل ✅:
-- cashier لا يعدل `sales` مباشرة.
-- `sale_items` immutable عبر RLS.
-- authoritative catalog pricing Server-side مختبر.
-- inventory preflight قبل mutation.
-- أُغلق مسار Direct Sale fallback الذي كان يقبل subtotal/tax/total وأسعار الأسطر من العميل.
-- إنشاء `sales` و`sale_items` أصبح محصورًا في `process_sale`؛ كل INSERT مباشر من authenticated مرفوض حتى للمدير.
-- رفض الخادم التجاري لا يتحول إلى بيع Offline ناجح، وفشل الشبكة الغامض لا يُصفّ للبيع Offline لتجنب البيع المكرر.
-- الضريبة والإجماليات تُحسب من إعدادات وأسعار الخادم، والخصومات تُقيد بحد السطر/الفاتورة.
-- `paid_amount` المطبق لا يتجاوز إجمالي الفاتورة المحسوب من الخادم.
-- الكميات غير الموجبة مرفوضة قبل أي كتابة، ومسار وحدات المخزون يستهلك معاملات `product_unit_links` الفعلية.
-
----
-
-## 9) Products vs POS — P4
-
-متبقي:
-- Server-side product search بدل البحث في أول 100 سجل فقط.
-- Pagination حقيقية مع البحث.
-- توحيد branch + active conditions بين Products وPOS.
-- invalidate/update Offline catalog cache بعد تغييرات المنتجات.
-- اختبار تطابق الـ335 منتجًا القابل للبيع بين الصفحتين.
-
----
-
-## 10) Branch visibility — P3
-
-كل سجل branch-scoped يجب أن يعرض اسم الفرع بوضوح.
-المطلوب: `BranchBadge` موحد، بدءًا من Sales/invoices/refunds/shifts ثم Products ثم المشتريات والمخزون والأطراف والتقارير والطباعة.
-
----
-
-## 11) ترتيب العمل القادم
-
-### أولوية فورية
-- إغلاق Verify/Deploy لإصلاح عرض مكونات ووحدة تصنيع المنتج.
-
-### ثم P1
-- Refund → Change payment method → Open drawer → Force close shift → E2E.
-
-### ثم P2/P3/P4
-- security pricing/tax gaps.
-- Branch visibility.
-- Products/POS search + pagination + cache consistency.
-
----
-
-## 12) قواعد ثابتة
-
-- لا نحذف أو نضعف RLS أو الاختبارات لتجاوز فشل.
-- لا نثق في بيانات العميل في العمليات المالية.
-- لا ننشئ وحدات مخزون وهمية أو self-links لمجرد العرض.
-- تكلفة الخامات والمصنعات تعتمد على المشتريات الفعلية.
-- KDS لا يخصم المخزون؛ البيع يخصم مرة واحدة فقط.
-- المصنع يمكن أن يدخل في مصنع آخر عبر `inventory_unit_recipe_units`.
-- كل عملية حساسة للكاشير تمر Permission أو Manager Approval Server-side.
-- كل تعديل مهم يجب أن ينعكس في هذا الملف.
-
----
-
-### إصلاح Recipe الوحدات — raw_materials.cost_price ✅
-- تم إصلاح `InventoryUnitsPage` الذي كان يستعلم عن العمود غير الموجود `raw_materials.cost_price`.
-- قائمة الخامات تحتاج فقط `id,name`، لذلك أزيل العمود القديم من الاستعلام ومن نوع الواجهة.
-- لم يتم إنشاء عمود تكلفة ثابت جديد؛ مصدر التكلفة التشغيلي يبقى المشتريات/الدفعات الفعلية وفق معمارية FIFO الحالية.
-- صفحة Recipes العامة لا تعتمد `cost_price` في الاستعلام؛ تستخدم بيانات الخامة الحالية وحسابها التقديري منفصل عن تكلفة FIFO التشغيلية.
-
----
-
-### تنظيف وصف وحدات التصنيع من نصوص الترحيل الداخلية ✅
-- تم اكتشاف ظهور نص تقني يبدأ بـ `Manufactured component migrated from product` داخل حقل الوصف في نافذة تعديل `inventory_units`.
-- تم تحديث `InventoryUnitsPage` بحيث يخفي هذا النص الداخلي القديم من حقل الوصف، مع إبقاء أي وصف حقيقي كتبه المستخدم كما هو.
-- عند حفظ الوحدة بعد فتحها، يُحفظ الوصف الفعلي فقط، ويصبح الوصف فارغًا بدل النص التقني إذا لم يكتب المستخدم وصفًا جديدًا.
-- لم يتم تنفيذ حذف جماعي لبيانات الترحيل من قاعدة البيانات حتى لا نفقد أي مرجع تاريخي دون داعٍ.
-
-Commit الإصلاح:
-`2e9bb33ba17580b44d806be07a8788ce4d93b468` — `fix: hide internal migration text from inventory unit description`.
-
-
----
-
-### Branch visibility — Products + Raw Materials ✅
-- تحقق إنتاجي: المنتجات **352/352** لديها `branch_id`، والخامات **215/215** لديها `branch_id`، ولا توجد سجلات بدون فرع.
-- كل بيانات Excel الحالية موجودة على **فرع نادي سموحة** فقط؛ لم يتم نسخها تلقائيًا إلى الفرع الرئيسي.
-- أُنشئ `BranchBadge` موحد في `src/components/BranchBadge.tsx`.
-- `ProductsPage` تعرض الفرع في الجدول وداخل نافذة التعديل.
-- `RawMaterialsPage` تعرض الفرع في الجدول وداخل نافذة الإضافة/التعديل.
-- قائمة الخامات أصبحت تطبق `branchFilter` صراحةً.
-- إنشاء/تعديل الخامة يرسل `branch_id` صراحةً، مع اختيار الفرع للمدير العام وإظهاره ثابتًا للمستخدم المحصور بفرعه.
-- هذه أول شريحة مكتملة من P3؛ بقية الصفحات branch-scoped ما زالت ضمن الخطة.
-
-
----
-
-### إصلاح TypeScript لربط الخامات بالفروع ✅
-- أضيف `branch_id: string` إلى نوع `RawMaterial` في `src/lib/domains/types/manufacturing.ts` حتى يطابق مخطط قاعدة البيانات الفعلي واستخدام `RawMaterialsPage`.
-- Commit: `836f128f6eacfdae06f4b353a6b3f9e8cf9b6465`.
-
-### P3 Branch visibility — Sales / Refunds / Shifts ✅
-- تم توسيع `BranchBadge` إلى صفحة المبيعات/الفواتير، وهي نفس الصفحة التي تعرض وتنفذ المرتجعات.
-- استعلام `SalesPage` أصبح يجلب `branch_id` صراحةً، ويعرض اسم الفرع في كل صف.
-- تم تحويل عمود الفرع في `ShiftsPage` إلى `BranchBadge` الموحد بدل النص العادي.
-- Commit التطبيق: `83ea36c99615139cf3f2445f2faa504b3f06043d`.
-- المكتمل في P3 حتى الآن: Products + Raw Materials + Sales/Invoices/Refund rows + Shifts.
-- المتبقي في P3: Purchases/Receiving/Procurement، Inventory/Warehouses/Transfers، Users/Parties، Reports، والطباعة/المستندات التي لا تعرض الفرع بعد.
-
-
----
-
-### P3 Branch visibility — Procurement / Inventory ✅
-- baseline قبل هذه الدفعة: Verify main #66 وDeploy #68 على `bbcf76f8c60213579fc83a04b27efe680f22f143` = SUCCESS.
-- تم إضافة `BranchBadge` إلى `PurchasesPage` لكل فاتورة شراء باستخدام `purchase.branch_id`.
-- تم إضافة `BranchBadge` إلى جدول إيصالات الاستلام في `ReceivingPage` باستخدام `PurchaseReceiptRow.branch_id`.
-- لم يتم تخمين فرع Backorders؛ نوع `PurchaseBackorderRow` الحالي لا يعيد `branch_id`، وهذه فجوة Backend يجب إغلاقها من RPC قبل إظهار الفرع للمستخدم متعدد الفروع.
-- تم توحيد عرض الفرع في `WarehousesPage` و`TransfersPage` عبر `BranchBadge`.
-- تم إضافة فرع واضح لكل سجل في `InventoryPage` من فرع المخزن، وإضافة اسم الفرع أيضًا إلى تصدير Excel للمخزون.
-- Commit التطبيق: `388d89fc791035adb92949fd782ae356b4588fb9`.
-- المكتمل في P3 حتى الآن: Products + Raw Materials + Sales/Invoices/Refund rows + Shifts + Purchases + Receiving receipts + Inventory + Warehouses + Transfers.
-- المتبقي في P3: Backorders RPC branch identity، Purchase Requests/RFQs عند الحاجة، Users/Parties، Reports، والطباعة/المستندات التي لا تعرض الفرع بعد.
-
----
-
-## تحديث 2026-09-02 — KDS / الموافقات / P3 ✅
-
-### Production schema drift — مغلق ✅
-- اكتُشف أن Production لا يحتوي `order_kitchen_voids` و`cancel_sent_order_item` رغم وجود Migration في المستودع.
-- طُبقت Migration `cancel_sent_item_approval` على Production ثم تم التحقق من الجدول وRLS والدالة وtrigger الحماية.
-- لم يتم تخطي أو إضعاف RLS لمعالجة الانحراف.
-
-### KDS quantity delta — مكتمل على Production ✅
-- Migration: `20260902051000_kitchen_quantity_delta.sql`.
-- أضيف `order_kitchen_sends.sent_quantity` مع CHECK يمنع القيم السالبة.
-- زيادة نفس `order_item_id` من 1 إلى 3 ترسل للمطبخ +2 فقط، بدل إعادة إرسال السطر كاملًا.
-- approved kitchen void يخفض `sent_quantity` عبر `trg_sync_kitchen_sent_quantity_after_void` حتى تُحسب الزيادة التالية من صافي ما وصل للمطبخ.
-- Verify main run `33570934419`: App + DB/Integration/Security/RLS + Browser Smoke = SUCCESS.
-- طُبقت Migration على Production وتم التحقق من العمود والدوال والtrigger والقيد، وعدد القيم السالبة = 0.
-
-### Manager approvals — توسعة P1 ✅
-المكتمل الآن Server-side مع التدقيق:
+مكتمل Server-side مع Audit:
 - Discount.
 - Reprint.
 - Cancel sent item.
@@ -294,149 +121,100 @@ Commit الإصلاح:
 - Change payment method.
 - Force close shift.
 - Open drawer authorization/audit.
+- Realtime approval inbox + استهلاك الموافقة مرة واحدة.
+- Cashier/Manager approval lifecycle مغطى بالاختبارات.
 
-ملاحظة: فتح درج النقدية الفيزيائي يحتاج Printer/Hardware bridge؛ النظام الحالي ينجز الإذن/الموافقة/Audit ولا يدّعي إرسال نبضة Hardware بدون bridge.
-
-المتبقي في P1: Cashier/Manager E2E شامل، تحسين `REPRINT_APPROVAL_PENDING`، وVoid order فقط إذا بقي له مسار مستقل عن cancel/refund.
-
-### P3 Branch visibility — تقدم كبير ✅
-مكتمل في الواجهات الرئيسية التالية:
-- Products + Raw Materials.
-- Sales / invoices / refund rows + Shifts.
-- Purchases + Receipts.
-- Purchase Requests + RFQs.
-- Receiving Backorders: أضيف `branch_id` إلى نوع البيانات والواجهة ونافذة الاستلام.
-- Inventory + Warehouses + Transfers.
-- Inventory Batches + Inventory Ledger.
-
-Migration الجديدة للـBackorders:
-`20260902052000_purchase_backorders_branch_visibility.sql`
-- تعيد `branch_id` من `get_purchase_backorders`.
-- تحافع على branch isolation الموجود.
-- تقوي SECURITY DEFINER إلى `search_path = public, pg_temp`.
-- تمنع EXECUTE من `PUBLIC/anon` وتبقيه لـ`authenticated/service_role`.
-- لها regression test مستقل: `purchase_backorders_branch_visibility.test.ts`.
-
-المتبقي في P3: Users/Parties، Reports، والطباعة/المستندات التي لا يظهر فيها الفرع بوضوح، مع فحص أي صفحات مخزون فرعية أخرى قبل اعتبار P3 مغلقًا.
-
-### الحالة التالية
-- لا تُطبق Migration Backorders على Production قبل Verify أخضر على HEAD النظيف.
-- بعد P3: P4 Products/POS server-side search + pagination + cache consistency ثم E2E نهائي.
+المتبقي الاختياري فقط:
+- حسم `void_order` إذا كان سيبقى له مسار تشغيل مستقل عن cancel/refund.
+- Hardware drawer pulse يحتاج Printer/Hardware bridge؛ قاعدة البيانات تغطي الإذن والموافقة والتدقيق فقط.
 
 ---
 
-## تحديث 2026-09-02 — Backorders Production + P3 Parties/Audit + P4 audit ✅
+## 8) Sale Financial Authority — P2 ✅
 
-### Backorders branch visibility — Production ✅
-- Verify main run `33572558012`: App/lint/typecheck/unit/build + DB/Integration/Security/RLS + Browser Smoke = SUCCESS.
-- Deploy run `33572557921`: SUCCESS.
-- طُبقت Migration `purchase_backorders_branch_visibility` على Production.
-- `get_purchase_backorders(uuid)` يعيد `branch_id` فعليًا.
-- الدالة `SECURITY DEFINER` مع `search_path=public, pg_temp`.
-- `anon` لا يملك EXECUTE؛ `authenticated` و`service_role` فقط يملكان EXECUTE.
-- واجهة Receiving تعرض BranchBadge في Backorders وفي نافذة الاستلام.
-
-### P3 Users / Parties / Audit ✅
-- Users: تم توحيد عرض الفرع باستخدام `BranchBadge`.
-- Customers: أضيف BranchBadge للجدول واسم الفرع إلى Excel export.
-- Suppliers: أضيف BranchBadge للجدول واسم الفرع إلى Excel export.
-- Audit Log: أضيف branch filter إلى الاستعلام وعرض BranchBadge لكل سجل.
-- commit الفعلي: `49b59f3611cdcd2dfd397c10a1f30906ffc6391d`.
-
-### P4 Products/POS — نتيجة المراجعة
-- `usePaginatedRows` يدعم server-side text search أصلًا.
-- ProductsPage يستخدم server-side search على `name`, `name_en`, `barcode`, `sku` مع pagination حقيقي من السيرفر.
-- ProductsPage يبطل POS offline catalog cache بعد تعديل/حذف المنتج.
-- POS يحمل المنتجات من `products` مع `branch_id = effectiveBranch` و`is_active = true`، ويخزن نفس الكتالوج للـoffline.
-- لذلك المشكلة القديمة: البحث داخل أول 100 فقط لم تعد موجودة في الكود الحالي.
-- المتبقي في P4: regression coverage يثبت server-side search + تطابق branch/is_active بين Products/POS، ثم إغلاق البند إذا نجح.
-
-### P3 المتبقي
-- Reports: فلتر الفرع موجود، لكن عند اختيار “كل الفروع” بعض النتائج لا تحمل اسم الفرع؛ يحتاج إصلاحًا حقيقيًا للبيانات وليس Badge شكليًا.
-- Print/documents: مراجعة أن الفرع ظاهر بوضوح في المستندات المطبوعة الأساسية.
+- Online POS يكتب عبر `process_sale` فقط.
+- Direct INSERT إلى `sales` و`sale_items` من المستخدم المسجل مرفوض.
+- أسعار السطور والإجماليات والضريبة النهائية Server-authoritative.
+- لا يتم الوثوق في `subtotal`, `tax_amount`, `total`, `unit_price` القادمة من الواجهة.
+- `paid_amount` لا يتجاوز إجمالي الخادم.
+- الكميات غير الموجبة مرفوضة قبل الكتابة.
+- رفض الخادم لا يتحول إلى Offline success.
+- فشل الشبكة الغامض لا يُصفّ تلقائيًا كبيع Offline لتجنب البيع المكرر.
+- Create/update order staging أصبح Server-authoritative بدل تخزين totals مزورة من العميل.
+- ضريبة الفرع تستخدم effective branch settings مع fallback للإعدادات العامة.
+- خصومات السطر/الفاتورة تمر القيود وموافقة المدير عند الحاجة.
+- أخطاء `INVALID_PRODUCT` و`INVALID_QUANTITY` مفصولة بوضوح.
 
 ---
-## تحديث 2026-09-02 — الحالة الحالية بعد إغلاق Backorders وP3 Parties ✅
 
-### CI / Deploy
-- Verify main على `ed54f20206ce2195ccf1fd3763069a7c2135b804` اكتمل بالكامل SUCCESS: lint + typecheck + unit + build + DB migrations + schema verification + Integration/Security/RLS + Browser Smoke.
-- Deploy لنفس الدفعة اكتمل SUCCESS.
-- تحديث السجل السابق فشل أول مرة بسبب Base64 padding فقط، ثم تم إصلاح الأداة المؤقتة ونجح commit السجل `a9eed15c4e13143d82474ba4e54a283ea94454a3`.
-- تم حذف Workflow المؤقت بعد نجاحه في commit `3ba8ed7b1ea45c9ccff57513353d75cd8dd5b4a5`.
+## 9) Purchase UOM / Partial Receiving ✅
 
-### Backorders — Production مغلق ✅
-- Migration `20260902052000_purchase_backorders_branch_visibility.sql` مطبقة على Production.
-- `get_purchase_backorders(uuid)` يعيد `branch_id` فعليًا.
-- الدالة `SECURITY DEFINER` مع `search_path = public, pg_temp`.
-- `anon` لا يملك EXECUTE؛ التنفيذ محصور في `authenticated` و`service_role`.
-- Receiving يعرض `BranchBadge` في Backorders وفي نافذة الاستلام.
+Migrations:
+- `20260902020000_purchase_raw_uom_normalization.sql`
+- `20260902061000_purchase_receipt_uom_accounting.sql`
+- `20260902071000_purchase_order_input_uom_validation.sql`
 
-### P3 Branch Visibility — المكتمل حتى الآن ✅
+مغلق:
+- kg ↔ g و l ↔ ml بالتحويل الصحيح للكمية والتكلفة.
+- UOM غير المتوافق يرفض بدل تلويث المخزون.
+- Partial receipts تطبع الكمية المستلمة الفعلية لا كامل PO line.
+- حركة كل GRN تحفظ مرجع `purchase_receipt`.
+- إكمال عدة GRNs يبني قيمة المخزون/القيد من كامل أمر الشراء.
+- Manual PO يجمع subtotal/total من البنود.
+- `paid_amount` لا يتجاوز PO total.
+- Integration E2E يغطي: 2kg @ 120/kg → 0.5 + 1.5 → 2000g @ 0.12/g → قيد 240 متوازن.
+
+---
+
+## 10) Branch Visibility — P3 ✅
+
+`BranchBadge` والهوية الفعلية للفرع مغطاة في:
 - Products + Raw Materials.
-- Sales / invoices / refund rows + Shifts.
+- Sales / invoices / refunds + Shifts.
 - Purchases + Receipts + Backorders.
 - Purchase Requests + RFQs.
 - Inventory + Warehouses + Transfers.
 - Inventory Batches + Inventory Ledger.
 - Users.
-- Customers + Suppliers، مع اسم الفرع في Excel export.
-- Audit Log، مع branch filter فعلي وعرض `BranchBadge`.
+- Customers + Suppliers + exports.
+- Audit Log.
+- Reports والتجميعات عند اختيار كل الفروع.
+- POS receipt وShift/Z reports الأساسية.
 
-### P3 Reports + Print/Documents — مكتمل في المستندات الأساسية ✅
-- كل تقارير التشغيل تضيف هوية الفرع الفعلية إلى الصفوف والجداول وExcel وCSV والطباعة.
-- التقارير التجميعية لا تخلط طريقة الدفع أو الموظف أو المنتج أو الاستهلاك أو الأداء بين الفروع؛ التجميع أصبح داخل كل فرع.
-- تقرير الربح يعرض صفًا مستقلًا لكل فرع عند اختيار «كل الفروع».
-- إيصال POS يعرض اسم الفرع الفعلي، وتقارير إغلاق الوردية/Z-Report كانت تعرض الفرع بالفعل وتم تثبيت ذلك باختبار عقد.
-- لا توجد مستندات طباعة مستقلة حالية لأوامر الشراء أو الاستلام؛ الصفحات الحالية تغطي العرض والتصدير فقط.
-- اختبارات العقد تمنع حذف هوية الفرع من التقارير وإيصال POS وتقارير الوردية.
-
-### P4 Products / POS — مغلق ✅
-- البحث في ProductsPage أصبح Server-side بالفعل عبر `usePaginatedRows` على `name`, `name_en`, `barcode`, `sku`.
-- Pagination مرتبطة بنتيجة البحث من السيرفر، وليست بحثًا داخل أول 100 فقط.
-- POS يحمل المنتجات حسب `branch_id = effectiveBranch` و`is_active = true`.
-- تعديلات/حذف المنتجات تبطل POS offline catalog cache.
-- أضيفت اختبارات عقد P4 في commits `313c7c2182e2325d84b15e910c95dd700f779a69` و`e028764338ae6c2dab483cc46cf3104b5f33cc71` لتثبيت server-side search ونطاق كتالوج POS.
-- Verify main على `e028764338ae6c2dab483cc46cf3104b5f33cc71` نجح بالكامل، وبذلك أُغلق P4.
-
-### الأولوية التالية
-1. اعتماد Cashier/Manager E2E الجديد في Verify: يغطي كل أنواع الإجراءات الحساسة، منع الموافقة الذاتية، عزل قرار المدير حسب الفرع، الاستهلاك مرة واحدة، وسجل التدقيق.
-2. حسم ما إذا كان `void_order` له مسار تشغيل مستقل أو يظل نوع موافقة محجوزًا فقط.
-3. استكمال P2 security audit المحدود للضرائب/الخصومات/الوحدات/الكميات.
-4. Purchase UOM conversion audit قبل اعتماد E2E مشتريات حقيقي.
-
-### تحسين تجربة موافقة إعادة الطباعة ✅
-- `REPRINT_APPROVAL_PENDING` يعرض رسالة واضحة بالعربية والإنجليزية تطلب إعادة المحاولة بعد اعتماد المدير.
-- فشل/انتظار الطباعة التلقائية لا يجعل عملية البيع المكتملة تظهر كأنها فشلت.
-- الطباعة اليدوية تعالج الخطأ نفسه ولا تترك Promise غير معالج في الواجهة.
+Backorders RPC يعيد `branch_id` ويحافظ على branch isolation.
 
 ---
 
-## تحديث 2026-09-02 — P2 Sale Financial Authority ✅
+## 11) Products vs POS — P4 ✅
 
-- أزيل مسار الكتابة المباشرة المتعدد الخطوات من `src/api/domains/pos.ts`؛ نقطة البيع Online تستدعي `process_sale` فقط.
-- لا يتم تحويل `MANAGER_APPROVAL_REQUIRED` أو نقص المخزون أو انتهاء الاشتراك أو أي رفض خادم إلى نجاح Offline.
-- Migration: `20260902060000_sale_financial_authority.sql` تمنع INSERT المباشر على `sales` و`sale_items` لكل مستخدم authenticated، وتحافظ على `_process_sale_core` داخليًا فقط.
-- تم تقييد المبلغ المطبق `paid_amount` إلى إجمالي الخادم لمنع تضخيم حركة الوردية أو إنشاء فرق محاسبي مصطنع.
-- توسع اختبار `process_sale_pricing` ليثبت تجاهل subtotal/tax/total/unit_price المزورة، حساب ضريبة 15% من الأساس الفعلي بعد الخصم، توازن القيد، وتقييد الدفع.
-- أضيفت حالات رفض quantity = 0 وquantity = -1 مع إثبات عدم إنشاء فاتورة.
-- عُدلت اختبارات RLS القديمة لتعكس العقد الجديد: البيع وسطور البيع RPC-only، لا Direct DML.
-- التحقق المحلي: typecheck كامل ✅، 342 unit/component tests ✅، lint ✅، build ✅.
-- Commit الإنتاج: `7c4513a030315ad9199abff493db07007106c948`.
-- Verify main run `33577577166`: App + DB/Integration/Security/RLS + Browser Smoke = **SUCCESS**.
-- Deploy run `33577577181`: **SUCCESS**.
-- أُغلقت دفعة P2 المالية الأساسية بعد نجاح التحقق الكامل؛ الأولوية التالية هي Purchase UOM conversion audit ثم E2E دورة المشتريات.
+- ProductsPage: server-side search على `name`, `name_en`, `barcode`, `sku`.
+- Pagination حقيقية من السيرفر.
+- POS catalog: `branch_id = effectiveBranch` + `is_active = true`.
+- تعديلات/حذف المنتجات تبطل Offline POS catalog cache.
+- Contract tests تثبت عدم الرجوع إلى بحث داخل أول 100 سجل أو نطاق فرع مختلف.
 
 ---
 
-## تحديث 2026-09-02 — Purchase UOM / Partial Receiving (قيد Verify)
+## 12) قرارات ثابتة
 
-- كشف التدقيق أن `_raw_add` كان يعيد قراءة كمية بند أمر الشراء كاملة عند كل استلام جزئي؛ استلام 0.5 كجم من أمر 2 كجم كان معرضًا لإضافة 2000 جم بدل 500 جم.
-- كشف أيضًا أن قيد الإكمال بعد عدة GRN كان يعتمد قيمة آخر استلام فقط، ثم يوازن الفرق على `discount_received` بدل إثبات كامل المخزون المستلم.
-- أوامر الشراء اليدوية المنشأة عبر `create_purchase_order(..., p_items)` لم تكن تجمع `subtotal/total` من البنود.
-- Migration الجديدة `20260902061000_purchase_receipt_uom_accounting.sql`:
-  - تجمع إجمالي بنود أمر الشراء اليدوي.
-  - تطبع UOM على `quantity_received` الفعلية لكل GRN، وتحفظ حركة المخزون بمرجع `purchase_receipt`.
-  - تعيد بناء قيمة مخزون الخامات/المنتجات من كامل أمر الشراء عند اكتماله.
-  - تقيد `paid_amount` المطبق بإجمالي أمر الشراء.
-- أضيف E2E حقيقي: أمر 2 كجم بسعر 120/كجم → استلام 0.5 ثم 1.5 → زيادة 2000 جم بتكلفة 0.12/جم → قيد 240 مدين/دائن.
-- الحالة: التحقق المحلي وGitHub Verify لم يكتمل بعد لهذه الدفعة.
+- لا نحذف أو نضعف RLS أو الاختبارات لتجاوز فشل.
+- لا نثق في بيانات العميل في العمليات المالية.
+- Public signup مغلق؛ Tenant provisioning داخلي فقط.
+- لا نفتح Internal RPCs للمستخدم المسجل لمجرد إنجاح الاختبارات.
+- KDS لا يخصم المخزون؛ البيع يخصم مرة واحدة فقط.
+- لا ننشئ self-links أو مخزونًا وهميًا للعرض.
+- التكلفة التشغيلية من المشتريات/الدفعات الفعلية.
+- كل عملية حساسة للكاشير تمر Permission أو Manager Approval Server-side.
+- كل سجل branch-scoped يجب أن يحترم العزل ويعرض هوية الفرع حيث يلزم.
+
+---
+
+## 13) الخطوة التالية
+
+الفحص الشامل والإغلاق الأمني وP1/P2/P3/P4 الأساسية أصبحت على baseline أخضر.
+
+العمل التالي يجب أن يكون **تشغيليًا/Release polish وليس إعادة فتح hardening المكتمل**:
+1. فحص دورة تشغيل بشرية على الموقع المنشور: Login → فتح وردية → طلب → KDS → بيع → طباعة → Refund/Approval → إغلاق وردية.
+2. تفعيل Leaked Password Protection من إعدادات Supabase Auth إذا كان الحساب/الخطة يدعمها.
+3. مراجعة `npm audit` وترقية التبعيات عالية الخطورة بطريقة غير كاسرة؛ لا تستخدم `npm audit fix --force` عشوائيًا.
+4. تحسينات UX/Performance غير الحاجبة بعد تثبيت الإصدار.
