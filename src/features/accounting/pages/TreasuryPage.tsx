@@ -37,6 +37,15 @@ export function TreasuryPage() {
   const [accounts, setAccounts] = useState<TreasuryAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [adminBranchFilter, setAdminBranchFilter] = useState('');
+
+  useEffect(() => {
+    if (!isAdminRole(user?.role) || adminBranchFilter || branches.length === 0) return;
+    const preferred = user?.branch_id && branches.some((b) => b.id === user.branch_id)
+      ? user.branch_id
+      : branches[0].id;
+    setAdminBranchFilter(preferred);
+  }, [user?.role, user?.branch_id, branches, adminBranchFilter]);
+
   const effectiveBranchFilter = isAdminRole(user?.role) ? (adminBranchFilter || null) : branchFilter;
   const currency = effectiveSettings(effectiveBranchFilter)?.currency || 'EGP';
   const { rows: transactions, loading: txLoading, error: txError, total: txTotal, hasMore: txHasMore, loadMore: loadMoreTx, loadingMore: loadingMoreTx, refresh: reloadTx } = usePaginatedRows<TreasuryTransaction>({
@@ -71,7 +80,7 @@ export function TreasuryPage() {
     }
   }, [effectiveBranchFilter]);
 
-  useEffect(() => { loadOverview(); }, [loadOverview]);
+  useEffect(() => { void loadOverview(); }, [loadOverview]);
 
   const openModal = (m: Exclude<ModalType, null>) => {
     setForm({ from_account_id: '', to_account_id: '', account_id: '', amount: '', notes: '' });
@@ -81,10 +90,11 @@ export function TreasuryPage() {
   const submit = async () => {
     const amount = Number(form.amount);
     if (!amount || amount <= 0) { show(t('required'), 'error'); return; }
+    if (!effectiveBranchFilter) { show(t('filterByBranch'), 'error'); return; }
     setSaving(true);
     let result: { data: unknown; error: { message: string } | null };
     if (modal === 'transfer') {
-      if (!form.from_account_id || !form.to_account_id) { show(t('required'), 'error'); return; }
+      if (!form.from_account_id || !form.to_account_id) { setSaving(false); show(t('required'), 'error'); return; }
       result = await api.accounting.processTransfer({
         p_branch_id: effectiveBranchFilter,
         p_from_account_id: form.from_account_id,
@@ -93,7 +103,7 @@ export function TreasuryPage() {
         p_notes: form.notes || null,
       });
     } else if (modal === 'deposit') {
-      if (!form.account_id) { show(t('required'), 'error'); return; }
+      if (!form.account_id) { setSaving(false); show(t('required'), 'error'); return; }
       result = await api.accounting.processTreasuryDeposit({
         p_branch_id: effectiveBranchFilter,
         p_account_id: form.account_id,
@@ -101,7 +111,7 @@ export function TreasuryPage() {
         p_notes: form.notes || null,
       });
     } else {
-      if (!form.account_id) { show(t('required'), 'error'); return; }
+      if (!form.account_id) { setSaving(false); show(t('required'), 'error'); return; }
       result = await api.accounting.processTreasuryWithdrawal({
         p_branch_id: effectiveBranchFilter,
         p_account_id: form.account_id,
@@ -116,7 +126,7 @@ export function TreasuryPage() {
     show(`${formatCurrency(amount, currency, lang)} (${data.reference_number || ''})`, 'success');
     await logAudit('create', 'treasury_transactions', undefined, { type: modal, amount, reference: data.reference_number });
     setModal(null);
-    loadOverview();
+    void loadOverview();
     reloadTx();
   };
 
@@ -125,7 +135,7 @@ export function TreasuryPage() {
 
   const balanceColumns: Column<TreasuryBalance>[] = [
     { key: 'account_name', header: t('accountName'), render: (b) => <span className="font-medium text-ui-text">{b.account_name}</span> },
-    { key: 'account_type', header: t('accountType'), render: (b) => <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${b.account_type === 'cash' ? 'bg-ui-warning-soft text-ui-warning  text-ui-warning' : 'bg-ui-info-soft text-ui-info dark:text-ui-info'}`}>{b.account_type === 'cash' ? t('cash') : t('bank')}</span> },
+    { key: 'account_type', header: t('accountType'), render: (b) => <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${b.account_type === 'cash' ? 'bg-ui-warning-soft text-ui-warning' : 'bg-ui-info-soft text-ui-info dark:text-ui-info'}`}>{b.account_type === 'cash' ? t('cash') : t('bank')}</span> },
     { key: 'account_number', header: t('accountCode'), render: (b) => <span className="font-mono text-xs">{b.code || '-'}</span> },
     { key: 'opening_balance', header: t('openingBalance'), render: (b) => formatCurrency(b.opening_balance, currency, lang) },
     { key: 'balance', header: t('balance'), render: (b) => <span className="font-semibold text-ui-success dark:text-ui-success">{formatCurrency(b.balance, currency, lang)}</span> },
@@ -134,7 +144,7 @@ export function TreasuryPage() {
   const txColumns: Column<TreasuryTransaction>[] = [
     { key: 'created_at', header: t('date'), render: (tx) => formatDateTime(tx.created_at, lang) },
     { key: 'transaction_type', header: t('referenceType'), render: (tx) => (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 'deposit' ? 'bg-ui-success-soft text-ui-success  dark:text-ui-success' : tx.transaction_type === 'withdrawal' ? 'bg-ui-danger-soft text-ui-danger  dark:text-ui-danger' : 'bg-ui-info-soft text-ui-info dark:text-ui-info'}`}>
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tx.transaction_type === 'deposit' ? 'bg-ui-success-soft text-ui-success dark:text-ui-success' : tx.transaction_type === 'withdrawal' ? 'bg-ui-danger-soft text-ui-danger dark:text-ui-danger' : 'bg-ui-info-soft text-ui-info dark:text-ui-info'}`}>
         {{ transfer: t('transfer'), deposit: t('deposit'), withdrawal: t('withdrawal') }[tx.transaction_type]}
       </span>
     ) },
@@ -150,7 +160,7 @@ export function TreasuryPage() {
         title={t('treasury')}
         subtitle={t('treasuryTransactions')}
         actions={can('accounts.manage') && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={() => openModal('deposit')}><PiggyBank className="w-4 h-4" /> {t('deposit')}</Button>
             <Button size="sm" variant="warning" onClick={() => openModal('withdrawal')}><HandCoins className="w-4 h-4" /> {t('withdrawal')}</Button>
             <Button size="sm" variant="outline" onClick={() => openModal('transfer')}><ArrowLeftRight className="w-4 h-4" /> {t('transfer')}</Button>
@@ -167,11 +177,11 @@ export function TreasuryPage() {
 
       {isAdminRole(user?.role) && branches.length > 0 && (
         <DesignPanel testId="treasury-branch-panel">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <label className="text-sm font-medium text-ui-muted">{t('filterByBranch')}</label>
             <select value={adminBranchFilter} onChange={(e) => setAdminBranchFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg text-sm border border-ui-border bg-ui-surface text-ui-text">
-              <option value="">{t('allBranches')}</option>
+              className="min-w-0 flex-1 sm:flex-none px-3 py-2 rounded-lg text-sm border border-ui-border bg-ui-surface text-ui-text">
+              <option value="" disabled>{t('filterByBranch')}</option>
               {branches.map((b) => <option key={b.id} value={b.id}>{isAr ? b.name : (b.name_en || b.name)}</option>)}
             </select>
           </div>
