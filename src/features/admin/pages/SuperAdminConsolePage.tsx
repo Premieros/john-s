@@ -21,7 +21,6 @@ import {
   History,
 } from 'lucide-react';
 import { supabase, admin } from '@/api';
-import { seedComprehensiveDemoData } from '@/lib/comprehensiveDemoSeeder';
 import { useLanguage } from '@/context/LanguageContext';
 import { useToast } from '@/components/Toast';
 import { useSettings } from '@/context/SettingsContext';
@@ -32,7 +31,6 @@ import { Button } from '@/components/Button';
 import { Card } from '@/components/PageHeader';
 import { Input, Textarea, Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { RolesTab } from './RolesTab';
 import { formatDate, formatDateTime } from '@/lib/format';
 
@@ -113,8 +111,6 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
   const [targetBranchId, setTargetBranchId] = useState<string>(branches[0]?.id || '');
   const [branchForm, setBranchForm] = useState<Record<string, string | number | null | undefined>>({});
   const [savingBranchCustom, setSavingBranchCustom] = useState(false);
-  const [demoBusy, setDemoBusy] = useState(false);
-  const [demoConfirmOpen, setDemoConfirmOpen] = useState(false);
 
   // Users & Audit Log state
   const [userAuditSubTab, setUserAuditSubTab] = useState<'users' | 'audit'>('users');
@@ -387,21 +383,6 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
     }
   };
 
-  const handleSeedBranchDemo = async () => {
-    if (!targetBranchId) return;
-    setDemoBusy(true);
-    try {
-      await seedComprehensiveDemoData(targetBranchId);
-      await admin.seedAllDemoData({ p_branch_id: targetBranchId });
-      show(ar ? 'تم توليد باقة بيانات تجريبية كاملة بنجاح (منتجات، وصفات، مواد خام، طاولات)' : 'Branch demo data populated successfully', 'success');
-      setDemoConfirmOpen(false);
-    } catch {
-      show(ar ? 'حدث خطأ أثناء توليد البيانات' : 'Error generating demo data', 'error');
-    } finally {
-      setDemoBusy(false);
-    }
-  };
-
   const handleUpdateUser = async () => {
     if (!editingUser) return;
     setSavingUser(true);
@@ -477,7 +458,7 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
     { key: 'tenants', label: ar ? 'المستأجرون والمنظمات' : 'Tenants & Organizations', icon: <Building2 className="w-4 h-4" /> },
     { key: 'system_controls', label: ar ? 'التحكم في النظام ومستخدمي المنصة' : 'System Controls & Users', icon: <Sliders className="w-4 h-4" /> },
     { key: 'general', label: ar ? 'إعدادات المنشأة والمتجر المركزية' : 'Enterprise Settings', icon: <Store className="w-4 h-4" /> },
-    { key: 'branches_override', label: ar ? 'تخصيصات الفروع والبيانات التجريبية' : 'Branch Overrides & Demo', icon: <SlidersHorizontal className="w-4 h-4" /> },
+    { key: 'branches_override', label: ar ? 'تخصيصات الفروع' : 'Branch Overrides', icon: <SlidersHorizontal className="w-4 h-4" /> },
     { key: 'roles', label: ar ? 'مصفوفة الأدوار والصلاحيات' : 'RBAC Roles & Matrix', icon: <ShieldCheck className="w-4 h-4" /> },
     { key: 'users_audit', label: ar ? 'المستخدمون وسجل التدقيق' : 'Users & Audit Log', icon: <Users className="w-4 h-4" /> },
     { key: 'health', label: ar ? 'صحة وتشخيص النظام' : 'System Diagnostics', icon: <Activity className="w-4 h-4" /> },
@@ -511,7 +492,7 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
             <p className="text-xs text-ui-subtle">
               {ar
                 ? 'مركز إدارة جميع المنظمات، التحكم المركزي في إنشاء المستخدمين، الإعدادات العامة، الصلاحيات، وسجل التدقيق'
-                : 'Centralized master hub for tenants, user registration controls, enterprise settings, permissions, and audit logs'}
+                : 'Centralized master hub for tenants, internal user creation controls, enterprise settings, permissions, and audit logs'}
             </p>
           </div>
         </div>
@@ -639,12 +620,12 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-ui-text">
-                    {ar ? 'التحكم في إنشاء وتسجيل المستخدمين الجدد' : 'User Registration & Account Creation'}
+                    {ar ? 'التحكم في إنشاء المستخدمين الجدد' : 'Internal User Account Creation'}
                   </h3>
                   <p className="text-xs text-ui-subtle mt-1 max-w-xl">
                     {ar
-                      ? 'مفتاح التحكم المركزي لسوبر أدمن لمنع أو السماح بإنشاء حسابات مستخدمين ومستأجرين جدد على مستوى المنصة بالكامل.'
-                      : 'Master toggle to globally allow or block new tenant registrations and user creation across the entire platform.'}
+                      ? 'مفتاح مركزي للسماح أو منع إنشاء حسابات الموظفين من داخل النظام. التسجيل العام للزوار يظل مغلقًا.'
+                      : 'Master toggle for creating staff accounts from inside the system. Public visitor registration remains disabled.'}
                   </p>
                 </div>
               </div>
@@ -659,8 +640,8 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
                 >
                   {allowNewUserCreation ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                   {allowNewUserCreation
-                    ? (ar ? 'مفعّل (يُسمح بالتسجيل)' : 'ENABLED')
-                    : (ar ? 'معطّل (يُمنع التسجيل)' : 'DISABLED')}
+                    ? (ar ? 'مفعّل (إنشاء داخلي)' : 'ENABLED')
+                    : (ar ? 'معطّل (الإنشاء موقوف)' : 'DISABLED')}
                 </span>
 
                 <Button
@@ -675,12 +656,12 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
                   ) : allowNewUserCreation ? (
                     <>
                       <Lock className="w-4 h-4" />
-                      <span>{ar ? 'إيقاف التسجيل' : 'Disable Creation'}</span>
+                      <span>{ar ? 'إيقاف إنشاء المستخدمين' : 'Disable Creation'}</span>
                     </>
                   ) : (
                     <>
                       <Unlock className="w-4 h-4" />
-                      <span>{ar ? 'تفعيل التسجيل' : 'Enable Creation'}</span>
+                      <span>{ar ? 'تفعيل إنشاء المستخدمين' : 'Enable Creation'}</span>
                     </>
                   )}
                 </Button>
@@ -696,8 +677,8 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
                 </div>
                 <p className="text-xs text-ui-subtle mt-2 leading-relaxed">
                   {ar
-                    ? 'يستطيع الزوار وأصحاب المتاجر الجدد التسجيل من صفحة إنشاء الحساب /register، ويستطيع مدراء الفروع إضافة موظفين جدد وفقاً لصلاحياتهم.'
-                    : 'New tenants can freely sign up on the registration page, and branch managers can invite staff according to their role permissions.'}
+                    ? 'يستطيع المستخدمون المخولون داخل النظام إنشاء موظفين جدد وفق صلاحياتهم. لا توجد صفحة تسجيل عامة للزوار.'
+                    : 'Authorized users can create staff accounts according to their permissions. There is no public visitor sign-up page.'}
                 </p>
               </div>
 
@@ -708,8 +689,8 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
                 </div>
                 <p className="text-xs text-ui-subtle mt-2 leading-relaxed">
                   {ar
-                    ? 'يتم حظر جميع عمليات تسجيل الحسابات الجديدة فورياً على مستوى الخادم وقاعدة البيانات مع إظهار رسالة واضحة للمستخدم. فقط Super Admin يمكنه إدارة الحسابات.'
-                    : 'All registration attempts are blocked immediately at the database level with a clear notice. Only Super Admins retain access to manage accounts.'}
+                    ? 'يتم منع إنشاء مستخدمين جدد من داخل النظام، بينما تظل الحسابات الحالية وتسجيل الدخول دون تغيير.'
+                    : 'New internal user creation is blocked while existing accounts and sign-in remain unchanged.'}
                 </p>
               </div>
             </div>
@@ -720,7 +701,7 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
                 <div className="flex items-center gap-2">
                   <History className="w-4 h-4 text-ui-subtle" />
                   <h4 className="text-xs font-bold text-ui-text uppercase tracking-wider">
-                    {ar ? 'سجل تغييرات حالة التسجيل' : 'Registration Toggle Audit Log'}
+                    {ar ? 'سجل تغييرات إنشاء المستخدمين' : 'User Creation Toggle Audit Log'}
                   </h4>
                 </div>
 
@@ -904,16 +885,7 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
               />
             </div>
 
-            <div className="flex justify-between items-center pt-4 border-t border-ui-border">
-              <Button
-                variant="outline"
-                className="text-brand-600 border-brand-500/30 hover:bg-brand-500/10"
-                onClick={() => setDemoConfirmOpen(true)}
-                disabled={demoBusy}
-              >
-                {demoBusy ? <Loader2 className="w-4 h-4 animate-spin text-brand-500" /> : <Sparkles className="w-4 h-4 text-brand-500" />}
-                <span>{ar ? 'توليد بيانات تجريبية كاملة لهذا الفرع' : 'Seed Branch Demo Data'}</span>
-              </Button>
+            <div className="flex justify-end items-center pt-4 border-t border-ui-border">
 
               <Button onClick={() => void handleSaveBranchCustom()} disabled={savingBranchCustom}>
                 {savingBranchCustom ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
@@ -1171,21 +1143,6 @@ export function SuperAdminConsolePage({ defaultTab }: SuperAdminConsoleProps = {
           </div>
         </Modal>
       )}
-
-      {/* Demo Data Confirmation */}
-      <ConfirmDialog
-        isOpen={demoConfirmOpen}
-        onClose={() => setDemoConfirmOpen(false)}
-        onConfirm={() => void handleSeedBranchDemo()}
-        title={ar ? 'توليد بيانات تجريبية للفرع' : 'Seed Branch Demo Data'}
-        message={
-          ar
-            ? 'سيتم توليد بيانات متكاملة تجريبية (منتجات، فئات، وصفات، طاولات، عملاء، وموردين) للفرع المحدد. هل تريد المتابعة؟'
-            : 'This will seed comprehensive demo products, recipes, tables, customers, and suppliers for the selected branch. Continue?'
-        }
-        confirmLabel={ar ? 'تأكيد التوليد' : 'Confirm Seed'}
-        cancelLabel={ar ? 'إلغاء' : 'Cancel'}
-      />
     </DesignSurface>
   );
 }
