@@ -63,7 +63,26 @@ export function ProductConfigModal({
         setModifierError(res.error || (isAr ? 'تعذر تحميل التعديلات' : 'Could not load modifiers'));
         return;
       }
-      const loaded = res.groups || [];
+      const loaded = Array.isArray(res.groups) ? res.groups : [];
+
+      // A product with no modifier groups should behave like a normal POS item.
+      // We only auto-add after a successful server response proving there are no
+      // groups; RPC errors never bypass required modifier validation.
+      if (loaded.length === 0 && !initialItem) {
+        onConfirm({
+          product,
+          unit_name: 'piece',
+          quantity: 1,
+          unit_price: Number(product.sale_price || 0),
+          discount_amount: 0,
+          bonus_quantity: 0,
+          modifier_option_ids: [],
+          modifiers: [],
+        });
+        onClose();
+        return;
+      }
+
       setGroups(loaded);
       if (!initialItem?.modifier_option_ids?.length) {
         const defaults: string[] = [];
