@@ -18,6 +18,7 @@ import type {
 } from '@/lib/types';
 
 type Tab = 'overview' | 'orders' | 'supplier';
+type SalesCostSummary = { sales_count: number; net_sales: number; cogs: number; ratio: number };
 
 export function CostingCenterPage() {
   const { t, lang } = useLanguage();
@@ -30,6 +31,7 @@ export function CostingCenterPage() {
   const [overview, setOverview] = useState<CostingOverviewRow[]>([]);
   const [orders, setOrders] = useState<OrderMarginRow[]>([]);
   const [supplierImpact, setSupplierImpact] = useState<SupplierPriceImpactRow[]>([]);
+  const [salesCostSummary, setSalesCostSummary] = useState<SalesCostSummary>({ sales_count: 0, net_sales: 0, cogs: 0, ratio: 0 });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,9 +67,22 @@ export function CostingCenterPage() {
   const loadOverview = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res = await api.costing.getOverview({ p_branch_id: effBranch });
+    const [res, summaryRes] = await Promise.all([
+      api.costing.getOverview({ p_branch_id: effBranch }),
+      api.costing.getSalesSummary({ p_branch_id: effBranch, p_from: null, p_to: null }),
+    ]);
     if (res.error) { setError(res.error.message); setLoading(false); show(res.error.message, 'error'); return; }
     setOverview(res.data || []);
+    if (!summaryRes.error && summaryRes.data) {
+      setSalesCostSummary({
+        sales_count: Number(summaryRes.data.sales_count || 0),
+        net_sales: Number(summaryRes.data.net_sales || 0),
+        cogs: Number(summaryRes.data.cogs || 0),
+        ratio: Number(summaryRes.data.ratio || 0),
+      });
+    } else {
+      setSalesCostSummary({ sales_count: 0, net_sales: 0, cogs: 0, ratio: 0 });
+    }
     setLoading(false);
   }, [effBranch, show]);
 
@@ -185,7 +200,7 @@ export function CostingCenterPage() {
         {money(r.gross_margin)}
       </span>
     )},
-    { key: 'marginPct', header: t('marginPct'), render: (r) => marginPill(marginPct(r.cogs, r.total - r.discount_amount)) },
+    { key: 'marginPct', header: t('marginPct'), render: (r) => marginPill(marginPct(r.cogs, r.total)) },
   ];
 
   const supplierColumns: Column<SupplierPriceImpactRow & { id: string }>[] = [
@@ -272,14 +287,19 @@ export function CostingCenterPage() {
       {tab === 'overview' && (
         <>
           <DesignPanel testId="costing-summary-panel">
-            <div className="grid sm:grid-cols-3 gap-3">
+            <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
               <div className="rounded-xl border border-ui-border bg-ui-surface/60 p-4 shadow-sm">
                 <p className="text-xs font-medium text-ui-subtle uppercase tracking-wide">{t('product')}</p>
                 <p className="mt-1 text-2xl font-bold text-ui-primary">{stats.count}</p>
               </div>
               <div className="rounded-xl border border-ui-border bg-ui-surface/60 p-4 shadow-sm">
-                <p className="text-xs font-medium text-ui-subtle uppercase tracking-wide">{t('foodCostPct')}</p>
+                <p className="text-xs font-medium text-ui-subtle uppercase tracking-wide">{isAr ? 'متوسط تكلفة المنتجات' : 'Average product cost'}</p>
                 <p className="mt-1 text-2xl font-bold text-ui-text">{formatNumber(stats.avg, 1)}%</p>
+              </div>
+              <div className="rounded-xl border border-ui-border bg-ui-surface/60 p-4 shadow-sm">
+                <p className="text-xs font-medium text-ui-subtle uppercase tracking-wide">{isAr ? 'التكلفة الفعلية من المبيعات' : 'Actual COGS / Net Sales'}</p>
+                <p className="mt-1 text-2xl font-bold text-ui-text">{formatNumber(salesCostSummary.ratio, 1)}%</p>
+                <p className="mt-1 text-[11px] text-ui-subtle">{money(salesCostSummary.cogs)} / {money(salesCostSummary.net_sales)}</p>
               </div>
               <div className="rounded-xl border border-ui-border bg-ui-surface/60 p-4 shadow-sm">
                 <p className="text-xs font-medium text-ui-subtle uppercase tracking-wide">{isAr ? 'أعلى تكلفة نسبة' : 'Highest cost ratio'}</p>
