@@ -14,6 +14,7 @@ const PosWorkspacePage = lazy(() => import('../features/pos/pages/PosWorkspacePa
 const ActiveOrdersPage = lazy(() => import('../features/pos/pages/ActiveOrdersPage').then(m => ({ default: m.ActiveOrdersPage })));
 const ProductsPage = lazy(() => import('../features/catalog/pages/ProductsPage').then(m => ({ default: m.ProductsPage })));
 const ProductSetupWizardPage = lazy(() => import('../features/catalog/pages/ProductSetupWizardPage').then(m => ({ default: m.ProductSetupWizardPage })));
+const ProductModifiersPage = lazy(() => import('../features/catalog/pages/ProductModifiersPage').then(m => ({ default: m.ProductModifiersPage })));
 const CategoriesPage = lazy(() => import('../features/catalog/pages/CategoriesPage').then(m => ({ default: m.CategoriesPage })));
 const ComponentsPage = lazy(() => import('../features/catalog/pages/ComponentsPage').then(m => ({ default: m.ComponentsPage })));
 const InventoryPage = lazy(() => import('../features/inventory/pages/InventoryPage').then(m => ({ default: m.InventoryPage })));
@@ -82,9 +83,6 @@ function ProtectedRoute({
 
   if (loading) return <PageLoader />;
   if (!session) return <Navigate to={APP_ROUTES.login} replace />;
-  // A valid authenticated session may exist a render before its application
-  // user profile is hydrated. Do not convert that transient state into a
-  // permission denial/redirect; wait for the profile so role checks are real.
   if (!user) return <PageLoader />;
   if (superAdminOnly && user.role !== 'super_admin') return <Navigate to={APP_ROUTES.dashboard} replace />;
   if (ownerOnly && !isAdminRole(user.role)) return <Navigate to={APP_ROUTES.dashboard} replace />;
@@ -121,6 +119,7 @@ export function AppRoutes() {
         <Route path="/tables" element={<ProtectedRoute permission="floor_plan.view"><Navigate to={APP_ROUTES.floorPlan} replace /></ProtectedRoute>} />
         <Route path={APP_ROUTES.products} element={<ProtectedRoute permission="products.view"><ProductsPage /></ProtectedRoute>} />
         <Route path={`${APP_ROUTES.products}/setup`} element={<ProtectedRoute permission="products.manage"><ProductSetupWizardPage /></ProtectedRoute>} />
+        <Route path="/product-modifiers" element={<ProtectedRoute permission="products.manage"><ProductModifiersPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.categories} element={<ProtectedRoute permission="categories.view"><CategoriesPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.components} element={<ProtectedRoute permission="components.view"><ComponentsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryUnits} element={<ProtectedRoute permission="raw_materials.view"><InventoryUnitsPage /></ProtectedRoute>} />
