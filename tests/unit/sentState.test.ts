@@ -22,14 +22,21 @@ const cartItem = (p: Product, quantity = 1, modifierIds: string[] = [], note?: s
   item_note: note,
 } as CartItem);
 
-const orderItem = (id: string, productId: string, quantity = 1, modifierIds: string[] = [], note: string | null = null) => ({
+const orderItem = (id: string, productId: string, quantity = 1, modifierIds: string[] = [], note: string | null = null): OrderItem => ({
   id,
+  order_id: 'order-1',
   product_id: productId,
+  unit_name: 'piece',
   quantity,
+  unit_price: 10,
+  discount_amount: 0,
+  bonus_quantity: 0,
+  total: quantity * 10,
+  notes: note,
+  created_at: '2026-09-02T00:00:00.000Z',
   modifier_option_ids: modifierIds,
   modifiers_snapshot: [],
-  notes: note,
-} as OrderItem);
+});
 
 const kitchenSend = (orderItemId: string, productId: string, quantity = 1) => ({
   send_id: `send-${orderItemId}`,
