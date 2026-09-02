@@ -8,7 +8,7 @@ import { computePosTotals, computeLineDiscount, type PosPaymentMethod } from '@/
 import { logAudit } from '@/lib/audit';
 import type { CartItem, Customer, DiningTable, Order, OrderItem, OrderType, Product, RpcResult, Settings } from '@/lib/types';
 import { ORDER_TYPE_KEY } from '../utils/orderTypes';
-import { cartToItems, orderItemsToCart } from '../utils/cart';
+import { cartLineKey, cartToItems, orderItemsToCart } from '../utils/cart';
 import { buildReceiptHtml, buildKitchenTicketHtml, openPrintWindow, ReceiptPrintApprovalError, type ReceiptData } from '../utils/printing';
 import { fetchOrderForWorkspace } from '../services/posOrders';
 import { sendOrderToKitchen } from '../services/kitchen';
@@ -99,8 +99,6 @@ export function usePosOrder(input: UsePosOrderInput) {
     );
   }, [isAr, show]);
 
-  // Apply the configured default payment method once settings are loaded,
-  // unless the cashier already picked a method this session.
   useEffect(() => {
     if (paymentTouched.current) return;
     const dm = effSettings?.pos_default_payment_method as PosPaymentMethod;
@@ -137,8 +135,6 @@ export function usePosOrder(input: UsePosOrderInput) {
         setActiveOrderNumber(order.order_number);
         setGuestCount(order.guest_count);
         setOrderNotes(order.notes || '');
-        // Repair a legacy 'vacant' row left under an open order, but never
-        // overwrite a manager's 'reserved'/'closed' status.
         if (order.table_id) {
           supabase.from('dining_tables').select('status').eq('id', order.table_id).maybeSingle().then(({ data: tbl }) => {
             if (!cancelled && tbl && (tbl as { status: string }).status === 'vacant') {
@@ -169,60 +165,104 @@ export function usePosOrder(input: UsePosOrderInput) {
   const addToCart = useCallback((
     product: Product,
     quantity = 1,
-    modifiers: { name: string; price?: number }[] = [],
-    discount = 0
+    modifiers: NonNullable<CartItem['modifiers']> = [],
+    discount = 0,
+    modifierOptionIds: string[] = [],
+    unitPrice?: number,
+    itemNote?: string,
   ) => {
     const stock = getStock(product.id);
-    const inCart = cart.find((i) => i.product.id === product.id)?.quantity || 0;
-    if (inCart + quantity > stock) {
+    const totalProductQty = cart
+      .filter((i) => i.product.id === product.id)
+      .reduce((sum, i) => sum + i.quantity, 0);
+    if (totalProductQty + quantity > stock) {
       show(`${product.name}: ${t('insufficientStock')} (${stock})`, 'error');
       return;
     }
+
+    const incoming: CartItem = {
+      product,
+      unit_name: 'piece',
+      quantity,
+      unit_price: unitPrice ?? product.sale_price,
+      discount_amount: discount,
+      bonus_quantity: 0,
+      modifier_option_ids: modifierOptionIds,
+      modifiers,
+      item_note: itemNote,
+    };
+    const incomingKey = cartLineKey(incoming);
+
     setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === product.id && (!modifiers.length));
-      if (existing && !modifiers.length) {
-        return prev.map((i) => (i.product.id === product.id ? { ...i, quantity: i.quantity + quantity } : i));
+      const existing = prev.find((i) => cartLineKey(i) === incomingKey);
+      if (existing) {
+        return prev.map((i) => cartLineKey(i) === incomingKey ? { ...i, quantity: i.quantity + quantity } : i);
       }
-      return [
-        ...prev,
-        {
-          product,
-          unit_name: 'piece',
-          quantity,
-          unit_price: product.sale_price,
-          discount_amount: discount,
-          bonus_quantity: 0,
-          modifiers: modifiers.map((m) => ({ name: m.name })),
-        },
-      ];
+      return [...prev, incoming];
     });
   }, [getStock, cart, show, t]);
 
-  const updateQty = useCallback((productId: string, delta: number) => {
-    const stock = getStock(productId);
+  const updateQty = useCallback((lineKey: string, delta: number) => {
+    const target = cart.find((i) => cartLineKey(i) === lineKey);
+    if (!target) return;
+    const stock = getStock(target.product.id);
     if (delta > 0) {
-      const inCart = cart.find((i) => i.product.id === productId)?.quantity || 0;
-      if (inCart + delta > stock) { show(`${t('insufficientStock')} (${stock})`, 'error'); return; }
+      const totalProductQty = cart
+        .filter((i) => i.product.id === target.product.id)
+        .reduce((sum, i) => sum + i.quantity, 0);
+      if (totalProductQty + delta > stock) { show(`${t('insufficientStock')} (${stock})`, 'error'); return; }
     }
-    setCart((prev) => prev.map((i) => (i.product.id === productId ? { ...i, quantity: Math.max(0, i.quantity + delta) } : i)).filter((i) => i.quantity > 0));
+    setCart((prev) => prev
+      .map((i) => cartLineKey(i) === lineKey ? { ...i, quantity: Math.max(0, i.quantity + delta) } : i)
+      .filter((i) => i.quantity > 0));
   }, [getStock, cart, show, t]);
 
-  const setQty = useCallback((productId: string, qty: number) => {
-    const stock = getStock(productId);
-    if (qty > stock) { show(`${t('insufficientStock')} (${stock})`, 'error'); qty = stock; }
-    setCart((prev) => prev.map((i) => (i.product.id === productId ? { ...i, quantity: Math.max(1, qty) } : i)));
-  }, [getStock, show, t]);
+  const setQty = useCallback((lineKey: string, qty: number) => {
+    const target = cart.find((i) => cartLineKey(i) === lineKey);
+    if (!target) return;
+    const stock = getStock(target.product.id);
+    const otherQty = cart
+      .filter((i) => i.product.id === target.product.id && cartLineKey(i) !== lineKey)
+      .reduce((sum, i) => sum + i.quantity, 0);
+    const maxForLine = Math.max(0, stock - otherQty);
+    if (qty > maxForLine) { show(`${t('insufficientStock')} (${stock})`, 'error'); qty = maxForLine; }
+    setCart((prev) => prev
+      .map((i) => cartLineKey(i) === lineKey ? { ...i, quantity: Math.max(1, qty) } : i));
+  }, [cart, getStock, show, t]);
 
-  const removeFromCart = useCallback((productId: string) => setCart((prev) => prev.filter((i) => i.product.id !== productId)), []);
+  const removeFromCart = useCallback((lineKey: string) => setCart((prev) => prev.filter((i) => cartLineKey(i) !== lineKey)), []);
   const clearCart = useCallback(() => setCart(EMPTY_CART), []);
 
-  const setItemDiscount = useCallback((productId: string, discount: number) => {
-    const item = cart.find((i) => i.product.id === productId);
+  const setItemDiscount = useCallback((lineKey: string, discount: number) => {
+    const item = cart.find((i) => cartLineKey(i) === lineKey);
     if (!item) return;
     const lineTotal = item.quantity * item.unit_price;
     const d = computeLineDiscount(lineTotal, discount || 0);
-    setCart((prev) => prev.map((i) => (i.product.id === productId ? { ...i, discount_amount: d } : i)));
+    setCart((prev) => prev.map((i) => cartLineKey(i) === lineKey ? { ...i, discount_amount: d } : i));
   }, [cart]);
+
+  const replaceCartLine = useCallback((lineKey: string, nextItem: CartItem) => {
+    const stock = getStock(nextItem.product.id);
+    const otherQty = cart
+      .filter((i) => i.product.id === nextItem.product.id && cartLineKey(i) !== lineKey)
+      .reduce((sum, i) => sum + i.quantity, 0);
+    if (otherQty + nextItem.quantity > stock) {
+      show(`${nextItem.product.name}: ${t('insufficientStock')} (${stock})`, 'error');
+      return false;
+    }
+    setCart((prev) => {
+      const withoutOld = prev.filter((i) => cartLineKey(i) !== lineKey);
+      const nextKey = cartLineKey(nextItem);
+      const existing = withoutOld.find((i) => cartLineKey(i) === nextKey);
+      if (existing) {
+        return withoutOld.map((i) => cartLineKey(i) === nextKey
+          ? { ...i, quantity: i.quantity + nextItem.quantity, discount_amount: i.discount_amount + nextItem.discount_amount }
+          : i);
+      }
+      return [...withoutOld, nextItem];
+    });
+    return true;
+  }, [cart, getStock, show, t]);
 
   const taxRate = effSettings?.tax_enabled ? (effSettings?.tax_rate || 0) : 0;
   const totals = useMemo(
@@ -304,7 +344,6 @@ export function usePosOrder(input: UsePosOrderInput) {
     await performDetach();
   }, [isAr, performDetach]);
 
-  // Seamlessly resume an existing table's order without losing any state or creating duplicates
   const resumeTableOrder = useCallback((order: Order, items: OrderItem[], orderProducts: Product[], table: DiningTable) => {
     setActiveOrderId(order.id);
     setActiveOrderNumber(order.order_number);
@@ -318,7 +357,6 @@ export function usePosOrder(input: UsePosOrderInput) {
     setCart(cartItems);
   }, []);
 
-  // Initialize a new order directly on a selected table
   const startTableOrder = useCallback((table: DiningTable, guests = 2) => {
     setCart(EMPTY_CART);
     setActiveOrderId(null);
@@ -332,10 +370,8 @@ export function usePosOrder(input: UsePosOrderInput) {
     setPaidAmount(0);
   }, []);
 
-  // Move / Transfer order between tables
   const transferOrderToTable = useCallback(async (targetOrderId: string, fromTableId: string, toTableId: string): Promise<boolean> => {
     try {
-      // Update order table_id
       const { error: ordErr } = await supabase
         .from('orders')
         .update({ table_id: toTableId, updated_at: new Date().toISOString() })
@@ -346,19 +382,16 @@ export function usePosOrder(input: UsePosOrderInput) {
         return false;
       }
 
-      // Free old table
       await supabase
         .from('dining_tables')
         .update({ status: 'vacant', updated_at: new Date().toISOString() })
         .eq('id', fromTableId);
 
-      // Occupy target table
       await supabase
         .from('dining_tables')
         .update({ status: 'occupied', updated_at: new Date().toISOString() })
         .eq('id', toTableId);
 
-      // Fetch new table details
       const { data: newTable } = await supabase
         .from('dining_tables')
         .select('*')
@@ -378,13 +411,12 @@ export function usePosOrder(input: UsePosOrderInput) {
     }
   }, [activeOrderId, isAr, show]);
 
-  // Cancelling a sent kitchen line is a server-side approval operation. KDS is
-  // state-only, so this path must never restore/increase inventory.
-  const voidSentItem = useCallback(async (productId: string, voidQuantity: number, reason: string): Promise<boolean> => {
+  const voidSentItem = useCallback(async (lineKey: string, voidQuantity: number, reason: string): Promise<boolean> => {
     if (!activeOrderId) return false;
     try {
-      const item = cart.find((i) => i.product.id === productId);
+      const item = cart.find((i) => cartLineKey(i) === lineKey);
       if (!item) return false;
+      const productId = item.product.id;
 
       const { data, error } = await supabase.rpc('cancel_sent_order_item', {
         p_order_id: activeOrderId,
@@ -424,12 +456,10 @@ export function usePosOrder(input: UsePosOrderInput) {
       const remaining = Number(result.remaining_quantity ?? Math.max(0, item.quantity - voidQuantity));
       setCart((prev) =>
         remaining <= 0
-          ? prev.filter((i) => i.product.id !== productId)
-          : prev.map((i) => (i.product.id === productId ? { ...i, quantity: remaining } : i))
+          ? prev.filter((i) => cartLineKey(i) !== lineKey)
+          : prev.map((i) => cartLineKey(i) === lineKey ? { ...i, quantity: remaining } : i)
       );
 
-      // Keep the current-session sent snapshot visually aligned. Persistent KDS
-      // state/history remains authoritative in order_kitchen_sends/voids.
       setKitchenSentItems((prev) =>
         prev
           .map((i) => {
@@ -456,7 +486,6 @@ export function usePosOrder(input: UsePosOrderInput) {
     }
   }, [activeOrderId, cart, isAr, show]);
 
-  // Creates or updates the persisted order from the current cart.
   const persistCart = useCallback(async (status: 'open' | 'held'): Promise<PersistResult> => {
     if (!branchId) { show(t('selectBranchFirst'), 'error'); return { ok: false, orderId: null, orderNumber: null }; }
     const itemRows = cartToItems(cart);
@@ -505,8 +534,6 @@ export function usePosOrder(input: UsePosOrderInput) {
     return { ok: true, orderId: r.order_id || null, orderNumber: (r as RpcResult & { order_number?: string }).order_number || null };
   }, [branchId, activeOrderId, activeOrderNumber, orderType, tableId, customerId, guestCount, orderNotes, cart, subtotal, discountValue, discountType, taxAmount, total, user?.id, show, t]);
 
-  // Holds the current cart: updates the SAME order when resuming (audit C2),
-  // never creating a duplicate.
   const holdOrder = useCallback(async (): Promise<boolean> => {
     if (cart.length === 0 || completing || orderLoading) return false;
     if (!branchId) { show(t('selectBranchFirst'), 'error'); return false; }
@@ -523,9 +550,6 @@ export function usePosOrder(input: UsePosOrderInput) {
         const { ok, orderId: newId, orderNumber: newNum } = await persistCart('open');
         if (!ok) return false;
         if (newId) {
-          // New orders are created 'open'; flip to 'held' and verify the flip so a
-          // failure does not silently leave an open order (audit M3). On failure
-          // keep the id so a retry updates it instead of duplicating (audit C2).
           const heldRes = await api.floorPlan.setOrderStatus({ p_order_id: newId, p_status: 'held' });
           if (heldRes.error || !(heldRes.data as RpcResult | null)?.success) {
             show(t('orderHeld') + ': ' + (heldRes.error?.message || (heldRes.data as RpcResult | null)?.detail || (heldRes.data as RpcResult | null)?.error || ''), 'error');
@@ -542,9 +566,6 @@ export function usePosOrder(input: UsePosOrderInput) {
     }
   }, [cart.length, completing, orderLoading, branchId, orderType, tableId, activeOrderId, persistCart, show, t, isAr]);
 
-  // Sends unsent cart lines to the kitchen. The first send persists the cart as
-  // an open order so kitchen-send state has an order to attach to; later sends
-  // only snapshot the new lines (idempotent server-side).
   const sendToKitchen = useCallback(async (): Promise<boolean> => {
     if (cart.length === 0 || completing || orderLoading || kitchenSending) return false;
     if (!branchId) { show(t('selectBranchFirst'), 'error'); return false; }
@@ -654,7 +675,7 @@ export function usePosOrder(input: UsePosOrderInput) {
       const receiptPayload: ReceiptData = {
         invoice: invoiceNumber,
         branchName,
-        items: cart.map((i) => ({ name: i.product.name, qty: i.quantity, price: i.unit_price, total: i.quantity * i.unit_price - i.discount_amount })),
+        items: cart.map((i) => ({ name: [i.product.name, i.modifiers?.map((m) => m.name).join(' · ')].filter(Boolean).join(' — '), qty: i.quantity, price: i.unit_price, total: i.quantity * i.unit_price - i.discount_amount })),
         subtotal, discount: discountValue, tax: taxAmount, total,
         paid: paidAmountToUse, change, date: new Date().toISOString(),
         customerName: customers.find((c) => c.id === customerId)?.name || '',
@@ -683,8 +704,6 @@ export function usePosOrder(input: UsePosOrderInput) {
           const html = await buildReceiptHtml(receiptPayload, effSettings, lang, isAr);
           openPrintWindow(html, effSettings.receipt_width_mm || 80);
         } catch (error) {
-          // The sale is already committed. A print approval/error must never
-          // make the completed sale appear to have failed.
           showReceiptPrintError(error);
         }
       }
@@ -706,8 +725,6 @@ export function usePosOrder(input: UsePosOrderInput) {
 
   const closeReceipt = useCallback(() => setReceiptSaleId(null), []);
 
-  // Full workspace reset: used when switching branches so no order/cart state
-  // from the previous branch leaks into the new one.
   const resetWorkspace = useCallback(() => {
     setCart(EMPTY_CART);
     setCustomerId('');
@@ -740,7 +757,7 @@ export function usePosOrder(input: UsePosOrderInput) {
     lastReceipt, receiptSaleId, closeReceipt,
     subtotal, discountValue, taxAmount, total, change,
     effCurrency,
-    addToCart, updateQty, setQty, removeFromCart, clearCart, setItemDiscount,
+    addToCart, updateQty, setQty, removeFromCart, clearCart, setItemDiscount, replaceCartLine,
     switchOrderType, holdOrder, sendToKitchen, printKitchenTicket, completeSale, printReceipt,
     detachTable, detachOrder, resetWorkspace,
     resumeTableOrder, startTableOrder, transferOrderToTable, voidSentItem,
