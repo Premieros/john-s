@@ -42,7 +42,6 @@ const SuppliersPage = lazy(() => import('../features/parties/pages/SuppliersPage
 const ExpensesPage = lazy(() => import('../features/trade/pages/ExpensesPage').then(m => ({ default: m.ExpensesPage })));
 const SalesPage = lazy(() => import('../features/trade/pages/SalesPage').then(m => ({ default: m.SalesPage })));
 const ShiftsPage = lazy(() => import('../features/trade/pages/ShiftsPage').then(m => ({ default: m.ShiftsPage })));
-
 const ReportsCenterPage = lazy(() => import('../features/reporting/pages/ReportsCenterPage').then(m => ({ default: m.ReportsCenterPage })));
 const FinancialReportsPage = lazy(() => import('../features/accounting/pages/FinancialReportsPage').then(m => ({ default: m.FinancialReportsPage })));
 const AccountsPage = lazy(() => import('../features/accounting/pages/AccountsPage').then(m => ({ default: m.AccountsPage })));
@@ -58,36 +57,18 @@ const SystemHealthPage = lazy(() => import('../features/admin/pages/SystemHealth
 const ImportExportCenterPage = lazy(() => import('../features/import-export/pages/ImportExportCenterPage').then(m => ({ default: m.ImportExportCenterPage })));
 
 function PageLoader() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-ui-page">
-      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-ui-primary" />
-    </div>
-  );
+  return <div className="min-h-screen flex items-center justify-center bg-ui-page"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-ui-primary" /></div>;
 }
 
-function ProtectedRoute({
-  children,
-  permission,
-  fullscreen,
-  superAdminOnly = false,
-  ownerOnly = false,
-}: {
-  children: ReactNode;
-  permission?: Permission;
-  fullscreen?: boolean;
-  superAdminOnly?: boolean;
-  ownerOnly?: boolean;
-}) {
+function ProtectedRoute({ children, permission, fullscreen, superAdminOnly = false, ownerOnly = false }: { children: ReactNode; permission?: Permission; fullscreen?: boolean; superAdminOnly?: boolean; ownerOnly?: boolean }) {
   const { session, loading, user } = useAuth();
   const can = useCan();
-
   if (loading) return <PageLoader />;
   if (!session) return <Navigate to={APP_ROUTES.login} replace />;
   if (!user) return <PageLoader />;
   if (superAdminOnly && user.role !== 'super_admin') return <Navigate to={APP_ROUTES.dashboard} replace />;
   if (ownerOnly && !isAdminRole(user.role)) return <Navigate to={APP_ROUTES.dashboard} replace />;
   if (permission && !can(permission)) return <Navigate to={APP_ROUTES.dashboard} replace />;
-
   if (fullscreen) return <>{children}</>;
   return <Layout>{children}</Layout>;
 }
@@ -119,7 +100,7 @@ export function AppRoutes() {
         <Route path="/tables" element={<ProtectedRoute permission="floor_plan.view"><Navigate to={APP_ROUTES.floorPlan} replace /></ProtectedRoute>} />
         <Route path={APP_ROUTES.products} element={<ProtectedRoute permission="products.view"><ProductsPage /></ProtectedRoute>} />
         <Route path={`${APP_ROUTES.products}/setup`} element={<ProtectedRoute permission="products.manage"><ProductSetupWizardPage /></ProtectedRoute>} />
-        <Route path="/product-modifiers" element={<ProtectedRoute permission="products.manage"><ProductModifiersPage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.productModifiers} element={<ProtectedRoute permission="products.manage"><ProductModifiersPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.categories} element={<ProtectedRoute permission="categories.view"><CategoriesPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.components} element={<ProtectedRoute permission="components.view"><ComponentsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryUnits} element={<ProtectedRoute permission="raw_materials.view"><InventoryUnitsPage /></ProtectedRoute>} />
