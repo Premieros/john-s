@@ -172,28 +172,28 @@ export function ProductConfigModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ui-text/50 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-ui-border bg-ui-surface shadow-ui-2xl">
-        <div className="flex items-center justify-between border-b border-ui-border px-6 py-4">
-          <div className="flex items-center gap-3">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ui-text/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-ui-border bg-ui-surface pb-[env(safe-area-inset-bottom)] shadow-ui-2xl sm:max-h-[90vh] sm:max-w-lg sm:rounded-3xl sm:pb-0">
+        <div className="flex items-center justify-between border-b border-ui-border px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex min-w-0 items-center gap-3">
             {product.image_url ? (
-              <img src={product.image_url} alt={product.name} className="h-12 w-12 rounded-2xl object-cover" />
+              <img src={product.image_url} alt={product.name} className="h-11 w-11 shrink-0 rounded-2xl object-cover sm:h-12 sm:w-12" />
             ) : (
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-ui-primary-soft text-ui-accent">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-ui-primary-soft text-ui-accent sm:h-12 sm:w-12">
                 <Tag className="h-6 w-6" />
               </div>
             )}
-            <div>
-              <h3 className="text-base font-black text-ui-text">{isAr ? product.name : product.name_en || product.name}</h3>
+            <div className="min-w-0">
+              <h3 className="truncate text-base font-black text-ui-text">{isAr ? product.name : product.name_en || product.name}</h3>
               <p className="text-xs font-bold text-ui-accent">{formatCurrency(product.sale_price, currency, lang)}</p>
             </div>
           </div>
-          <button onClick={onClose} aria-label={isAr ? 'إغلاق' : 'Close'} className="flex h-9 w-9 items-center justify-center rounded-xl text-ui-subtle hover:bg-ui-page-alt hover:text-ui-text">
+          <button onClick={onClose} aria-label={isAr ? 'إغلاق' : 'Close'} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-ui-subtle hover:bg-ui-page-alt hover:text-ui-text sm:h-9 sm:w-9">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 sm:space-y-6 sm:p-6">
           <div>
             <label className="mb-2 block text-xs font-black text-ui-muted">{isAr ? 'الكمية' : 'Quantity'}</label>
             <div className="flex items-center justify-center gap-4 rounded-2xl border border-ui-border bg-ui-page-alt p-3">
@@ -220,7 +220,7 @@ export function ProductConfigModal({
                     {' · '}{selectedCount}/{group.max_selections}
                   </span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
                   {group.options.map((option) => {
                     const active = selectedIds.includes(option.id);
                     const delta = Number(option.price_delta || 0);
@@ -261,14 +261,14 @@ export function ProductConfigModal({
           {modifierError && <div className="rounded-xl border border-ui-danger/30 bg-ui-danger/10 px-3 py-2 text-xs font-bold text-ui-danger">{modifierError}</div>}
         </div>
 
-        <div className="flex items-center justify-between border-t border-ui-border bg-ui-page-alt px-6 py-4">
-          <div>
+        <div className="flex flex-col gap-3 border-t border-ui-border bg-ui-page-alt px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+          <div className="flex items-center justify-between sm:block">
             <p className="text-[11px] font-bold text-ui-subtle">{isAr ? 'إجمالي الصنف' : 'Line Total'}</p>
             <p className="text-xl font-black text-ui-accent">{formatCurrency(lineTotal, currency, lang)}</p>
           </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="rounded-xl border border-ui-border bg-ui-surface px-5 py-2.5 text-xs font-black text-ui-muted hover:bg-ui-page-alt">{t('cancel')}</button>
-            <button type="button" disabled={loadingModifiers} onClick={handleSave} className="rounded-xl bg-ui-primary px-6 py-2.5 text-xs font-black text-ui-primary-fg shadow-ui-md hover:bg-ui-primary-hover disabled:opacity-50">
+          <div className="grid grid-cols-2 gap-2 sm:flex">
+            <button type="button" onClick={onClose} className="min-h-11 rounded-xl border border-ui-border bg-ui-surface px-5 py-2.5 text-xs font-black text-ui-muted hover:bg-ui-page-alt">{t('cancel')}</button>
+            <button type="button" disabled={loadingModifiers} onClick={handleSave} className="min-h-11 rounded-xl bg-ui-primary px-6 py-2.5 text-xs font-black text-ui-primary-fg shadow-ui-md hover:bg-ui-primary-hover disabled:opacity-50">
               {initialItem ? (isAr ? 'تحديث الصنف' : 'Update Item') : (isAr ? 'إضافة للطلب' : 'Add to Order')}
             </button>
           </div>
