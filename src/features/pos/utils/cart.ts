@@ -8,6 +8,7 @@ export interface ItemPayload {
   discount_amount: number;
   bonus_quantity: number;
   total: number;
+  modifier_option_ids: string[];
   notes?: string | null;
 }
 
@@ -20,7 +21,8 @@ export function cartToItems(cart: CartItem[]): ItemPayload[] {
     discount_amount: i.discount_amount,
     bonus_quantity: i.bonus_quantity,
     total: i.quantity * i.unit_price - i.discount_amount,
-    notes: i.modifiers && i.modifiers.length > 0 ? i.modifiers.map((m) => m.name).join(', ') : null,
+    modifier_option_ids: i.modifier_option_ids || [],
+    notes: i.item_note || null,
   }));
 }
 
@@ -35,7 +37,14 @@ export function orderItemsToCart(items: OrderItem[], products: Product[]): CartI
       unit_price: Number(i.unit_price),
       discount_amount: Number(i.discount_amount),
       bonus_quantity: Number(i.bonus_quantity),
-      modifiers: i.notes ? i.notes.split(', ').map((n) => ({ name: n })) : [],
+      modifier_option_ids: i.modifier_option_ids || [],
+      modifiers: (i.modifiers_snapshot || []).map((m) => ({
+        id: m.option_id,
+        group_name: m.group_name,
+        name: m.option_name,
+        price_delta: Number(m.price_delta || 0),
+      })),
+      item_note: i.notes || undefined,
     }))
     .filter((i) => i.product)
     .map((i) => ({ ...i, product: i.product as Product }));
