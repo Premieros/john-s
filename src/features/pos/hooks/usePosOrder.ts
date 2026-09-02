@@ -8,7 +8,7 @@ import { computePosTotals, computeLineDiscount, type PosPaymentMethod } from '@/
 import { logAudit } from '@/lib/audit';
 import type { CartItem, Customer, DiningTable, Order, OrderItem, OrderType, Product, RpcResult, Settings } from '@/lib/types';
 import { ORDER_TYPE_KEY } from '../utils/orderTypes';
-import { cartLineKey, cartToItems, orderItemsToCart } from '../utils/cart';
+import { cartLineKey, cartToItems, orderItemLineKey, orderItemsToCart } from '../utils/cart';
 import { buildReceiptHtml, buildKitchenTicketHtml, openPrintWindow, ReceiptPrintApprovalError, type ReceiptData } from '../utils/printing';
 import { fetchOrderForWorkspace } from '../services/posOrders';
 import { sendOrderToKitchen } from '../services/kitchen';
@@ -418,9 +418,31 @@ export function usePosOrder(input: UsePosOrderInput) {
       if (!item) return false;
       const productId = item.product.id;
 
-      const { data, error } = await supabase.rpc('cancel_sent_order_item', {
+      const { data: orderRows, error: orderRowsError } = await supabase
+        .from('order_items')
+        .select('id,product_id,modifier_option_ids,notes')
+        .eq('order_id', activeOrderId)
+        .eq('product_id', productId);
+      if (orderRowsError) {
+        show(orderRowsError.message, 'error');
+        return false;
+      }
+      const matchingOrderItems = ((orderRows || []) as Pick<OrderItem, 'id' | 'product_id' | 'modifier_option_ids' | 'notes'>[])
+        .filter((orderItem) => orderItemLineKey(orderItem) === lineKey);
+      if (matchingOrderItems.length !== 1) {
+        show(
+          isAr
+            ? 'تعذر تحديد سطر الطلب المرسل بدقة. حدّث الطلب وحاول مرة أخرى.'
+            : 'Could not identify the exact sent order line. Refresh the order and try again.',
+          'error'
+        );
+        return false;
+      }
+      const orderItemId = matchingOrderItems[0].id;
+
+      const { data, error } = await supabase.rpc('cancel_sent_order_item_exact', {
         p_order_id: activeOrderId,
-        p_product_id: productId,
+        p_order_item_id: orderItemId,
         p_quantity: voidQuantity,
         p_reason: reason,
       });
@@ -463,7 +485,7 @@ export function usePosOrder(input: UsePosOrderInput) {
       setKitchenSentItems((prev) =>
         prev
           .map((i) => {
-            if (i.product_id !== productId) return i;
+            if (i.order_item_id !== orderItemId) return i;
             const qty = Number(i.quantity || 0) - voidQuantity;
             return { ...i, quantity: Math.max(0, qty) };
           })
