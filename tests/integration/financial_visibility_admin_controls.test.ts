@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { getDbUrl, openDb } from './db';
-import { canImpersonate, runAs, seedRlsFixture, type RlsIds } from './rls';
+import { canImpersonate, runAs, runAsPersist, seedRlsFixture, type RlsIds } from './rls';
 
 const dbUrl = getDbUrl();
 const skip = !dbUrl;
@@ -72,11 +72,14 @@ describe.skipIf(skip)('financial visibility admin controls', () => {
   guarded('configured historical percentage is used by read predicates', async () => {
     const rowId = randomUUID();
 
-    await runAs(
+    const setAllVisible = await runAsPersist(
       client,
       ids.users.super_admin,
-      'SELECT public.update_financial_visibility_settings(7, 100)',
+      'SELECT public.update_financial_visibility_settings(7, 100) AS result',
     );
+    expect(setAllVisible.error).toBeUndefined();
+    expect(setAllVisible.rows[0].result).toMatchObject({ success: true, recent_days: 7, historical_percent: 100 });
+
     const visible = await runAs(
       client,
       ids.users.cashier,
@@ -86,11 +89,14 @@ describe.skipIf(skip)('financial visibility admin controls', () => {
     expect(visible.error).toBeUndefined();
     expect(visible.rows[0].allowed).toBe(true);
 
-    await runAs(
+    const setAllHidden = await runAsPersist(
       client,
       ids.users.super_admin,
-      'SELECT public.update_financial_visibility_settings(7, 0)',
+      'SELECT public.update_financial_visibility_settings(7, 0) AS result',
     );
+    expect(setAllHidden.error).toBeUndefined();
+    expect(setAllHidden.rows[0].result).toMatchObject({ success: true, recent_days: 7, historical_percent: 0 });
+
     const hidden = await runAs(
       client,
       ids.users.cashier,
@@ -111,11 +117,13 @@ describe.skipIf(skip)('financial visibility admin controls', () => {
   });
 
   guarded('active orders remain fully visible even with zero historical percentage', async () => {
-    await runAs(
+    const setAllHidden = await runAsPersist(
       client,
       ids.users.super_admin,
-      'SELECT public.update_financial_visibility_settings(7, 0)',
+      'SELECT public.update_financial_visibility_settings(7, 0) AS result',
     );
+    expect(setAllHidden.error).toBeUndefined();
+
     const active = await runAs(
       client,
       ids.users.cashier,
