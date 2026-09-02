@@ -4,13 +4,14 @@ import { useLanguage } from '@/context/LanguageContext';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import type { CartItem } from '@/lib/types';
+import { cartLineKey } from '../../utils/cart';
 
 interface VoidItemModalProps {
   open: boolean;
   onClose: () => void;
   item: CartItem | null;
   sentQty: number;
-  onConfirmVoid: (productId: string, voidQuantity: number, reason: string) => Promise<void> | void;
+  onConfirmVoid: (lineKey: string, voidQuantity: number, reason: string) => Promise<void> | void;
 }
 
 const COMMON_REASONS = [
@@ -42,7 +43,7 @@ export function VoidItemModal({
     const finalReason = selectedReason === 'أخرى' && customReason.trim() ? customReason.trim() : selectedReason;
     setLoading(true);
     try {
-      await onConfirmVoid(item.product.id, Math.min(quantity, sentQty), finalReason);
+      await onConfirmVoid(cartLineKey(item), Math.min(quantity, sentQty), finalReason);
       onClose();
     } finally {
       setLoading(false);
@@ -78,6 +79,9 @@ export function VoidItemModal({
             <p className="text-sm font-black text-ui-text">
               {isAr ? item.product.name : item.product.name_en || item.product.name}
             </p>
+            {item.modifiers?.length ? (
+              <p className="text-[11px] font-bold text-ui-muted">{item.modifiers.map((m) => m.name).join(' · ')}</p>
+            ) : null}
             <p className="text-xs text-ui-subtle">
               {isAr ? `إجمالي بالطلب: ${item.quantity} · مرسل: ${sentQty}` : `Total: ${item.quantity} · Sent: ${sentQty}`}
             </p>
@@ -93,9 +97,7 @@ export function VoidItemModal({
               className="rounded-xl border border-ui-border bg-ui-surface px-2.5 py-1.5 text-xs font-black text-ui-text shadow-ui-xs"
             >
               {Array.from({ length: sentQty }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
+                <option key={n} value={n}>{n}</option>
               ))}
             </select>
           </div>
@@ -139,9 +141,7 @@ export function VoidItemModal({
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-3 border-t border-ui-border">
-          <Button variant="secondary" onClick={onClose} disabled={loading}>
-            {t('cancel')}
-          </Button>
+          <Button variant="secondary" onClick={onClose} disabled={loading}>{t('cancel')}</Button>
           <Button variant="danger" onClick={handleConfirm} disabled={loading}>
             <Trash2 className="h-4 w-4" />
             <span>{isAr ? 'تأكيد إلغاء الصنف (Void)' : 'Confirm Void'}</span>
