@@ -223,9 +223,7 @@ $$;
 REVOKE ALL ON FUNCTION public.cancel_sent_order_item_exact(uuid,uuid,numeric,text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.cancel_sent_order_item_exact(uuid,uuid,numeric,text) TO authenticated, service_role;
 
--- The legacy product-targeted RPC is ambiguous for modifier configurations.
--- Keep it available to service_role for controlled compatibility, but remove
--- direct client execution so new clients cannot accidentally void the wrong line.
-REVOKE EXECUTE ON FUNCTION public.cancel_sent_order_item(uuid,uuid,numeric,text) FROM authenticated;
+-- Keep the legacy product-targeted RPC executable during the UI cutover so
+-- existing deployed clients do not break. New code must use the exact-line RPC.
 REVOKE ALL ON FUNCTION public.cancel_sent_order_item(uuid,uuid,numeric,text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.cancel_sent_order_item(uuid,uuid,numeric,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.cancel_sent_order_item(uuid,uuid,numeric,text) TO authenticated, service_role;
