@@ -15,6 +15,7 @@ describe.skipIf(skip)('purchase UOM -> raw stock -> availability -> auto product
   const rawId = randomUUID();
   const manufacturedUnitId = randomUUID();
   const productId = randomUUID();
+  const supplierId = randomUUID();
 
   const q = async <T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> =>
     (await client.query(sql, params)).rows as T[];
@@ -46,6 +47,7 @@ describe.skipIf(skip)('purchase UOM -> raw stock -> availability -> auto product
       [userId, `purchase-uom-${userId}@example.test`, branchId],
     );
     await client.query(`INSERT INTO public.warehouses (id,name,branch_id,is_active) VALUES ($1,'Purchase UOM WH',$2,true)`, [warehouseId, branchId]);
+    await client.query(`INSERT INTO public.suppliers (id,name,branch_id,is_active) VALUES ($1,'Purchase UOM Supplier',$2,true)`, [supplierId, branchId]);
     await client.query(`INSERT INTO public.units (id,code,name,symbol,is_active) VALUES ($1,$2,'Gram','جم',true)`, [gramUnitId, `G-${randomUUID()}`]);
     await client.query(
       `INSERT INTO public.raw_materials (id,code,name,unit_id,min_stock,default_cost,is_active,branch_id)
@@ -162,6 +164,84 @@ describe.skipIf(skip)('purchase UOM -> raw stock -> availability -> auto product
       );
       expect(r[0].r.success).toBe(false);
       expect(r[0].r.error).toBe('INCOMPATIBLE_PURCHASE_UNIT');
+    });
+  });
+
+  it('normalizes each partial raw receipt and posts the full order value on completion', async () => {
+    await asAdmin(async () => {
+      const before = await q<{ quantity: string }>(
+        `SELECT quantity::text FROM public.raw_material_inventory WHERE raw_material_id=$1 AND branch_id=$2`,
+        [rawId, branchId],
+      );
+      const beforeQty = Number(before[0].quantity);
+      const items = JSON.stringify([{ raw_material_id: rawId, unit_name: 'kg', quantity: 2, unit_cost: 120 }]);
+      const created = await q<{ r: { success: boolean; purchase_id?: string; error?: string; detail?: string } }>(
+        `SELECT public.create_purchase_order($1,$2,$3,'credit','partial raw UOM',$4::jsonb,NULL) AS r`,
+        [branchId, supplierId, warehouseId, items],
+      );
+      expect(created[0].r.success).toBe(true);
+      if (!created[0].r.purchase_id) throw new Error(JSON.stringify(created[0].r));
+      const purchaseId = created[0].r.purchase_id;
+
+      const header = await q<{ subtotal: string; total: string }>(
+        `SELECT subtotal::text,total::text FROM public.purchases WHERE id=$1`, [purchaseId],
+      );
+      expect(Number(header[0].subtotal)).toBe(240);
+      expect(Number(header[0].total)).toBe(240);
+
+      await q(`SELECT public.update_purchase_order_status($1,'submitted')`, [purchaseId]);
+      await q(`SELECT public.update_purchase_order_status($1,'approved')`, [purchaseId]);
+      const line = await q<{ id: string }>(
+        `SELECT id FROM public.purchase_items WHERE purchase_id=$1 AND raw_material_id=$2`, [purchaseId, rawId],
+      );
+
+      const first = await q<{ r: { success: boolean; status?: string } }>(
+        `SELECT public.receive_purchase_order($1,$2::jsonb) AS r`,
+        [purchaseId, JSON.stringify([{ purchase_item_id: line[0].id, quantity_received: 0.5 }])],
+      );
+      expect(first[0].r.success).toBe(true);
+      expect(first[0].r.status).toBe('partial');
+      const afterFirst = await q<{ quantity: string; received_quantity: string }>(
+        `SELECT rmi.quantity::text,pi.received_quantity::text
+         FROM public.raw_material_inventory rmi
+         JOIN public.purchase_items pi ON pi.purchase_id=$3 AND pi.raw_material_id=rmi.raw_material_id
+         WHERE rmi.raw_material_id=$1 AND rmi.branch_id=$2`,
+        [rawId, branchId, purchaseId],
+      );
+      expect(Number(afterFirst[0].quantity) - beforeQty).toBe(500);
+      expect(Number(afterFirst[0].received_quantity)).toBe(0.5);
+
+      const second = await q<{ r: { success: boolean; status?: string } }>(
+        `SELECT public.receive_purchase_order($1,$2::jsonb) AS r`,
+        [purchaseId, JSON.stringify([{ purchase_item_id: line[0].id, quantity_received: 1.5 }])],
+      );
+      expect(second[0].r.success).toBe(true);
+      expect(second[0].r.status).toBe('completed');
+
+      const after = await q<{ quantity: string; avg_cost: string }>(
+        `SELECT quantity::text,avg_cost::text FROM public.raw_material_inventory WHERE raw_material_id=$1 AND branch_id=$2`,
+        [rawId, branchId],
+      );
+      expect(Number(after[0].quantity) - beforeQty).toBe(2000);
+      expect(Number(after[0].avg_cost)).toBeCloseTo(0.12, 6);
+
+      const receipts = await q<{ quantity: string; unit_cost: string; reference_type: string }>(
+        `SELECT quantity::text,unit_cost::text,reference_type
+         FROM public.inventory_ledger WHERE raw_material_id=$1 AND reference_type='purchase_receipt'
+         ORDER BY created_at DESC LIMIT 2`,
+        [rawId],
+      );
+      expect(receipts.map((row) => Number(row.quantity)).sort((a, b) => a - b)).toEqual([500, 1500]);
+      expect(receipts.every((row) => Number(row.unit_cost) === 0.12)).toBe(true);
+
+      const journal = await q<{ dr: string; cr: string }>(
+        `SELECT COALESCE(SUM(l.debit),0)::text AS dr,COALESCE(SUM(l.credit),0)::text AS cr
+         FROM public.journal_entries j JOIN public.journal_entry_lines l ON l.journal_entry_id=j.id
+         WHERE j.reference_id=$1`,
+        [purchaseId],
+      );
+      expect(Number(journal[0].dr)).toBe(240);
+      expect(Number(journal[0].cr)).toBe(240);
     });
   });
 });
