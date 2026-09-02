@@ -23,9 +23,15 @@
 
 ### HEAD الأحدث تحت التحقق
 
-آخر تغييرات hardening أضافت exact sent-line void + open-order modifier protection + ambiguity guard.
-آخر commit وقت تحديث السجل: `bf826fb47c093c1fdfdf090e304cb733691401df`.
-Verify main run `33622843059`: **قيد التشغيل** وقت تحديث هذا السجل؛ لا تعتبر هذا HEAD release-green قبل نجاح jobs الثلاثة `verify + db + browser-smoke`.
+- آخر hardening قبل الإصلاح الحالي: `120f174b8b9841e76e0f41c41c0ff403375f0a40`.
+- Verify main #245 / run `33623071027`: **FAILURE** بسبب اختبار واحد فقط في DB integration:
+  - `372/373` integration tests نجحت.
+  - `modifier_exact_void_refund.test.ts` اكتشف أن `authenticated` كان ما زال يملك EXECUTE على helper الداخلي `guard_sent_order_item_mutation()`.
+  - `verify` كان SUCCESS، وFresh DB migrations + schema verification نجحت، و`browser-smoke` تم تخطيه لأن DB job فشل.
+- الإصلاح الحالي: commit `70d7d06bd78b991842abdb31b4cabbf9a1f35d85`.
+- Migration الجديدة: `20260902135000_lock_sent_order_item_mutation_guard.sql`.
+- الإصلاح يسحب EXECUTE على `guard_sent_order_item_mutation()` من `PUBLIC / anon / authenticated` ويتركه داخليًا لـ`service_role` فقط.
+- Verify main #246 / run `33623521362`: **قيد التشغيل** وقت هذا التحديث. لا تعتبر HEAD الحالي release-green قبل نجاح `verify + db + browser-smoke`.
 
 ---
 
@@ -118,6 +124,11 @@ Production migration المطبق والمؤكد:
    - إذا كان للمنتج أكثر من sent line مثل Single + Double، يرجع `AMBIGUOUS_SENT_ITEM` ولا يختار سطرًا عشوائيًا.
    - يمنع إلغاء التكوين الخطأ حتى يكتمل UI cutover للـexact RPC.
 
+8. `20260902135000_lock_sent_order_item_mutation_guard.sql`
+   - يقفل helper الداخلي `guard_sent_order_item_mutation()` عن `authenticated` و`anon` و`PUBLIC`.
+   - العميل يظل يستخدم RPCs العامة فقط؛ الـhelper لا يصبح client API.
+   - أضيف لإغلاق آخر فشل مثبت في Verify #245 دون إضعاف الاختبار أو RLS.
+
 ### Frontend المنفذ
 
 - `ProductConfigModal` يستخدم groups/options الحقيقية.
@@ -159,6 +170,7 @@ Production migration المطبق والمؤكد:
   - per-sale-item inventory snapshots.
   - line-aware proportional refund helper.
   - `process_refund` passes concrete sale item id.
+  - public exact RPC available لـauthenticated، والـinternal mutation guard غير متاح للعميل.
 - `tests/integration/modifier_open_order_immutability.test.ts`
 
 ---
@@ -219,7 +231,7 @@ Browser regression proof موجود للمقاسات الأساسية، وHEAD `
 
 1. **Frontend exact sent-void cutover:**
    - `usePosOrder.voidSentItem` ما زال يستدعي legacy `cancel_sent_order_item(product_id)`.
-   - backend exact RPC جاهز، والlegacy الآن آمن ويرفض ambiguity.
+   - backend exact RPC جاهز، والlegacy آمن ويرفض ambiguity.
    - المطلوب تمرير exact `order_item_id` من `orderItemsForActive` ثم استدعاء `cancel_sent_order_item_exact`.
    - لا يوجد خطر إلغاء Single بدل Double بعد ambiguity guard، لكن UX لن ينفذ الإلغاء في حالة متعددة حتى cutover.
 
@@ -229,7 +241,8 @@ Browser regression proof موجود للمقاسات الأساسية، وHEAD `
    - يجب توفير user-facing editor قبل اعتبار الميزة قابلة للإدارة من النظام نفسه.
 
 3. **Latest CI:**
-   - انتظر نجاح latest HEAD بعد migrations 1320/1330/1340 واختباراتها.
+   - Verify #245 فشل فقط بسبب exposed internal guard وتم إصلاحه في `20260902135000_lock_sent_order_item_mutation_guard.sql`.
+   - انتظر Verify #246؛ يلزم نجاح `verify + db + browser-smoke` قبل Production rollout.
 
 ### P1 — زيادة الإثبات قبل Production
 
@@ -259,6 +272,7 @@ Browser regression proof موجود للمقاسات الأساسية، وHEAD `
 - `20260902132000_cancel_sent_item_exact_line.sql`
 - `20260902133000_modifier_open_order_immutability.sql`
 - `20260902134000_legacy_sent_void_ambiguity_guard.sql`
+- `20260902135000_lock_sent_order_item_mutation_guard.sql`
 
 لا تطبق Modifier migrations على Production إلا بعد:
 1. latest full CI green.
