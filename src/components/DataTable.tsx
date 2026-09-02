@@ -73,53 +73,109 @@ export function DataTable<T extends { id?: string }>({ columns, data, loading, e
     onSelectionChange(next);
   };
 
+  const renderCell = (row: T, col: Column<T>) =>
+    col.render ? col.render(row) : (row as Record<string, unknown>)[col.key] as ReactNode;
+
   return (
-    <div data-testid="data-table" className="max-w-full overflow-x-auto overscroll-x-contain rounded-xl touch-pan-x [scrollbar-gutter:stable]">
-      <table className="w-full min-w-max text-xs sm:text-sm">
-        <thead>
-          <tr className="border-b border-ui-border bg-ui-page-alt/70">
+    <div data-testid="data-table" className="min-w-0 max-w-full">
+      <div className="space-y-3 sm:hidden">
+        {showCheckbox && (
+          <div className="flex items-center rounded-xl border border-ui-border bg-ui-surface px-3 py-2 shadow-ui-sm">
+            <input
+              type="checkbox"
+              aria-label="Select all rows"
+              checked={!!allSelected}
+              onChange={toggleAll}
+              className="h-5 w-5 rounded border-ui-border-strong text-ui-primary focus:ring-ui-ring"
+            />
+          </div>
+        )}
+
+        {data.map((row, i) => (
+          <div
+            key={row.id || i}
+            onClick={(e) => {
+              if (showCheckbox && (e.target as HTMLElement).closest('input[type="checkbox"]')) return;
+              onRowClick?.(row);
+            }}
+            className={`min-w-0 overflow-hidden rounded-xl border border-ui-border bg-ui-surface p-3 shadow-ui-sm transition-colors ${onRowClick ? 'cursor-pointer active:bg-ui-page-alt' : ''} ${selectedIds?.has(row.id || '') ? 'border-ui-primary bg-ui-primary-soft/30' : ''}`}
+          >
             {showCheckbox && (
-              <th className="w-10 px-3 py-3 sm:px-4">
-                <input type="checkbox" checked={allSelected} onChange={toggleAll}
-                  className="h-5 w-5 rounded border-ui-border-strong text-ui-primary focus:ring-ui-ring sm:h-4 sm:w-4" />
-              </th>
+              <div className="mb-2 flex items-center" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  aria-label="Select row"
+                  checked={!!(row.id && selectedIds?.has(row.id))}
+                  onChange={() => row.id && toggleRow(row.id)}
+                  className="h-5 w-5 rounded border-ui-border-strong text-ui-primary focus:ring-ui-ring"
+                />
+              </div>
             )}
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                className={`whitespace-nowrap px-3 py-3 text-start text-[11px] font-semibold uppercase tracking-wider text-ui-muted sm:px-4 sm:text-xs ${col.className || ''}`}
-              >
-                {col.header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-ui-border">
-          {data.map((row, i) => (
-            <tr
-              key={row.id || i}
-              onClick={(e) => {
-                if (showCheckbox && (e.target as HTMLElement).closest('input[type="checkbox"]')) return;
-                onRowClick?.(row);
-              }}
-              className={`hover:bg-ui-page-alt/60 transition-colors duration-150 ${onRowClick ? 'cursor-pointer' : ''} ${selectedIds?.has(row.id || '') ? 'bg-ui-primary-soft/50' : ''}`}
-            >
+
+            <dl className="divide-y divide-ui-border">
+              {columns.map((col) => (
+                <div
+                  key={col.key}
+                  className="grid min-w-0 grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-start gap-3 py-2 first:pt-0 last:pb-0"
+                >
+                  <dt className="min-w-0 break-words text-xs font-semibold text-ui-muted">{col.header}</dt>
+                  <dd className="min-w-0 break-words text-sm text-ui-text [&>*]:max-w-full">
+                    {renderCell(row, col)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-xl touch-pan-x [scrollbar-gutter:stable] sm:block">
+        <table className="w-full min-w-max text-sm">
+          <thead>
+            <tr className="border-b border-ui-border bg-ui-page-alt/70">
               {showCheckbox && (
-                <td className="px-3 py-3 sm:px-4" onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" checked={!!(row.id && selectedIds?.has(row.id))}
-                    onChange={() => row.id && toggleRow(row.id)}
-                    className="h-5 w-5 rounded border-ui-border-strong text-ui-primary focus:ring-ui-ring sm:h-4 sm:w-4" />
-                </td>
+                <th className="w-10 px-4 py-3">
+                  <input type="checkbox" checked={!!allSelected} onChange={toggleAll}
+                    className="h-4 w-4 rounded border-ui-border-strong text-ui-primary focus:ring-ui-ring" />
+                </th>
               )}
               {columns.map((col) => (
-                <td key={col.key} className={`px-3 py-3 text-ui-text sm:px-4 ${col.className || ''}`}>
-                  {col.render ? col.render(row) : (row as Record<string, unknown>)[col.key] as ReactNode}
-                </td>
+                <th
+                  key={col.key}
+                  className={`whitespace-nowrap px-4 py-3 text-start text-xs font-semibold uppercase tracking-wider text-ui-muted ${col.className || ''}`}
+                >
+                  {col.header}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-ui-border">
+            {data.map((row, i) => (
+              <tr
+                key={row.id || i}
+                onClick={(e) => {
+                  if (showCheckbox && (e.target as HTMLElement).closest('input[type="checkbox"]')) return;
+                  onRowClick?.(row);
+                }}
+                className={`hover:bg-ui-page-alt/60 transition-colors duration-150 ${onRowClick ? 'cursor-pointer' : ''} ${selectedIds?.has(row.id || '') ? 'bg-ui-primary-soft/50' : ''}`}
+              >
+                {showCheckbox && (
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" checked={!!(row.id && selectedIds?.has(row.id))}
+                      onChange={() => row.id && toggleRow(row.id)}
+                      className="h-4 w-4 rounded border-ui-border-strong text-ui-primary focus:ring-ui-ring" />
+                  </td>
+                )}
+                {columns.map((col) => (
+                  <td key={col.key} className={`px-4 py-3 text-ui-text ${col.className || ''}`}>
+                    {renderCell(row, col)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
