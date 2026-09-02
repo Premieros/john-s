@@ -73,7 +73,8 @@ describe.skipIf(skip)('cashier / manager approval E2E', () => {
 
       const selfDecision = await decide(ids.users.cashier, created.request_id!, true);
       expect(selfDecision.success, action).toBe(false);
-      expect(selfDecision.error, action).toBe('SELF_APPROVAL_FORBIDDEN');
+      // Cashiers fail the review-permission gate before the self-approval gate.
+      expect(selfDecision.error, action).toBe('NOT_AUTHORIZED');
 
       const approved = await decide(ids.users.branch_manager, created.request_id!, true);
       expect(approved.success, action).toBe(true);
@@ -101,6 +102,17 @@ describe.skipIf(skip)('cashier / manager approval E2E', () => {
 
     const row = await client.query(`SELECT status, approver_id FROM public.approval_requests WHERE id = $1`, [created.request_id]);
     expect(row.rows[0]).toMatchObject({ status: 'pending', approver_id: null });
+  });
+
+  it('forbids self-approval even when the requester has review permission', async (ctx) => {
+    if (!impersonationAvailable) return ctx.skip();
+
+    const created = await request(ids.users.branch_manager, 'open_drawer', 'shift', ids.shiftA);
+    expect(created.success).toBe(true);
+
+    const selfDecision = await decide(ids.users.branch_manager, created.request_id!, true);
+    expect(selfDecision.success).toBe(false);
+    expect(selfDecision.error).toBe('SELF_APPROVAL_FORBIDDEN');
   });
 
   it('records requester and manager audit events with the correct branch', async (ctx) => {
