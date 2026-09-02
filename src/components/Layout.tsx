@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Activity, AlertTriangle, ArrowLeftRight, BarChart3, BadgeDollarSign, Boxes, BookOpenText, Building2, Calculator, ChefHat,
+  Activity, AlertTriangle, ArrowLeft, ArrowLeftRight, ArrowRight, BarChart3, BadgeDollarSign, Boxes, BookOpenText, Building2, Calculator, ChefHat,
   ChevronDown, ClipboardCheck, FileSpreadsheet, FileText, FlaskConical,
   Globe, HandCoins, Landmark, Layers, LayoutDashboard, LogOut, Menu, Moon, NotebookPen,
   Package, Receipt, Scale, ScrollText, Settings, ShoppingCart, SlidersHorizontal, Store, Sun,
@@ -96,6 +96,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const branchLabel = activeBranch
     ? (lang === 'ar' ? activeBranch.name : activeBranch.name_en || activeBranch.name)
     : (ar ? 'كل الفروع' : 'All branches');
+  const showBackButton = location.pathname !== APP_ROUTES.dashboard;
 
   useEffect(() => {
     if (!branchMenuOpen) return;
@@ -138,10 +139,26 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <div dir={ar ? 'rtl' : 'ltr'} className="min-h-screen bg-ui-page text-ui-text overflow-x-hidden" data-testid="app-shell">
       <header data-testid="app-header" className={`fixed top-0 start-0 end-0 ${ar ? 'lg:start-[260px]' : 'lg:end-[260px]'} z-[60] flex h-[64px] items-center justify-between gap-3 liquid-glass-header px-4 shadow-ui-sm sm:px-6`}>
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <button data-testid="sidebar-open" type="button" onClick={() => setMobileOpen(true)} className="rounded-lg p-2 text-ui-muted hover:bg-ui-page-alt lg:hidden" aria-label={ar ? 'فتح القائمة' : 'Open sidebar'}>
             <Menu className="h-5 w-5" />
           </button>
+          {showBackButton && (
+            <button
+              data-testid="header-back-button"
+              type="button"
+              onClick={() => {
+                if (window.history.length > 1) navigate(-1);
+                else navigate(APP_ROUTES.dashboard);
+              }}
+              className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-ui-border bg-ui-surface px-2.5 text-xs font-black text-ui-text shadow-ui-xs transition hover:bg-ui-page-alt active:scale-95 sm:px-3"
+              aria-label={ar ? 'رجوع' : 'Back'}
+              title={ar ? 'رجوع' : 'Back'}
+            >
+              {ar ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
+              <span className="hidden sm:inline">{ar ? 'رجوع' : 'Back'}</span>
+            </button>
+          )}
           <CommandPaletteTrigger />
           <div className="hidden h-6 w-px bg-ui-border lg:block" />
           <div data-testid="top-navigation" className="flex min-w-0 items-center gap-1 overflow-x-auto">
