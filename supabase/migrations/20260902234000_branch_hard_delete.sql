@@ -32,6 +32,84 @@ BEGIN
   END LOOP;
 END $$;
 
+-- Preserve the normal safety guards, but do not let them block rows that are
+-- being removed only because their parent branch itself is being deleted.
+CREATE OR REPLACE FUNCTION public.protect_system_accounts()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' AND OLD.is_system THEN
+    IF OLD.branch_id IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM public.branches b WHERE b.id = OLD.branch_id) THEN
+      RETURN OLD;
+    END IF;
+    RAISE EXCEPTION 'SYSTEM_ACCOUNT_PROTECTED: % (%)', OLD.code, OLD.name;
+  END IF;
+
+  IF TG_OP = 'UPDATE' AND OLD.is_system THEN
+    IF NEW.code IS DISTINCT FROM OLD.code OR NEW.account_type IS DISTINCT FROM OLD.account_type THEN
+      RAISE EXCEPTION 'SYSTEM_ACCOUNT_PROTECTED: % (%)', OLD.code, OLD.name;
+    END IF;
+  END IF;
+
+  IF TG_OP IN ('INSERT', 'UPDATE') THEN
+    NEW.name := btrim(NEW.name);
+    IF NEW.name = '' THEN RAISE EXCEPTION 'ACCOUNT_NAME_REQUIRED'; END IF;
+    NEW.code := upper(btrim(NEW.code));
+    IF NEW.code = '' THEN RAISE EXCEPTION 'ACCOUNT_CODE_REQUIRED'; END IF;
+  END IF;
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.guard_table_delete()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF OLD.branch_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM public.branches b WHERE b.id = OLD.branch_id) THEN
+    RETURN OLD;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.orders
+    WHERE table_id = OLD.id AND status IN ('open', 'held')
+  ) THEN
+    RAISE EXCEPTION 'Cannot delete a table with open orders.';
+  END IF;
+  RETURN OLD;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public._protect_modifier_option_open_order_reference()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF OLD.branch_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM public.branches b WHERE b.id = OLD.branch_id) THEN
+    RETURN OLD;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.order_items oi
+    JOIN public.orders o ON o.id = oi.order_id
+    WHERE o.status IN ('open', 'held')
+      AND OLD.id = ANY(COALESCE(oi.modifier_option_ids, ARRAY[]::uuid[]))
+  ) THEN
+    RAISE EXCEPTION 'MODIFIER_OPTION_IN_OPEN_ORDER';
+  END IF;
+  RETURN OLD;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.delete_branch_cascade(p_branch_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -70,13 +148,12 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'error', 'BRANCH_NOT_FOUND');
   END IF;
 
-  IF v_role = 'owner' THEN
-    IF NOT public.user_may_access_branch(p_branch_id) THEN
-      RETURN jsonb_build_object('success', false, 'error', 'BRANCH_MISMATCH');
-    END IF;
-    IF v_user_branch IS NOT DISTINCT FROM p_branch_id THEN
-      RETURN jsonb_build_object('success', false, 'error', 'CANNOT_DELETE_CURRENT_BRANCH');
-    END IF;
+  IF v_user_branch IS NOT DISTINCT FROM p_branch_id THEN
+    RETURN jsonb_build_object('success', false, 'error', 'CANNOT_DELETE_CURRENT_BRANCH');
+  END IF;
+
+  IF v_role = 'owner' AND NOT public.user_may_access_branch(p_branch_id) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'BRANCH_MISMATCH');
   END IF;
 
   DELETE FROM public.branches WHERE id = p_branch_id;
