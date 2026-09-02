@@ -29,25 +29,25 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const remove = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   const icons = {
-    success: <CheckCircle className="w-5 h-5 text-ui-success" />,
-    error: <XCircle className="w-5 h-5 text-ui-danger" />,
-    warning: <AlertCircle className="w-5 h-5 text-ui-warning" />,
-    info: <Info className="w-5 h-5 text-ui-info" />,
+    success: <CheckCircle className="h-5 w-5 shrink-0 text-ui-success" />,
+    error: <XCircle className="h-5 w-5 shrink-0 text-ui-danger" />,
+    warning: <AlertCircle className="h-5 w-5 shrink-0 text-ui-warning" />,
+    info: <Info className="h-5 w-5 shrink-0 text-ui-info" />,
   };
 
   return (
     <ToastContext.Provider value={{ show }}>
       {children}
-      <div className="fixed top-4 start-1/2 -translate-x-1/2 z-[80] flex flex-col gap-2 w-full max-w-sm px-4">
+      <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+0.5rem)] z-[80] mx-auto flex w-full max-w-[min(26rem,calc(100vw-0.75rem))] flex-col gap-2 px-2 sm:top-4 sm:px-0">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className="flex items-center gap-3 bg-ui-surface rounded-xl shadow-ui-lg ring-1 ring-ui-border px-4 py-3 animate-slide-down"
+            className="pointer-events-auto flex min-w-0 items-start gap-2.5 rounded-xl bg-ui-surface px-3 py-2.5 shadow-ui-lg ring-1 ring-ui-border sm:items-center sm:gap-3 sm:px-4 sm:py-3 animate-slide-down"
           >
             {icons[toast.type]}
-            <span className="flex-1 text-sm text-ui-text">{toast.message}</span>
-            <button onClick={() => remove(toast.id)} className="text-ui-subtle hover:text-ui-text transition-colors" aria-label="Dismiss">
-              <X className="w-4 h-4" />
+            <span className="min-w-0 flex-1 break-words text-xs leading-5 text-ui-text sm:text-sm">{toast.message}</span>
+            <button onClick={() => remove(toast.id)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ui-subtle transition-colors hover:bg-ui-page-alt hover:text-ui-text" aria-label="Dismiss">
+              <X className="h-4 w-4" />
             </button>
           </div>
         ))}
