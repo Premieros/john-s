@@ -53,7 +53,7 @@ export function CostingCenterPage() {
   }, [branchId, show]);
 
   const loadSuppliers = useCallback(async () => {
-    const sp = await supabase.from('suppliers').select('id, name').eq('is_active', true).order('name');
+    const sp = await supabase.from('suppliers').select('id, name').order('name');
     if (sp.error) { show(sp.error.message, 'error'); return; }
     const s = (sp.data as { id: string; name: string }[] | null) || [];
     setSuppliers(s);
@@ -124,9 +124,10 @@ export function CostingCenterPage() {
 
   const stats = useMemo(() => {
     const count = filteredOverview.length;
-    const fc = filteredOverview.map((r) => foodCostPct(r.actual_cost || r.theoretical_cost || r.unit_cost, r.sale_price));
+    const costedRows = filteredOverview.filter((r) => Number(r.actual_cost || r.theoretical_cost || r.unit_cost || 0) > 0);
+    const fc = costedRows.map((r) => foodCostPct(r.actual_cost || r.theoretical_cost || r.unit_cost, r.sale_price));
     const avg = safeDiv(fc.reduce((s, v) => s + v, 0), fc.length);
-    const worst = filteredOverview.reduce<CostingOverviewRow | null>((acc, r) => {
+    const worst = costedRows.reduce<CostingOverviewRow | null>((acc, r) => {
       const v = foodCostPct(r.actual_cost || r.theoretical_cost || r.unit_cost, r.sale_price);
       return !acc || v > foodCostPct(acc.actual_cost || acc.theoretical_cost || acc.unit_cost, acc.sale_price) ? r : acc;
     }, null);
