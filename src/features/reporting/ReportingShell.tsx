@@ -20,7 +20,6 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
-import { PageHeader } from '@/components/PageHeader';
 import { ReportCard } from './ReportCard';
 import {
   REPORT_REGISTRY,
@@ -137,18 +136,13 @@ export function ReportingShell({ activeReport, onSelectReport, children }: Repor
   }, [onSelectReport]);
 
   return (
-    <div className="space-y-3">
-      <PageHeader
-        title={lang === 'ar' ? 'التقارير' : 'Reports'}
-        subtitle={activeDefinition ? (lang === 'ar' ? activeDefinition.title : activeDefinition.titleEn) : undefined}
-      />
-
+    <div className="space-y-2">
       <div className="sticky top-0 z-20 rounded-xl border border-ui-border bg-ui-surface/95 p-2 shadow-ui-sm backdrop-blur">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setShowReportBrowser((open) => !open)}
-            className="flex h-9 items-center gap-2 rounded-lg bg-ui-primary px-3 text-xs font-black text-ui-primary-fg transition hover:bg-ui-primary-hover"
+            className="flex h-9 shrink-0 items-center gap-2 rounded-lg bg-ui-primary px-3 text-xs font-black text-ui-primary-fg transition hover:bg-ui-primary-hover"
           >
             <SlidersHorizontal className="h-4 w-4" />
             <span>{lang === 'ar' ? 'اختيار تقرير' : 'Choose report'}</span>
@@ -178,7 +172,7 @@ export function ReportingShell({ activeReport, onSelectReport, children }: Repor
             />
           </div>
 
-          <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
             <button
               type="button"
               onClick={() => setActiveCategory(null)}
@@ -205,7 +199,7 @@ export function ReportingShell({ activeReport, onSelectReport, children }: Repor
           </div>
 
           {!searchQuery && !activeCategory && recentReports.length > 0 && (
-            <div className="mb-4">
+            <div className="mb-3">
               <h2 className="mb-2 flex items-center gap-1.5 text-[11px] font-black text-ui-muted">
                 <Clock3 className="h-3.5 w-3.5" />
                 {lang === 'ar' ? 'الأخيرة' : 'Recent'}
@@ -226,7 +220,7 @@ export function ReportingShell({ activeReport, onSelectReport, children }: Repor
           )}
 
           {!searchQuery && !activeCategory && favoriteReports.length > 0 && (
-            <div className="mb-4">
+            <div className="mb-3">
               <h2 className="mb-2 flex items-center gap-1.5 text-[11px] font-black text-ui-muted">
                 <Star className="h-3.5 w-3.5" />
                 {lang === 'ar' ? 'المفضلة' : 'Favorites'}
