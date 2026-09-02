@@ -139,7 +139,7 @@ test('cashier with no active shift gets a real open-shift workflow from POS', as
   await expect(page).toHaveURL(/#\/shifts$/);
   await expect(page.getByTestId('shifts-page')).toBeVisible({ timeout: 10000 });
 
-  const openButton = page.getByRole('button', { name: /فتح.*وردية|Open Shift/i }).first();
+  const openButton = page.getByRole('button', { name: /فتح.*(?:وردية|شيفت)|Open Shift/i }).first();
   await expect(openButton).toBeVisible();
   await openButton.click();
 
@@ -148,7 +148,7 @@ test('cashier with no active shift gets a real open-shift workflow from POS', as
   await openingInput.fill('50');
 
   const modal = page.getByRole('dialog');
-  await modal.getByRole('button', { name: /فتح.*وردية|Open Shift/i }).click();
+  await modal.getByRole('button', { name: /فتح.*(?:وردية|شيفت)|Open Shift/i }).click();
 
   await expect.poll(() => openShiftPayload, { timeout: 10000 }).not.toBeNull();
   expect(openShiftPayload).toMatchObject({
