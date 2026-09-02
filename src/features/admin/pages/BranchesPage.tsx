@@ -17,9 +17,10 @@ import { usePaginatedRows } from '@/hooks/usePaginatedRows';
 import type { Branch } from '@/lib/types';
 
 export function BranchesPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { show } = useToast();
   const { user } = useAuth();
+  const isAr = lang === 'ar';
   const { rows: items, loading, total, hasMore, loadMore, loadingMore, refresh: reloadBranches } = usePaginatedRows<Branch>({
     table: 'branches',
     select: '*',
@@ -78,9 +79,15 @@ export function BranchesPage() {
 
   const remove = async () => {
     if (!deleteId) return;
-    const { data, error } = await branchesApi.deactivate({ p_branch_id: deleteId });
-    if (error || !data?.success) show(error?.message || data?.error || 'Error', 'error');
-    else { show(t('deleteSuccess'), 'success'); await logAudit('delete', 'branches', deleteId); }
+    const { data, error } = await branchesApi.remove({ p_branch_id: deleteId });
+    if (error || !data?.success) {
+      const code = data?.error;
+      if (code === 'CANNOT_DELETE_CURRENT_BRANCH') show(isAr ? 'لا يمكن حذف الفرع المرتبط بحسابك الحالي. انقل حساب المالك إلى فرع آخر أولًا.' : 'You cannot delete your current branch. Move the owner account to another branch first.', 'error');
+      else if (code === 'PERMISSION_DENIED') show(isAr ? 'الحذف النهائي متاح للمالك أو مدير النظام فقط.' : 'Permanent deletion is limited to Owner or Super Admin.', 'error');
+      else show(error?.message || code || 'Error', 'error');
+    } else {
+      show(t('deleteSuccess'), 'success');
+    }
     setDeleteId(null);
     reloadBranches();
   };
@@ -126,7 +133,15 @@ export function BranchesPage() {
           </div>
         </div>
       </Modal>
-      <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={remove} title={t('delete')} message={t('confirmDelete')} confirmLabel={t('delete')} cancelLabel={t('cancel')} />
+      <ConfirmDialog
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={remove}
+        title={isAr ? 'حذف الفرع نهائيًا' : 'Permanently delete branch'}
+        message={isAr ? 'سيتم حذف الفرع وكل البيانات المرتبطة به نهائيًا ولن يظهر مرة أخرى. لا يمكن التراجع عن هذه العملية.' : 'The branch and all data linked to it will be permanently deleted and cannot be restored.'}
+        confirmLabel={t('delete')}
+        cancelLabel={t('cancel')}
+      />
     </DesignSurface>
   );
 }
