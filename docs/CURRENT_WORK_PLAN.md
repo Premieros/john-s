@@ -2,27 +2,44 @@
 
 > **Source of truth** لأي نموذج أو مطور يدخل يكمل العمل. اقرأ هذا الملف أولًا، ولا تعِد فتح أعمال أُغلقت إلا إذا ظهر Regression مثبت.
 
-آخر تحديث: **2026-09-02**
+آخر تحديث: **2026-09-02 13:17 Africa/Cairo**
 
-## 1) الحالة الحالية — Release Baseline أخضر ✅
+## 1) الحالة الحالية
 
 - Repository: `Premieros/john-s`
 - Branch: `main`
 - Supabase Production: `azzdesuowpdcoflmyezn`
-- HEAD المعتمد: `5617da55725dd7cb1a160b8b1376c6c7254e619b`
+- آخر Release Baseline أخضر مؤكد بالكامل: `5617da55725dd7cb1a160b8b1376c6c7254e619b`
 - Verify main #197 / run `33600846169`: **SUCCESS**
+- Deploy #199 / run `33600846236`: **SUCCESS**
+
+### Work-in-progress الحالي
+
+- HEAD الحالي بعد إصلاح smoke test للوردية: `2b748b8746c3bbfc2d0b6989d5b8086afd7d35b0`
+- Deploy #232 / run `33618595019`: **SUCCESS**
+- Verify main #230 / run `33618594995`: **IN PROGRESS وقت تحديث هذا السجل**
+  - install ✅
   - lint ✅
   - typecheck ✅
   - typecheck all suites ✅
-  - unit tests ✅
-  - build ✅
-  - Fresh DB canonical migrations ✅
-  - schema verification ✅
-  - Integration + Security/RLS regression ✅
-  - Playwright Browser Smoke ✅
-- Deploy #199 / run `33600846236`: **SUCCESS**
+  - unit tests: قيد التشغيل وقت التحديث
+  - build / DB / browser-smoke: لم تُحسم بعد وقت التحديث
 
-هذا هو الـbaseline الذي يبدأ منه أي عمل جديد.
+مهم: لا تعتبر HEAD الحالي Release Baseline أخضر إلا بعد نجاح jobs الثلاثة في Verify main: `verify` + `db` + `browser-smoke`.
+
+### آخر Regression تم تتبعه
+
+Verify #229 / run `33615782609`:
+- `verify` ✅
+- `db` ✅
+- `browser-smoke` ❌ — 50 passed / 1 failed
+
+الفشل الوحيد كان في `tests/e2e/cashier-shift-entry.spec.ts` بعد أن وصل الاختبار فعليًا إلى صفحة الورديات وفتح نافذة فتح الشيفت. الـassertion كان يبحث عن `رصيد الافتتاح` بينما الـlabel الحقيقي في الواجهة هو `المبلغ الافتتاحي`.
+
+تم إصلاح fidelity للاختبار بدون تغيير الصلاحيات أو منطق فتح الوردية:
+- `f737a09633c4ae0a391f2062bb1f46cf9c0ef896` — محاكاة PostgREST object/array الصحيحة لـ`.maybeSingle()`.
+- `8f973d9a240018893a3a2db5a026953af552d525` — قبول مصطلحي `وردية/شيفت` في smoke test.
+- `2b748b8746c3bbfc2d0b6989d5b8086afd7d35b0` — مطابقة label الفعلي `المبلغ الافتتاحي`.
 
 ---
 
@@ -79,7 +96,114 @@ Migration:
 
 ---
 
-## 4) قواعد معمارية ثابتة — لا تغيّرها بدون قرار صريح
+## 4) Product Modifiers / Variants — Work in Progress
+
+طلب المستخدم الحالي: المنتج مثل ساندوتش البرجر يجب أن يدعم اختيار تكوين حقيقي مرتبط بالمكونات، مثل:
+- Single / Double / Triple كمجموعة مطلوبة.
+- Extra Cheese / Bacon / Sauce / Jalapeño كإضافات.
+- No Onion / No Pickles / No Sauce كحذف مكونات.
+- كل اختيار له `price_delta` موثوق من الخادم وInventory Component delta حقيقي.
+
+### Backend المنفذ
+
+Migration الأساسية:
+`supabase/migrations/20260902085000_product_modifiers_inventory.sql`
+
+الجداول:
+- `product_modifier_groups`
+- `product_modifier_options`
+- `product_modifier_inventory_effects`
+
+Order/Sale snapshot fields:
+- `order_items.modifier_option_ids`
+- `order_items.modifiers_snapshot`
+- `sale_items.modifier_option_ids`
+- `sale_items.modifiers_snapshot`
+
+RPCs / helpers:
+- `get_product_modifiers(uuid)`
+- `resolve_product_modifiers(product_id, branch_id, option_ids jsonb)`
+- `save_product_modifiers(uuid,jsonb)`
+- `deduct_sale_inventory_with_modifiers(...)`
+
+قواعد مثبتة في التصميم:
+- العميل لا يحدد السعر النهائي أو component deltas كمصدر ثقة.
+- الخادم يتحقق من required/min/max/group/product/branch/active.
+- `send_to_kitchen` لا يخصم المخزون.
+- `process_sale` هو الذي يخصم التركيب النهائي مرة واحدة.
+- Modifier snapshot يجب أن يستمر في Order → KDS → Receipt → Sale → Refund.
+
+### Hardening المنفذ
+
+Commit `dc6976b1be85c4e069d0c16e10de050868aca1b2`:
+- `save_product_modifiers` أصبح validate-first ثم mutate، لمنع حذف/تلف configuration عند payload غير صالح.
+- `authenticated` لم يعد لديه direct SELECT على `product_modifier_inventory_effects`.
+- Effect targets يتم التحقق من انتمائها لنفس الفرع.
+
+Commit `fdf2279ac88ebeaabfd2096cb891526b85d4fb25`:
+- إضافة `tests/integration/product_modifiers_security.test.ts`.
+- اختبارات privacy/grants/atomicity/trusted resolver/negative effects.
+
+### Frontend المنفذ جزئيًا
+
+- `ProductConfigModal` يقرأ groups/options الحقيقية بدل static fake modifiers.
+- المنتج بلا modifier groups يُضاف مباشرة بعد نجاح server response وإثبات عدم وجود groups.
+- cart identity أصبح يعتمد على `product.id + sorted modifier ids + note` حتى لا يندمج Single وDouble كسطر واحد.
+- `sentState` أصبح يطابق line configuration عند الإمكان.
+- modifier names تظهر في receipt paths التي تستخدم cart snapshot.
+
+### Critical frontend fix ما زال مطلوبًا
+
+`src/features/pos/pages/PosWorkspacePage.tsx` ما زال يحتوي integration قديمًا في `ProductConfigModal.onConfirm`:
+- edit يستخدم `product.id` بدل `cartLineKey`.
+- edit يغير qty/discount فقط ولا يستبدل modifier configuration / price / note.
+- add لا يمرر explicit `modifier_option_ids` ولا `unit_price` ولا `item_note`.
+
+الإصلاح المطلوب مباشرة:
+- import `cartLineKey` من `../utils/cart`.
+- عند edit: `pos.replaceCartLine(cartLineKey(configItem), item)`.
+- عند add: تمرير `modifier_option_ids`, `unit_price`, `item_note` إلى `pos.addToCart(...)`.
+
+لا تعتبر Modifier UI مكتملًا قبل إغلاق هذه النقطة واختبارها.
+
+### مشاكل Modifier المتبقية قبل Production
+
+1. **Open-order catalog history:** `save_product_modifiers` ما زال delete/recreate بعد validation؛ open orders التي تحمل option IDs قد تتأثر بتعديل catalog. مطلوب immutable/versioned definitions أو historical trusted composition صالح للبيع/refund.
+2. **Refund exactness:** يجب إثبات/إصلاح نفس المنتج داخل نفس sale بتكوينات Modifier مختلفة مع partial refunds بحيث يرجع كل sale line مسار مخزونه الصحيح بالضبط.
+3. **Sent-item cancel identity:** backend `cancel_sent_order_item` ما زال يستهدف product ID في المسار القديم؛ يجب استهداف order item/line configuration حتى لا يلتبس Single وDouble لنفس المنتج.
+4. **KDS visibility:** يجب التحقق أن KDS/kitchen ticket يعرض modifier snapshot بوضوح.
+5. **DB branch consistency:** إضافة hard constraints/triggers group → option → effect عند الحاجة، وليس الاعتماد على RPC فقط.
+6. **Client stock precheck:** لا يجب أن يمنع البيع خطأً بناءً على base product فقط بينما modifier يغير الاستهلاك؛ الخادم يظل authoritative.
+7. **Admin editor:** backend `save_product_modifiers` وحده لا يكفي؛ مطلوب واجهة إدارة modifier configuration بصلاحيات واضحة.
+8. **Production migration:** Modifier migrations **لم يتم إعلان تطبيقها على Production بعد**. لا تطبقها قبل full CI green واختبارات lifecycle الدقيقة.
+
+### Modifier lifecycle tests المطلوبة
+
+Fixture برجر مرجعي:
+- Base: bun 1 + patty 1 + cheese 1 + onion 1.
+- Size required min=1/max=1: Single default، Double `+35` و`+1 patty`.
+- Extras: Extra Cheese `+10` و`+1 cheese`.
+- Omission: No Onion `0` و`-1 onion`.
+
+يجب تغطية:
+- branch scoped get modifiers.
+- missing required option rejected.
+- Single+Double rejected.
+- cross-product / cross-branch option rejected.
+- spoofed client price ignored.
+- trusted order snapshot.
+- KDS snapshot مع stock unchanged.
+- exact sale stock for Double + Extra Cheese + No Onion.
+- trusted totals.
+- idempotent no double deduction.
+- exact refund once.
+- partial refunds + same product/different configs.
+- catalog edit/deactivation لا يغيّر history/refund.
+- RLS/helper grants.
+
+---
+
+## 5) قواعد معمارية ثابتة — لا تغيّرها بدون قرار صريح
 
 - **KDS لا يخصم المخزون.** `send_to_kitchen` = state/snapshot/delta فقط.
 - **البيع هو نقطة خصم المخزون**، مرة واحدة فقط.
@@ -95,7 +219,7 @@ Migration:
 
 ---
 
-## 5) Inventory الحالي ✅
+## 6) Inventory الحالي ✅
 
 Hybrid inventory هو التصميم المعتمد:
 - Sellable products: **335**
@@ -117,7 +241,7 @@ Hybrid inventory هو التصميم المعتمد:
 
 ---
 
-## 6) Security / Permissions — مغلق أساسيًا ✅
+## 7) Security / Permissions — مغلق أساسيًا ✅
 
 الحالة المطلوبة والمثبتة:
 - `anon` بلا وصول مباشر لجداول `public`.
@@ -133,7 +257,7 @@ Hybrid inventory هو التصميم المعتمد:
 
 ---
 
-## 7) User-facing UI — المراجعة مكتملة ✅
+## 8) User-facing UI — المراجعة الأساسية مكتملة ✅
 
 المرجع التفصيلي: `docs/UI_VISIBILITY_AUDIT.md`
 
@@ -157,16 +281,26 @@ Hybrid inventory هو التصميم المعتمد:
 
 ---
 
-## 8) الخطوة التالية
+## 9) الخطوة التالية — بالترتيب
 
-لا تعِد مراجعة hardening أو دورة البيع الحالية بدون سبب مثبت؛ الـbaseline الحالي أخضر.
-
-الأولوية التالية حسب طلب المستخدم:
-1. أي ملاحظات UI/UX أو وظائف جديدة يحددها المستخدم بعد معاينة النسخة المنشورة.
-2. عند طلب `Split Bill` أو `Merge Tables`: تصميم Contract وتشغيل كامل ثم UI واختبارات.
-3. مراجعة `npm audit` وترقية التبعيات عالية الخطورة بشكل مدروس؛ **لا تستخدم `npm audit fix --force` عشوائيًا**.
-4. تفعيل Leaked Password Protection من Supabase Auth إن أمكن.
-5. Release polish / UX / performance بعد تثبيت الوظائف المطلوبة.
+1. انتظار/فحص نتيجة Verify main #230؛ أي failure حقيقي يُصلح بدون إضعاف الاختبار/RLS.
+2. إصلاح `PosWorkspacePage.tsx` لتمرير واستبدال Modifier line configuration باستخدام `cartLineKey` و`replaceCartLine`.
+3. إضافة modifier lifecycle DB integration tests الكاملة المذكورة أعلاه.
+4. حل immutability/versioning للـmodifier catalog مع open orders/history.
+5. تثبيت exact per-sale-item refund path للتكوينات المختلفة والـpartial refund.
+6. إصلاح backend cancel sent item ليعمل على line/order_item identity، لا product ID فقط.
+7. التحقق من KDS/kitchen ticket modifier rendering.
+8. إضافة Admin Modifier Editor بصلاحيات مناسبة.
+9. Full Verify: `verify` + `db` + `browser-smoke` = green.
+10. بعدها فقط تطبيق Modifier migrations على Supabase Production والتحقق من integrity/security.
+11. تحديث هذا السجل بعد كل إصلاح/نتيجة CI مهمة.
+12. مراجعة `npm audit` وترقية التبعيات عالية الخطورة بشكل مدروس؛ **لا تستخدم `npm audit fix --force` عشوائيًا**.
+13. تفعيل Leaked Password Protection من Supabase Auth إن أمكن.
 
 ### قاعدة تسليم لأي نموذج جديد
-ابدأ من HEAD والـCI المذكورين في القسم 1، اقرأ هذا الملف و`docs/UI_VISIBILITY_AUDIT.md`، ثم نفّذ المطلوب الجديد فقط. لا تعيد بناء أو فحص أجزاء مغلقة إلا إذا ظهر فشل CI أو Regression قابل لإعادة الإنتاج.
+
+ابدأ من هذا الملف وليس من افتراض أن آخر commit Release-ready. فرّق دائمًا بين:
+- **آخر baseline أخضر مؤكد**.
+- **HEAD الحالي Work-in-progress**.
+
+اقرأ أيضًا `docs/UI_VISIBILITY_AUDIT.md`. لا تعيد بناء أو فحص أجزاء مغلقة إلا إذا ظهر فشل CI أو Regression قابل لإعادة الإنتاج.
