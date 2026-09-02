@@ -12,17 +12,23 @@ export interface ItemPayload {
   notes?: string | null;
 }
 
+const modifierIdsFromCart = (item: Pick<CartItem, 'modifier_option_ids' | 'modifiers'>): string[] => {
+  const explicit = item.modifier_option_ids || [];
+  if (explicit.length > 0) return explicit;
+  return (item.modifiers || []).flatMap((modifier) => modifier.id ? [modifier.id] : []);
+};
+
 const normalizedModifierIds = (ids?: string[]) => [...(ids || [])].sort();
 
-export function cartLineKey(item: Pick<CartItem, 'product' | 'modifier_option_ids' | 'item_note'>): string {
-  return `${item.product.id}|${normalizedModifierIds(item.modifier_option_ids).join(',')}|${item.item_note || ''}`;
+export function cartLineKey(item: Pick<CartItem, 'product' | 'modifier_option_ids' | 'modifiers' | 'item_note'>): string {
+  return `${item.product.id}|${normalizedModifierIds(modifierIdsFromCart(item)).join(',')}|${item.item_note || ''}`;
 }
 
 export function orderItemLineKey(item: Pick<OrderItem, 'product_id' | 'modifier_option_ids' | 'notes'>): string {
   return `${item.product_id || ''}|${normalizedModifierIds(item.modifier_option_ids).join(',')}|${item.notes || ''}`;
 }
 
-export function sameCartConfiguration(a: Pick<CartItem, 'product' | 'modifier_option_ids' | 'item_note'>, b: Pick<CartItem, 'product' | 'modifier_option_ids' | 'item_note'>): boolean {
+export function sameCartConfiguration(a: Pick<CartItem, 'product' | 'modifier_option_ids' | 'modifiers' | 'item_note'>, b: Pick<CartItem, 'product' | 'modifier_option_ids' | 'modifiers' | 'item_note'>): boolean {
   return cartLineKey(a) === cartLineKey(b);
 }
 
@@ -35,7 +41,7 @@ export function cartToItems(cart: CartItem[]): ItemPayload[] {
     discount_amount: i.discount_amount,
     bonus_quantity: i.bonus_quantity,
     total: i.quantity * i.unit_price - i.discount_amount,
-    modifier_option_ids: i.modifier_option_ids || [],
+    modifier_option_ids: modifierIdsFromCart(i),
     notes: i.item_note || null,
   }));
 }
