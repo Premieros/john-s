@@ -29,7 +29,6 @@ export const INTERACTION_CONTRACTS: InteractionContract[] = [
   { testId: 'sidebar-close', file: 'src/components/Layout.tsx', label: 'Close sidebar on mobile', marker: 'data-testid="sidebar-close"' },
   { testId: 'sidebar-open', file: 'src/components/Layout.tsx', label: 'Open sidebar on mobile', marker: 'data-testid="sidebar-open"' },
   { testId: 'mobile-sidebar-backdrop', file: 'src/components/Layout.tsx', label: 'Mobile sidebar backdrop closes the menu', marker: 'data-testid="mobile-sidebar-backdrop"' },
-  { testId: 'assistant-card', file: 'src/components/Layout.tsx', label: 'Assistant / help card', marker: 'data-testid="assistant-card"' },
   { testId: 'app-header', file: 'src/components/Layout.tsx', label: 'Top app header', marker: 'data-testid="app-header"' },
   { testId: 'top-navigation', file: 'src/components/Layout.tsx', label: 'Top navigation rail', marker: 'data-testid="top-navigation"' },
   { testId: 'top-tab-{key}', file: 'src/components/Layout.tsx', label: 'Top navigation tab', marker: 'data-testid={`top-tab-${tab.key}`}' },
@@ -88,9 +87,9 @@ export const INTERACTION_CONTRACTS: InteractionContract[] = [
   { testId: 'design-search', file: 'src/components/design/DesignSearch.tsx', label: 'Design search input', marker: 'data-testid={testId}' },
   { testId: 'design-pagination', file: 'src/components/design/DesignPagination.tsx', label: 'Design pagination wrapper', marker: 'data-testid="design-pagination"' },
   { testId: 'pagination-bar', file: 'src/components/PaginationBar.tsx', label: 'Pagination load-more bar', marker: 'data-testid="pagination-bar"' },
-  { testId: 'design-loading', file: 'src/components/design/DesignStates.tsx', label: 'Shared loading state', marker: 'testId = \'design-loading\'' },
-  { testId: 'design-empty', file: 'src/components/design/DesignStates.tsx', label: 'Shared empty state', marker: 'testId = \'design-empty\'' },
-  { testId: 'design-error', file: 'src/components/design/DesignStates.tsx', label: 'Shared error state', marker: 'testId = \'design-error\'' },
+  { testId: 'design-loading', file: 'src/components/design/DesignStates.tsx', label: 'Shared loading state', marker: "testId = 'design-loading'" },
+  { testId: 'design-empty', file: 'src/components/design/DesignStates.tsx', label: 'Shared empty state', marker: "testId = 'design-empty'" },
+  { testId: 'design-error', file: 'src/components/design/DesignStates.tsx', label: 'Shared error state', marker: "testId = 'design-error'" },
 
   // POS bottom navigation (PosBottomNav.tsx)
   { testId: 'pos active-orders nav', file: 'src/features/pos/components/bottom/PosBottomNav.tsx', label: 'Bottom nav opens the active-orders drawer', marker: "onOpenOrders('all')" },
