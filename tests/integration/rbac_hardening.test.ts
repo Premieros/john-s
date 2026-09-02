@@ -48,7 +48,7 @@ describe.skipIf(skip)('RBAC hardening regression', () => {
     expect(res.error).toContain('DISCOUNT_NOT_ALLOWED');
   });
 
-  it('allows the privileged POS role to create a discounted sale only when permission exists', async () => {
+  it('requires even a privileged POS role to use process_sale for discounted sales', async () => {
     if (!imp) return;
 
     await client.query(
@@ -65,8 +65,7 @@ describe.skipIf(skip)('RBAC hardening regression', () => {
        VALUES ('RBAC-DISCOUNT-BM', $1, $2, 100, 10, 0, 90, 90, 'cash', 'completed')`,
       [ids.branchA, ids.whA],
     );
-    expect(allowed.error).toBeUndefined();
-    expect(allowed.rowCount).toBe(1);
+    expect(allowed.error).toBeTruthy();
   });
 
   it('prevents a branch manager from granting admin-only permissions', async () => {

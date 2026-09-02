@@ -73,7 +73,7 @@ interface BranchCtx {
 
 type WriteMode =
   | 'full' // branch staff may also write their own branch
-  | 'financialHeader' // own-branch INSERT allowed; direct UPDATE/DELETE cashier-denied
+  | 'rpcOnlyHeader' // all authenticated INSERT denied; process_sale is the write boundary
   | 'perm' // writes: admin OR can_permission('<module>.manage') AND own branch (branch_manager holds it)
   | 'permProduction' // writes: admin OR production.manage AND own branch (production_manager holds it)
   | 'adminWrite' // writes are admin-only
@@ -175,9 +175,9 @@ describe.skipIf(skip)('RLS branch isolation', () => {
     // Full access: branch staff can create/edit/delete their own branch rows.
     // (044: customers is gated by customers.manage, which the cashier role holds.)
     { name: 'customers', key: 'customers', mode: 'full', ins: (c) => `INSERT INTO public.customers (name, branch_id) VALUES ('C', '${c.branch}')`, upd: () => `SET name = 'probe'` },
-    // 20260901193000: a cashier can create an own-branch sale through the sale
-    // flow but cannot directly mutate the financial header afterwards.
-    { name: 'sales', key: 'sales', mode: 'financialHeader', ins: (c) => `INSERT INTO public.sales (invoice_number, branch_id, warehouse_id, subtotal, discount_amount, tax_amount, total, paid_amount, payment_method, status) VALUES ('${uniq('INV')}', '${c.branch}', '${c.wh}', 0, 0, 0, 0, 0, 'cash', 'completed')`, upd: () => `SET payment_method = 'cash'`, noDel: 'cashier' },
+    // P2: sales are created only through process_sale; raw DML is denied even
+    // to administrators because it bypasses pricing, inventory and accounting.
+    { name: 'sales', key: 'sales', mode: 'rpcOnlyHeader', ins: (c) => `INSERT INTO public.sales (invoice_number, branch_id, warehouse_id, subtotal, discount_amount, tax_amount, total, paid_amount, payment_method, status) VALUES ('${uniq('INV')}', '${c.branch}', '${c.wh}', 0, 0, 0, 0, 0, 'cash', 'completed')`, upd: () => `SET payment_method = 'cash'`, noDel: 'cashier' },
     { name: 'purchases', key: 'purchases', mode: 'full', ins: (c) => `INSERT INTO public.purchases (invoice_number, supplier_id, branch_id, warehouse_id, subtotal, discount_amount, tax_amount, total, paid_amount, payment_method, status) VALUES ('${uniq('PINV')}', '${c.supp}', '${c.branch}', '${c.wh}', 0, 0, 0, 0, 0, 'cash', 'completed')`, upd: () => `SET payment_method = 'cash'`, noDel: 'cashier' },
     { name: 'warehouse_transfers', key: 'warehouse_transfers', mode: 'full', ins: (c) => `INSERT INTO public.warehouse_transfers (transfer_number, from_warehouse_id, to_warehouse_id, branch_id, status) VALUES ('${uniq('WT')}', '${c.wh}', '${c.whOther}', '${c.branch}', 'pending')`, upd: () => `SET notes = 'probe'`, noDel: 'all' },
     { name: 'dining_tables', key: 'dining_tables', mode: 'full', ins: (c) => `INSERT INTO public.dining_tables (name, branch_id, capacity, status) VALUES ('Probe', '${c.branch}', 4, 'vacant')`, upd: () => `SET name = 'probe'`, noDel: 'all' },
@@ -253,7 +253,7 @@ describe.skipIf(skip)('RLS branch isolation', () => {
     const del = (id: string) => `DELETE FROM ${tbl.name} WHERE id = '${id}'`;
 
     if (tbl.ins) {
-      await runProbe(client, `${tbl.name} INSERT admin→B`, adminId(), tbl.ins(ctxB), 'ok');
+      await runProbe(client, `${tbl.name} INSERT admin→B`, adminId(), tbl.ins(ctxB), tbl.mode === 'rpcOnlyHeader' ? 'denied' : 'ok');
       await runProbe(client, `${tbl.name} INSERT cashier→B`, cashierId(), tbl.ins(ctxB), 'denied');
     }
 
@@ -278,8 +278,11 @@ describe.skipIf(skip)('RLS branch isolation', () => {
         }
         break;
 
-      case 'financialHeader':
-        if (tbl.ins) await runProbe(client, `${tbl.name} INSERT cashier→A`, cashierId(), tbl.ins(ctxA), 'ok');
+      case 'rpcOnlyHeader':
+        if (tbl.ins) {
+          await runProbe(client, `${tbl.name} INSERT admin→A`, adminId(), tbl.ins(ctxA), 'denied');
+          await runProbe(client, `${tbl.name} INSERT cashier→A`, cashierId(), tbl.ins(ctxA), 'denied');
+        }
         if (tbl.upd) {
           await runProbe(client, `${tbl.name} UPDATE admin own`, adminId(), upd(own), 'ok');
           await runProbe(client, `${tbl.name} UPDATE cashier own`, cashierId(), upd(own), 'denied');
@@ -569,7 +572,7 @@ describe.skipIf(skip)('RLS branch isolation', () => {
       key: string;
       parent: string;
       fk: string;
-      mode: 'parentWrite' | 'immutableSaleItem' | 'adminWrite' | 'permRecipes' | 'adminInsOnly' | 'adminInsUpd' | 'shiftOps';
+      mode: 'parentWrite' | 'rpcOnlySaleItem' | 'adminWrite' | 'permRecipes' | 'adminInsOnly' | 'adminInsUpd' | 'shiftOps';
       ins: (ownParent: string, otherParent: string) => { sql: string; paramsA: unknown[]; paramsB: unknown[] };
       noDel?: 'all' | 'cashier';
       updSet?: string;
@@ -579,7 +582,7 @@ describe.skipIf(skip)('RLS branch isolation', () => {
       {
         // Sale lines are append-only for authenticated callers after checkout;
         // corrections/refunds must go through controlled RPCs, never raw DML.
-        name: 'sale_items', key: 'sale_items', parent: 'sales', fk: 'sale_id', mode: 'immutableSaleItem',
+        name: 'sale_items', key: 'sale_items', parent: 'sales', fk: 'sale_id', mode: 'rpcOnlySaleItem',
         ins: () => ({ sql: `INSERT INTO public.sale_items (sale_id, product_id, unit_name, quantity, unit_price, total) VALUES ($1, $2, 'piece', 1, 20, 20)`, paramsA: [ids.saleA, ids.prodA], paramsB: [ids.saleB, ids.prodB] }),
       },
       {
@@ -661,10 +664,10 @@ describe.skipIf(skip)('RLS branch isolation', () => {
             }
             break;
 
-          case 'immutableSaleItem':
-            await runProbe(client, `${ch.name} INSERT cashier own parent`, cashierId(), sql, 'ok', paramsA);
+          case 'rpcOnlySaleItem':
+            await runProbe(client, `${ch.name} INSERT cashier own parent`, cashierId(), sql, 'denied', paramsA);
             await runProbe(client, `${ch.name} INSERT cashier other parent`, cashierId(), sql, 'denied', paramsB);
-            await runProbe(client, `${ch.name} INSERT admin other parent`, adminId(), sql, 'ok', paramsB);
+            await runProbe(client, `${ch.name} INSERT admin other parent`, adminId(), sql, 'denied', paramsB);
             await runProbe(client, `${ch.name} UPDATE cashier own`, cashierId(), upd(own, `SET quantity = 2`), 'denied');
             await runProbe(client, `${ch.name} UPDATE cashier other`, cashierId(), upd(other, `SET quantity = 2`), 'denied');
             await runProbe(client, `${ch.name} UPDATE admin own`, adminId(), upd(own, `SET quantity = 2`), 'denied');
@@ -813,16 +816,13 @@ describe.skipIf(skip)('RLS branch isolation', () => {
       expect(parseTrail(cashier.rows[0].trail)).toHaveLength(0);
     });
 
-    t('sale discount guard: pos.discount required for discounted sales (044)', async () => {
+    t('sale financial writes require process_sale instead of direct DML', async () => {
       const ins = (discount: number, branch: string) =>
         `INSERT INTO public.sales (invoice_number, branch_id, warehouse_id, subtotal, discount_amount, tax_amount, total, paid_amount, payment_method, status) VALUES ('${uniq('INV')}', '${branch}', '${ids.whA}', 100, ${discount}, 0, 100, 100, 'cash', 'completed')`;
-      // cashier has no pos.discount -> trigger rejects the discount.
       await runProbe(client, 'sales cashier discounted', cashierId(), ins(5, ids.branchA), 'denied');
-      // cashier may still insert a no-discount sale in own branch.
-      await runProbe(client, 'sales cashier no-discount own', cashierId(), ins(0, ids.branchA), 'ok');
-      // branch_manager holds pos.discount (043) -> allowed.
-      await runProbe(client, 'sales bm discounted own', bmId(), ins(5, ids.branchA), 'ok');
-      await runProbe(client, 'sales admin discounted other', adminId(), ins(5, ids.branchB), 'ok');
+      await runProbe(client, 'sales cashier no-discount own', cashierId(), ins(0, ids.branchA), 'denied');
+      await runProbe(client, 'sales bm discounted own', bmId(), ins(5, ids.branchA), 'denied');
+      await runProbe(client, 'sales admin discounted other', adminId(), ins(5, ids.branchB), 'denied');
     });
 
     t('product_units / product_components: gated by branch access (044)', async () => {

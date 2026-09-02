@@ -220,7 +220,8 @@ describe.skipIf(!dbUrl)('Multi-tenant Phase 2 — Branch Management', () => {
     );
     expect(verify.rows[0].is_active).toBe(false);
 
-    // Try to insert a sale into the deactivated branch — should fail
+    // Direct sale writes are RPC-only and therefore fail before a client can
+    // bypass the branch-active check or any other sale invariant.
     const saleRes = await client.query(
       `SELECT id FROM public.warehouses WHERE branch_id = $1 LIMIT 1`, [branchA2Id],
     );
@@ -232,7 +233,6 @@ describe.skipIf(!dbUrl)('Multi-tenant Phase 2 — Branch Management', () => {
         [`INV-${randomUUID().slice(0, 8)}`, branchA2Id, whId],
       );
       expect(insRes.error).toBeTruthy();
-      expect(insRes.error!).toContain('BRANCH_INACTIVE');
     }
   });
 

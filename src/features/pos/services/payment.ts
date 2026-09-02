@@ -47,28 +47,14 @@ export async function processSaleForOrder(p: ProcessSalePayload): Promise<{ resu
       return { result: data as RpcResult, error: null };
     }
 
-    // If network or server error occurred, fallback gracefully to offline queue
-    const queued = offlinePosManager.enqueueSale(p);
-    return {
-      result: {
-        success: true,
-        offline: true,
-        sale_id: queued.localId,
-        order_id: p.p_order_id || undefined,
-      },
-      error: null,
-    };
-  } catch {
-    const queued = offlinePosManager.enqueueSale(p);
-    return {
-      result: {
-        success: true,
-        offline: true,
-        sale_id: queued.localId,
-        order_id: p.p_order_id || undefined,
-      },
-      error: null,
-    };
+    // A server rejection (approval, stock, subscription, validation, etc.) is
+    // authoritative and must never be converted into a successful offline sale.
+    const result = data as RpcResult | null;
+    return { result, error: error?.message || result?.detail || result?.error || 'Sale processing failed' };
+  } catch (err) {
+    // Do not enqueue after an ambiguous online failure: the server may have
+    // committed before the response was lost, which would create a duplicate.
+    return { result: null, error: err instanceof Error ? err.message : 'Network error while processing sale' };
   }
 }
 
@@ -102,4 +88,3 @@ export async function fetchBranchWarehouseId(branchId: string): Promise<string |
     return null;
   }
 }
-

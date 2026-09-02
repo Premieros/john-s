@@ -254,15 +254,14 @@ describe('Batch 2: User branch assignment enforced', () => {
   });
 });
 
-describe('Batch 2: Disabled branch blocks operational writes', () => {
-  it('disabled branch triggers assert_branch_active on sales', async () => {
+describe('Batch 2: Sales use the controlled RPC boundary', () => {
+  it('blocks direct authenticated inserts even for super_admin', async () => {
     if (skip()) return;
     const r = await runAs(client, ids.users.super_admin,
       `INSERT INTO public.sales (invoice_number, branch_id, warehouse_id, subtotal, discount_amount, tax_amount, total, paid_amount, payment_method, status)
        VALUES ('DISABLED-TEST', (SELECT id FROM public.branches WHERE name = 'RLS A' LIMIT 1), $1, 0, 0, 0, 0, 0, 'cash', 'completed')`,
       [ids.whA]);
-    // Should succeed for active branch, the trigger only blocks inactive branches
-    expect(r.error).toBeUndefined();
+    expect(r.error).toBeTruthy();
   });
 });
 

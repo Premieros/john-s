@@ -149,17 +149,17 @@ Commit:
 
 ## 8) حماية البيع — P2
 
-مكتمل:
+مكتمل ✅:
 - cashier لا يعدل `sales` مباشرة.
 - `sale_items` immutable عبر RLS.
 - authoritative catalog pricing Server-side مختبر.
 - inventory preflight قبل mutation.
-
-متبقي Audit محدود لـ:
-- tax tampering.
-- discount combinations.
-- unit/quantity combinations.
-- أي مسار بديل قد يقبل subtotal/total من العميل.
+- أُغلق مسار Direct Sale fallback الذي كان يقبل subtotal/tax/total وأسعار الأسطر من العميل.
+- إنشاء `sales` و`sale_items` أصبح محصورًا في `process_sale`؛ كل INSERT مباشر من authenticated مرفوض حتى للمدير.
+- رفض الخادم التجاري لا يتحول إلى بيع Offline ناجح، وفشل الشبكة الغامض لا يُصفّ للبيع Offline لتجنب البيع المكرر.
+- الضريبة والإجماليات تُحسب من إعدادات وأسعار الخادم، والخصومات تُقيد بحد السطر/الفاتورة.
+- `paid_amount` المطبق لا يتجاوز إجمالي الفاتورة المحسوب من الخادم.
+- الكميات غير الموجبة مرفوضة قبل أي كتابة، ومسار وحدات المخزون يستهلك معاملات `product_unit_links` الفعلية.
 
 ---
 
@@ -408,3 +408,17 @@ Migration الجديدة للـBackorders:
 - `REPRINT_APPROVAL_PENDING` يعرض رسالة واضحة بالعربية والإنجليزية تطلب إعادة المحاولة بعد اعتماد المدير.
 - فشل/انتظار الطباعة التلقائية لا يجعل عملية البيع المكتملة تظهر كأنها فشلت.
 - الطباعة اليدوية تعالج الخطأ نفسه ولا تترك Promise غير معالج في الواجهة.
+
+---
+
+## تحديث 2026-09-02 — P2 Sale Financial Authority ✅
+
+- أزيل مسار الكتابة المباشرة المتعدد الخطوات من `src/api/domains/pos.ts`؛ نقطة البيع Online تستدعي `process_sale` فقط.
+- لا يتم تحويل `MANAGER_APPROVAL_REQUIRED` أو نقص المخزون أو انتهاء الاشتراك أو أي رفض خادم إلى نجاح Offline.
+- Migration: `20260902060000_sale_financial_authority.sql` تمنع INSERT المباشر على `sales` و`sale_items` لكل مستخدم authenticated، وتحافظ على `_process_sale_core` داخليًا فقط.
+- تم تقييد المبلغ المطبق `paid_amount` إلى إجمالي الخادم لمنع تضخيم حركة الوردية أو إنشاء فرق محاسبي مصطنع.
+- توسع اختبار `process_sale_pricing` ليثبت تجاهل subtotal/tax/total/unit_price المزورة، حساب ضريبة 15% من الأساس الفعلي بعد الخصم، توازن القيد، وتقييد الدفع.
+- أضيفت حالات رفض quantity = 0 وquantity = -1 مع إثبات عدم إنشاء فاتورة.
+- عُدلت اختبارات RLS القديمة لتعكس العقد الجديد: البيع وسطور البيع RPC-only، لا Direct DML.
+- التحقق المحلي: typecheck كامل ✅، 342 unit/component tests ✅، lint ✅، build ✅.
+- المتبقي قبل إغلاق الدفعة نهائيًا: Verify DB/Integration/Security/RLS وBrowser Smoke وDeploy على GitHub.

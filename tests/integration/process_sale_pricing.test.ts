@@ -99,4 +99,54 @@ describe.skipIf(skip)('process_sale authoritative pricing (D13)', () => {
     expect(Number(items.rows[0].discount_amount)).toBe(100);
     expect(Number(items.rows[0].total)).toBe(0);
   });
+
+  it('ignores tampered header totals and applies configured tax to the authoritative base', async () => {
+    await client.query(`UPDATE public.settings SET tax_enabled = true, tax_rate = 15`);
+    const inv3 = `${invoiceNumber}-C`;
+    const res = await client.query(
+      `SELECT public.process_sale($1, $2, $3, NULL, NULL, 1, 10, 'percent', 999, 0, 9999, 9999, 'cash', 'completed', $4::jsonb) AS r`,
+      [inv3, branchId, warehouseId, JSON.stringify([{ product_id: productId, unit_name: 'tampered-unit', quantity: 1, unit_price: 0.01, discount_amount: 0, bonus_quantity: 0, total: 0.01 }])],
+    );
+    const r = res.rows[0].r;
+    expect(r.success).toBe(true);
+    if (!r.success) throw new Error(JSON.stringify(r));
+
+    const sale = await client.query(
+      `SELECT subtotal, discount_amount, discount_type, tax_amount, total, paid_amount FROM public.sales WHERE id = $1`,
+      [r.sale_id],
+    );
+    expect(Number(sale.rows[0].subtotal)).toBe(100);
+    expect(Number(sale.rows[0].discount_amount)).toBe(10);
+    expect(sale.rows[0].discount_type).toBe('percent');
+    expect(Number(sale.rows[0].tax_amount)).toBe(13.5);
+    expect(Number(sale.rows[0].total)).toBe(103.5);
+    expect(Number(sale.rows[0].paid_amount)).toBe(103.5);
+
+    const line = await client.query(`SELECT unit_price, quantity, total FROM public.sale_items WHERE sale_id = $1`, [r.sale_id]);
+    expect(Number(line.rows[0].unit_price)).toBe(100);
+    expect(Number(line.rows[0].quantity)).toBe(1);
+    expect(Number(line.rows[0].total)).toBe(100);
+
+    const journal = await client.query(
+      `SELECT COALESCE(SUM(l.debit), 0)::numeric(14,2) AS dr, COALESCE(SUM(l.credit), 0)::numeric(14,2) AS cr
+       FROM public.journal_entries j
+       JOIN public.journal_entry_lines l ON l.journal_entry_id = j.id
+       WHERE j.reference_id = $1`,
+      [r.sale_id],
+    );
+    expect(Number(journal.rows[0].dr)).toBe(Number(journal.rows[0].cr));
+    await client.query(`UPDATE public.settings SET tax_enabled = false`);
+  });
+
+  it.each([0, -1])('rejects non-positive quantity %s before any sale write', async (quantity) => {
+    const invoice = `${invoiceNumber}-Q-${quantity}`;
+    const res = await client.query(
+      `SELECT public.process_sale($1, $2, $3, NULL, NULL, 100, 0, 'amount', 0, 0, 100, 100, 'cash', 'completed', $4::jsonb) AS r`,
+      [invoice, branchId, warehouseId, JSON.stringify([{ product_id: productId, unit_name: 'piece', quantity, unit_price: 100, discount_amount: 0, bonus_quantity: 0, total: 100 }])],
+    );
+    expect(res.rows[0].r.success).toBe(false);
+    expect(res.rows[0].r.error).toBe('INVALID_QUANTITY');
+    const written = await client.query(`SELECT count(*)::int AS count FROM public.sales WHERE invoice_number = $1`, [invoice]);
+    expect(written.rows[0].count).toBe(0);
+  });
 });
