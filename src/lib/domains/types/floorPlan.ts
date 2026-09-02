@@ -1,4 +1,4 @@
-import type { Product } from './catalog';
+import type { Product, ProductModifierSnapshot } from './catalog';
 
 export type OrderType = 'dine_in' | 'takeaway' | 'delivery' | 'drive_thru';
 export type DiningTableStatus = 'vacant' | 'occupied' | 'reserved' | 'closed';
@@ -76,6 +76,8 @@ export interface OrderItem {
   bonus_quantity: number;
   total: number;
   notes: string | null;
+  modifier_option_ids?: string[];
+  modifiers_snapshot?: ProductModifierSnapshot[];
   created_at: string;
   product?: Product;
 }
