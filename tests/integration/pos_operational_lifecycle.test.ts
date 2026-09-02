@@ -22,6 +22,7 @@ describe.skipIf(skip)('POS operational lifecycle release gate', () => {
   let client: pg.Client;
   let ids: RlsIds;
   let impersonationAvailable = false;
+  const productId = randomUUID();
   const unitId = randomUUID();
 
   const asUser = async (userId: string, sql: string, params: unknown[] = []) => {
@@ -61,6 +62,14 @@ describe.skipIf(skip)('POS operational lifecycle release gate', () => {
       [ids.shiftA],
     );
 
+    // Use a dedicated lifecycle product so unrelated shared-fixture recipes cannot
+    // accidentally add raw-material requirements to this linked-unit sale path.
+    await client.query(
+      `INSERT INTO public.products
+         (id, name, branch_id, cost_price, sale_price, is_active)
+       VALUES ($1, 'Lifecycle sale product', $2, 10, 20, true)`,
+      [productId, ids.branchA],
+    );
     await client.query(
       `INSERT INTO public.inventory_units
          (id, code, name, unit_type, branch_id, cost_price, sale_price, is_active)
@@ -69,7 +78,7 @@ describe.skipIf(skip)('POS operational lifecycle release gate', () => {
     );
     await client.query(
       `INSERT INTO public.product_unit_links(product_id, unit_id, quantity) VALUES ($1, $2, 1)`,
-      [ids.prodA, unitId],
+      [productId, unitId],
     );
     await client.query(
       `INSERT INTO public.inventory_unit_batches(unit_id, branch_id, warehouse_id, quantity, unit_cost)
@@ -109,7 +118,7 @@ describe.skipIf(skip)('POS operational lifecycle release gate', () => {
     const shiftId = shiftRow.rows[0].id;
 
     const items = JSON.stringify([{
-      product_id: ids.prodA,
+      product_id: productId,
       unit_name: 'piece',
       quantity: 1,
       unit_price: 9999, // deliberately spoofed; DB must use catalog price (20)
