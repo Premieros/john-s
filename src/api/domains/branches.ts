@@ -27,4 +27,8 @@ export const branches = {
   deactivate(p: { p_branch_id: string }): ApiResult<RpcResult> {
     return rpc('deactivate_branch', p);
   },
+
+  remove(p: { p_branch_id: string }): ApiResult<RpcResult> {
+    return rpc('delete_branch_cascade', p);
+  },
 };
