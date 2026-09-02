@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeSentState } from '@/features/pos/utils/sentState';
+import { cartLineKey } from '@/features/pos/utils/cart';
 import type { CartItem, OrderItem, Product } from '@/lib/types';
 import type { KitchenSendItem } from '@/features/pos/types';
 
@@ -10,19 +11,24 @@ const product = (id: string, name = id) => ({
   sale_price: 10,
 } as Product);
 
-const cartItem = (p: Product, quantity = 1) => ({
+const cartItem = (p: Product, quantity = 1, modifierIds: string[] = [], note?: string) => ({
   product: p,
   unit_name: 'piece',
   quantity,
   unit_price: 10,
   discount_amount: 0,
   bonus_quantity: 0,
+  modifier_option_ids: modifierIds,
+  item_note: note,
 } as CartItem);
 
-const orderItem = (id: string, productId: string, quantity = 1) => ({
+const orderItem = (id: string, productId: string, quantity = 1, modifierIds: string[] = [], note: string | null = null) => ({
   id,
   product_id: productId,
   quantity,
+  modifier_option_ids: modifierIds,
+  modifiers_snapshot: [],
+  notes: note,
 } as OrderItem);
 
 const kitchenSend = (orderItemId: string, productId: string, quantity = 1) => ({
@@ -43,7 +49,9 @@ describe('computeSentState', () => {
   it('keeps a newly added product unsent after earlier lines were sent', () => {
     const burger = product('burger');
     const fries = product('fries');
-    const cart = [cartItem(burger), cartItem(fries)];
+    const burgerLine = cartItem(burger);
+    const friesLine = cartItem(fries);
+    const cart = [burgerLine, friesLine];
     const items = [orderItem('item-burger', 'burger'), orderItem('item-fries', 'fries')];
 
     const state = computeSentState(
@@ -53,15 +61,16 @@ describe('computeSentState', () => {
       [kitchenSend('item-burger', 'burger')],
     );
 
-    expect(state.burger.sent).toBe(true);
-    expect(state.burger.newQty).toBe(0);
-    expect(state.fries.sent).toBe(false);
-    expect(state.fries.newQty).toBe(1);
+    expect(state[cartLineKey(burgerLine)].sent).toBe(true);
+    expect(state[cartLineKey(burgerLine)].newQty).toBe(0);
+    expect(state[cartLineKey(friesLine)].sent).toBe(false);
+    expect(state[cartLineKey(friesLine)].newQty).toBe(1);
   });
 
   it('does not leak a stale session send onto a newly added line', () => {
     const burger = product('burger');
-    const cart = [cartItem(burger)];
+    const burgerLine = cartItem(burger);
+    const cart = [burgerLine];
     const items: OrderItem[] = [];
 
     const state = computeSentState(
@@ -71,13 +80,14 @@ describe('computeSentState', () => {
       [kitchenSend('old-order-item', 'burger')],
     );
 
-    expect(state.burger.sent).toBe(false);
-    expect(state.burger.newQty).toBe(1);
+    expect(state[cartLineKey(burgerLine)].sent).toBe(false);
+    expect(state[cartLineKey(burgerLine)].newQty).toBe(1);
   });
 
-  it('preserves partial state when an existing line has additional unsent quantity', () => {
+  it('preserves persisted sent state for an existing line', () => {
     const burger = product('burger');
-    const cart = [cartItem(burger, 2)];
+    const burgerLine = cartItem(burger, 2);
+    const cart = [burgerLine];
     const items = [orderItem('item-burger', 'burger', 2)];
 
     const state = computeSentState(
@@ -87,8 +97,29 @@ describe('computeSentState', () => {
       [kitchenSend('item-burger', 'burger', 1)],
     );
 
-    expect(state.burger.sentQty).toBe(2);
-    expect(state.burger.newQty).toBe(0);
-    expect(state.burger.sent).toBe(true);
+    expect(state[cartLineKey(burgerLine)].sentQty).toBe(2);
+    expect(state[cartLineKey(burgerLine)].newQty).toBe(0);
+    expect(state[cartLineKey(burgerLine)].sent).toBe(true);
+  });
+
+  it('keeps Single and Double of the same product as separate kitchen lines', () => {
+    const burger = product('burger');
+    const single = cartItem(burger, 1, ['single']);
+    const double = cartItem(burger, 1, ['double']);
+    const items = [
+      orderItem('item-single', 'burger', 1, ['single']),
+      orderItem('item-double', 'burger', 1, ['double']),
+    ];
+
+    const state = computeSentState(
+      [single, double],
+      items,
+      new Set(['item-single']),
+      [kitchenSend('item-single', 'burger')],
+    );
+
+    expect(state[cartLineKey(single)].sent).toBe(true);
+    expect(state[cartLineKey(double)].sent).toBe(false);
+    expect(state[cartLineKey(double)].newQty).toBe(1);
   });
 });
