@@ -252,3 +252,56 @@
   100% { transform: scale(4); opacity: 0; }
 }
 
+/* Mobile shell containment: keep header controls and branch picker inside the viewport. */
+@media (max-width: 639px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  [data-testid='app-header'] {
+    gap: 0.25rem;
+    padding-inline: 0.5rem;
+  }
+
+  [data-testid='app-header'] > :first-child {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  [data-testid='top-navigation'] {
+    display: none;
+  }
+
+  [data-testid='branch-indicator'] {
+    min-width: 0;
+    max-width: min(48vw, 11rem);
+    padding-inline: 0.625rem;
+  }
+
+  [data-testid='branch-indicator'] span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  [data-testid='branch-menu'] {
+    position: fixed;
+    top: 4.25rem;
+    inset-inline: 0.75rem;
+    width: auto;
+    max-width: calc(100vw - 1.5rem);
+    max-height: min(60vh, 26rem);
+    overflow-y: auto;
+  }
+
+  [data-testid='user-menu-button'],
+  [data-testid='theme-toggle'],
+  [data-testid='sign-out-button'] {
+    display: none;
+  }
+}
