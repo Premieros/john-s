@@ -35,6 +35,7 @@ interface OfflineContextValue {
     categories: Category[];
     customers: Customer[];
     tables: DiningTable[];
+    branches: Branch[];
     settings: Settings | null;
     stockMap: Record<string, number>;
   }>;
@@ -72,6 +73,7 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
       if (data.categories) await saveOfflineCache('categories', data.categories);
       if (data.customers) await saveOfflineCache('customers', data.customers);
       if (data.tables) await saveOfflineCache('dining_tables', data.tables);
+      if (data.branches) await saveOfflineCache('branches', data.branches);
       if (data.settings) await saveOfflineSetting('settings_' + data.branchId, data.settings);
       if (data.stockMap) {
         const stockItems = Object.entries(data.stockMap).map(([productId, quantity]) => ({
@@ -85,11 +87,12 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
   );
 
   const loadCachedPosData = useCallback(async (branchId?: string) => {
-    const [products, categories, customers, tables, stockArr, cachedSettings] = await Promise.all([
+    const [products, categories, customers, tables, branches, stockArr, cachedSettings] = await Promise.all([
       getOfflineCache<Product>('products'),
       getOfflineCache<Category>('categories'),
       getOfflineCache<Customer>('customers'),
       getOfflineCache<DiningTable>('dining_tables'),
+      getOfflineCache<Branch>('branches'),
       getOfflineCache<{ productId: string; quantity: number }>('stock_map'),
       branchId ? getOfflineSetting<Settings>('settings_' + branchId) : null,
     ]);
@@ -104,6 +107,7 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
       categories,
       customers,
       tables,
+      branches,
       settings: cachedSettings || null,
       stockMap,
     };
@@ -157,6 +161,7 @@ const defaultOfflineValue: OfflineContextValue = {
     categories: [],
     customers: [],
     tables: [],
+    branches: [],
     settings: null,
     stockMap: {},
   }),

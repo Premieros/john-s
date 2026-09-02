@@ -78,10 +78,23 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
   }>({ warehouses: [], cashiers: [], customers: [], suppliers: [], products: [], categories: [], tables: [], expenseCategories: [] });
   const effectiveBranchFilter = isAdminRole(user?.role) ? (adminBranchFilter || null) : branchFilter;
   const { branches } = useBranches();
+  const branchColumn = lang === 'ar' ? 'الفرع' : 'Branch';
+  const branchNameById = (branchId: unknown): string => {
+    const id = typeof branchId === 'string' ? branchId : '';
+    const branch = branches.find((item) => item.id === id);
+    return (lang === 'ar' ? branch?.name : (branch?.name_en || branch?.name)) || (lang === 'ar' ? 'فرع غير معروف' : 'Unknown branch');
+  };
+  const withBranch = (branchId: unknown, row: Record<string, unknown>): Record<string, unknown> => ({
+    ...row,
+    [branchColumn]: branchNameById(branchId),
+  });
   const { effectiveSettings } = useSettings();
   const currency = effectiveSettings(effectiveBranchFilter)?.currency || 'EGP';
   const { visibleColumns, toggleColumn, showAllColumns } = useColumnPreferences(reportType);
   const { savedReports, saveReport, deleteReport } = useCustomReports();
+  const reportBranchLabel = effectiveBranchFilter
+    ? branchNameById(effectiveBranchFilter)
+    : (lang === 'ar' ? 'كل الفروع' : 'All branches');
 
   const filterQ = <T,>(q: T, f: ReportFilters, applier: (b: EqBuilder, x: ReportFilters) => EqBuilder): T =>
     applier(q as unknown as EqBuilder, f) as unknown as T;
@@ -185,7 +198,7 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
   useEffect(() => {
     loadReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportType, from, to, effectiveBranchFilter, filters]);
+  }, [reportType, from, to, effectiveBranchFilter, filters, branches]);
 
   async function loadReport() {
     setLoading(true);
@@ -194,48 +207,65 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
       const toTs = `${to}T23:59:59`;
 
       if (reportType === 'sales') {
-        let q = supabase.from('sales').select('id, invoice_number, total, created_at, customer:customers(name)').gte('created_at', fromTs).lte('created_at', toTs).order('created_at', { ascending: false }).limit(5000);
+        let q = supabase.from('sales').select('id, branch_id, invoice_number, total, created_at, customer:customers(name)').gte('created_at', fromTs).lte('created_at', toTs).order('created_at', { ascending: false }).limit(5000);
         if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
         q = filterQ(q, filters, applySalesFilters);
         const { data: sales } = await q;
-        const rows = (sales || []).map((s: Record<string, unknown>) => ({ [lang === 'ar' ? 'الفاتورة' : 'Invoice']: s.invoice_number, [lang === 'ar' ? 'التاريخ' : 'Date']: formatDate(s.created_at as string, lang), [lang === 'ar' ? 'العميل' : 'Customer']: (s.customer as { name?: string })?.name || '', [lang === 'ar' ? 'الإجمالي' : 'Total']: Number(s.total) }));
+        const rows = (sales || []).map((s: Record<string, unknown>) => withBranch(s.branch_id, { [lang === 'ar' ? 'الفاتورة' : 'Invoice']: s.invoice_number, [lang === 'ar' ? 'التاريخ' : 'Date']: formatDate(s.created_at as string, lang), [lang === 'ar' ? 'العميل' : 'Customer']: (s.customer as { name?: string })?.name || '', [lang === 'ar' ? 'الإجمالي' : 'Total']: Number(s.total) }));
         setData(rows);
         setChartData((sales || []).slice(0, 10).map((s: Record<string, unknown>) => ({ name: String(s.invoice_number), value: Number(s.total) })));
         setSummary({ total: (sales || []).reduce((s: number, r: Record<string, unknown>) => s + Number(r.total), 0), count: (sales || []).length });
       } else if (reportType === 'purchases') {
-        let q = supabase.from('purchases').select('id, invoice_number, total, created_at, supplier:suppliers(name)').gte('created_at', fromTs).lte('created_at', toTs).order('created_at', { ascending: false }).limit(5000);
+        let q = supabase.from('purchases').select('id, branch_id, invoice_number, total, created_at, supplier:suppliers(name)').gte('created_at', fromTs).lte('created_at', toTs).order('created_at', { ascending: false }).limit(5000);
         if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
         q = filterQ(q, filters, applyPurchaseFilters);
         const { data: purchases } = await q;
-        const rows = (purchases || []).map((p: Record<string, unknown>) => ({ [lang === 'ar' ? 'الفاتورة' : 'Invoice']: p.invoice_number, [lang === 'ar' ? 'التاريخ' : 'Date']: formatDate(p.created_at as string, lang), [lang === 'ar' ? 'المورد' : 'Supplier']: (p.supplier as { name?: string })?.name || '', [lang === 'ar' ? 'الإجمالي' : 'Total']: Number(p.total) }));
+        const rows = (purchases || []).map((p: Record<string, unknown>) => withBranch(p.branch_id, { [lang === 'ar' ? 'الفاتورة' : 'Invoice']: p.invoice_number, [lang === 'ar' ? 'التاريخ' : 'Date']: formatDate(p.created_at as string, lang), [lang === 'ar' ? 'المورد' : 'Supplier']: (p.supplier as { name?: string })?.name || '', [lang === 'ar' ? 'الإجمالي' : 'Total']: Number(p.total) }));
         setData(rows);
         setChartData((purchases || []).slice(0, 10).map((p: Record<string, unknown>) => ({ name: String(p.invoice_number), value: Number(p.total) })));
         setSummary({ total: (purchases || []).reduce((s: number, r: Record<string, unknown>) => s + Number(r.total), 0), count: (purchases || []).length });
       } else if (reportType === 'expenses') {
-        let q = supabase.from('expenses').select('id, category, description, amount, expense_date').gte('expense_date', from).lte('expense_date', to).order('expense_date', { ascending: false }).limit(5000);
+        let q = supabase.from('expenses').select('id, branch_id, category, description, amount, expense_date').gte('expense_date', from).lte('expense_date', to).order('expense_date', { ascending: false }).limit(5000);
         if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
         q = filterQ(q, filters, applyExpenseFilters);
         const { data: expenses } = await q;
-        const rows = (expenses || []).map((e: Record<string, unknown>) => ({ [lang === 'ar' ? 'التاريخ' : 'Date']: formatDate(e.expense_date as string, lang), [lang === 'ar' ? 'الفئة' : 'Category']: e.category || '', [lang === 'ar' ? 'الوصف' : 'Description']: e.description || '', [lang === 'ar' ? 'المبلغ' : 'Amount']: Number(e.amount) }));
+        const rows = (expenses || []).map((e: Record<string, unknown>) => withBranch(e.branch_id, { [lang === 'ar' ? 'التاريخ' : 'Date']: formatDate(e.expense_date as string, lang), [lang === 'ar' ? 'الفئة' : 'Category']: e.category || '', [lang === 'ar' ? 'الوصف' : 'Description']: e.description || '', [lang === 'ar' ? 'المبلغ' : 'Amount']: Number(e.amount) }));
         setData(rows);
         const catMap = new Map<string, number>();
         (expenses || []).forEach((e: Record<string, unknown>) => catMap.set(String(e.category || ''), (catMap.get(String(e.category || '')) || 0) + Number(e.amount)));
         setChartData(Array.from(catMap.entries()).map(([name, value]) => ({ name: name || (lang === 'ar' ? 'غير محدد' : 'Other'), value })));
         setSummary({ total: (expenses || []).reduce((s: number, r: Record<string, unknown>) => s + Number(r.amount), 0), count: (expenses || []).length });
       } else if (reportType === 'profit') {
-        let salesQ = supabase.from('sales').select('total').gte('created_at', fromTs).lte('created_at', toTs);
-        let purchasesQ = supabase.from('purchases').select('total').gte('created_at', fromTs).lte('created_at', toTs);
-        let expensesQ = supabase.from('expenses').select('amount').gte('expense_date', from).lte('expense_date', to);
+        let salesQ = supabase.from('sales').select('branch_id, total').gte('created_at', fromTs).lte('created_at', toTs);
+        let purchasesQ = supabase.from('purchases').select('branch_id, total').gte('created_at', fromTs).lte('created_at', toTs);
+        let expensesQ = supabase.from('expenses').select('branch_id, amount').gte('expense_date', from).lte('expense_date', to);
         if (effectiveBranchFilter) { salesQ = salesQ.eq('branch_id', effectiveBranchFilter); purchasesQ = purchasesQ.eq('branch_id', effectiveBranchFilter); expensesQ = expensesQ.eq('branch_id', effectiveBranchFilter); }
         salesQ = filterQ(salesQ, filters, applySalesFilters);
         purchasesQ = filterQ(purchasesQ, filters, applyPurchaseFilters);
         expensesQ = filterQ(expensesQ, filters, applyExpenseFilters);
         const [sales, purchases, expenses] = await Promise.all([salesQ, purchasesQ, expensesQ]);
+        const branchTotals = new Map<string, { sales: number; purchases: number; expenses: number }>();
+        const totalsFor = (id: unknown) => {
+          const key = String(id || '');
+          const current = branchTotals.get(key) || { sales: 0, purchases: 0, expenses: 0 };
+          branchTotals.set(key, current);
+          return current;
+        };
+        (sales.data || []).forEach((r) => { totalsFor(r.branch_id).sales += Number(r.total); });
+        (purchases.data || []).forEach((r) => { totalsFor(r.branch_id).purchases += Number(r.total); });
+        (expenses.data || []).forEach((r) => { totalsFor(r.branch_id).expenses += Number(r.amount); });
+        const rows = Array.from(branchTotals.entries()).map(([branchId, totals]) => withBranch(branchId, {
+          [lang === 'ar' ? 'الفترة' : 'Period']: `${from} - ${to}`,
+          [lang === 'ar' ? 'المبيعات' : 'Sales']: totals.sales,
+          [lang === 'ar' ? 'المشتريات' : 'Purchases']: totals.purchases,
+          [lang === 'ar' ? 'المصروفات' : 'Expenses']: totals.expenses,
+          [lang === 'ar' ? 'الربح' : 'Profit']: totals.sales - totals.purchases - totals.expenses,
+        }));
         const totalSales = (sales.data || []).reduce((s, r) => s + Number(r.total), 0);
         const totalPurchases = (purchases.data || []).reduce((s, r) => s + Number(r.total), 0);
         const totalExpenses = (expenses.data || []).reduce((s, r) => s + Number(r.amount), 0);
         const profit = totalSales - totalPurchases - totalExpenses;
-        setData([{ [lang === 'ar' ? 'الفترة' : 'Period']: `${from} - ${to}`, [lang === 'ar' ? 'المبيعات' : 'Sales']: totalSales, [lang === 'ar' ? 'المشتريات' : 'Purchases']: totalPurchases, [lang === 'ar' ? 'المصروفات' : 'Expenses']: totalExpenses, [lang === 'ar' ? 'الربح' : 'Profit']: profit }]);
+        setData(rows);
         setChartData([
           { name: t('totalSales'), value: totalSales },
           { name: t('totalPurchases'), value: totalPurchases },
@@ -244,51 +274,55 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
         ]);
         setSummary({ total: profit, count: 1 });
       } else if (reportType === 'inventory') {
-        let inventoryQuery = supabase.from('inventory').select('quantity, product:products(name, barcode, low_stock_threshold), warehouse:warehouses(name)').order('updated_at', { ascending: false });
+        let inventoryQuery = supabase.from('inventory').select('branch_id, quantity, product:products(name, barcode, low_stock_threshold), warehouse:warehouses(name)').order('updated_at', { ascending: false });
         if (effectiveBranchFilter) inventoryQuery = inventoryQuery.eq('branch_id', effectiveBranchFilter);
         inventoryQuery = filterQ(inventoryQuery, filters, applyProductScopedFilters);
         const { data: inv } = await inventoryQuery;
         const rows = (inv || []).map((i: Record<string, unknown>) => {
           const product = i.product as { name: string; barcode: string | null; low_stock_threshold: number };
           const warehouse = i.warehouse as { name: string };
-          return { [lang === 'ar' ? 'المنتج' : 'Product']: product?.name || '', [lang === 'ar' ? 'الباركود' : 'Barcode']: product?.barcode || '', [lang === 'ar' ? 'المستودع' : 'Warehouse']: warehouse?.name || '', [lang === 'ar' ? 'الكمية' : 'Quantity']: Number(i.quantity) };
+          return withBranch(i.branch_id, { [lang === 'ar' ? 'المنتج' : 'Product']: product?.name || '', [lang === 'ar' ? 'الباركود' : 'Barcode']: product?.barcode || '', [lang === 'ar' ? 'المستودع' : 'Warehouse']: warehouse?.name || '', [lang === 'ar' ? 'الكمية' : 'Quantity']: Number(i.quantity) });
         });
         setData(rows);
         setChartData(rows.slice(0, 10).map((r) => ({ name: String(Object.values(r)[0]), value: Number(Object.values(r)[3]) })));
         setSummary({ total: rows.reduce((s, r) => s + Number(Object.values(r)[3]), 0), count: rows.length });
       } else if (reportType === 'sales_by_payment') {
-        let q = supabase.from('sales').select('payment_method, total').gte('created_at', fromTs).lte('created_at', toTs);
+        let q = supabase.from('sales').select('branch_id, payment_method, total').gte('created_at', fromTs).lte('created_at', toTs);
         if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
         q = filterQ(q, filters, applySalesFilters);
         const { data: sales } = await q;
-        const methodMap = new Map<string, { total: number; count: number }>();
+        const methodMap = new Map<string, { branchId: string; method: string; total: number; count: number }>();
         (sales || []).forEach((s: Record<string, unknown>) => {
           const method = String(s.payment_method || '');
-          const existing = methodMap.get(method) || { total: 0, count: 0 };
-          methodMap.set(method, { total: existing.total + Number(s.total), count: existing.count + 1 });
+          const branchId = String(s.branch_id || '');
+          const key = `${branchId}\u0000${method}`;
+          const existing = methodMap.get(key) || { branchId, method, total: 0, count: 0 };
+          methodMap.set(key, { ...existing, total: existing.total + Number(s.total), count: existing.count + 1 });
         });
         const METHOD_LABELS: Record<string, string> = { cash: t('cash'), card: t('card'), transfer: t('transfer'), credit: t('credit') };
-        const rows = Array.from(methodMap.entries()).map(([method, data]) => ({
-          [lang === 'ar' ? 'طريقة الدفع' : 'Payment Method']: METHOD_LABELS[method] || method,
+        const rows = Array.from(methodMap.values()).map((data) => withBranch(data.branchId, {
+          [lang === 'ar' ? 'طريقة الدفع' : 'Payment Method']: METHOD_LABELS[data.method] || data.method,
           [lang === 'ar' ? 'الإجمالي' : 'Total']: data.total,
           [lang === 'ar' ? 'العدد' : 'Count']: data.count,
         }));
         setData(rows);
-        setChartData(Array.from(methodMap.entries()).map(([method, data]) => ({ name: METHOD_LABELS[method] || method, value: data.total })));
+        setChartData(Array.from(methodMap.values()).map((data) => ({ name: `${branchNameById(data.branchId)} — ${METHOD_LABELS[data.method] || data.method}`, value: data.total })));
         setSummary({ total: (sales || []).reduce((s: number, r: Record<string, unknown>) => s + Number(r.total), 0), count: (sales || []).length });
       } else if (reportType === 'sales_by_employee') {
-        let q = supabase.from('sales').select('cashier_id, total, users:users!fk_sales_cashier(full_name, email)').gte('created_at', fromTs).lte('created_at', toTs);
+        let q = supabase.from('sales').select('branch_id, cashier_id, total, users:users!fk_sales_cashier(full_name, email)').gte('created_at', fromTs).lte('created_at', toTs);
         if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
         q = filterQ(q, filters, applySalesFilters);
         const { data: sales } = await q;
-        const empMap = new Map<string, { name: string; total: number; count: number }>();
+        const empMap = new Map<string, { branchId: string; name: string; total: number; count: number }>();
         (sales || []).forEach((s: Record<string, unknown>) => {
           const cashier = s.users as { full_name?: string; email?: string } | null;
           const name = cashier?.full_name || cashier?.email || (lang === 'ar' ? 'غير معروف' : 'Unknown');
-          const existing = empMap.get(name) || { name, total: 0, count: 0 };
-          empMap.set(name, { name, total: existing.total + Number(s.total), count: existing.count + 1 });
+          const branchId = String(s.branch_id || '');
+          const key = `${branchId}\u0000${String(s.cashier_id || name)}`;
+          const existing = empMap.get(key) || { branchId, name, total: 0, count: 0 };
+          empMap.set(key, { ...existing, total: existing.total + Number(s.total), count: existing.count + 1 });
         });
-        const rows = Array.from(empMap.values()).sort((a, b) => b.total - a.total).map((e) => ({
+        const rows = Array.from(empMap.values()).sort((a, b) => b.total - a.total).map((e) => withBranch(e.branchId, {
           [lang === 'ar' ? 'الموظف' : 'Employee']: e.name,
           [lang === 'ar' ? 'الإجمالي' : 'Total']: e.total,
           [lang === 'ar' ? 'الفواتير' : 'Invoices']: e.count,
@@ -307,14 +341,17 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
           if (!sale) return false;
           return sale.created_at >= fromTs && sale.created_at <= toTs;
         });
-        const prodMap = new Map<string, { name: string; quantity: number; total: number }>();
+        const prodMap = new Map<string, { branchId: string; name: string; quantity: number; total: number }>();
         filtered.forEach((item: Record<string, unknown>) => {
           const product = item.product as { name: string } | null;
+          const sale = item.sale as { branch_id?: string } | null;
           const name = product?.name || (lang === 'ar' ? 'غير معروف' : 'Unknown');
-          const existing = prodMap.get(name) || { name, quantity: 0, total: 0 };
-          prodMap.set(name, { name, quantity: existing.quantity + Number(item.quantity), total: existing.total + Number(item.total) });
+          const branchId = String(sale?.branch_id || '');
+          const key = `${branchId}\u0000${name}`;
+          const existing = prodMap.get(key) || { branchId, name, quantity: 0, total: 0 };
+          prodMap.set(key, { ...existing, quantity: existing.quantity + Number(item.quantity), total: existing.total + Number(item.total) });
         });
-        const rows = Array.from(prodMap.values()).sort((a, b) => b.total - a.total).map((p) => ({
+        const rows = Array.from(prodMap.values()).sort((a, b) => b.total - a.total).map((p) => withBranch(p.branchId, {
           [lang === 'ar' ? 'المنتج' : 'Product']: p.name,
           [lang === 'ar' ? 'الكمية' : 'Quantity']: p.quantity,
           [lang === 'ar' ? 'الإيراد' : 'Revenue']: p.total,
@@ -323,14 +360,14 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
         setChartData(Array.from(prodMap.values()).sort((a, b) => b.total - a.total).slice(0, 10).map((p) => ({ name: p.name, value: p.total })));
         setSummary({ total: rows.reduce((s, r) => s + Number(Object.values(r)[2]), 0), count: rows.length });
       } else if (reportType === 'detailed_invoices') {
-        let q = supabase.from('sales').select('id, invoice_number, total, paid_amount, payment_method, status, created_at, customer:customers(name), cashier:users!fk_sales_cashier(full_name)').gte('created_at', fromTs).lte('created_at', toTs).order('created_at', { ascending: false }).limit(5000);
+        let q = supabase.from('sales').select('id, branch_id, invoice_number, total, paid_amount, payment_method, status, created_at, customer:customers(name), cashier:users!fk_sales_cashier(full_name)').gte('created_at', fromTs).lte('created_at', toTs).order('created_at', { ascending: false }).limit(5000);
         if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
         q = filterQ(q, filters, applySalesFilters);
         const { data: sales } = await q;
         const rows = (sales || []).map((s: Record<string, unknown>) => {
           const customer = s.customer as { name?: string } | null;
           const cashier = s.cashier as { full_name?: string } | null;
-          return {
+          return withBranch(s.branch_id, {
             [lang === 'ar' ? 'رقم الفاتورة' : 'Invoice']: s.invoice_number,
             [lang === 'ar' ? 'التاريخ' : 'Date']: formatDate(s.created_at as string, lang),
             [lang === 'ar' ? 'العميل' : 'Customer']: customer?.name || '-',
@@ -339,28 +376,30 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
             [lang === 'ar' ? 'الإجمالي' : 'Total']: Number(s.total),
             [lang === 'ar' ? 'المدفوع' : 'Paid']: Number(s.paid_amount),
             [lang === 'ar' ? 'الحالة' : 'Status']: s.status,
-          };
+          });
         });
         setData(rows);
         setChartData([]);
         setSummary({ total: rows.reduce((s, r) => s + Number(Object.values(r)[5] || 0), 0), count: rows.length });
       } else if (reportType === 'component_consumption') {
-        let q = supabase.from('stock_transactions').select('product_id, quantity, unit_cost, created_at, product:products(name), warehouse:warehouses(name)').eq('component_flow', true).eq('transaction_type', 'sale').gte('created_at', fromTs).lte('created_at', toTs);
+        let q = supabase.from('stock_transactions').select('branch_id, product_id, quantity, unit_cost, created_at, product:products(name), warehouse:warehouses(name)').eq('component_flow', true).eq('transaction_type', 'sale').gte('created_at', fromTs).lte('created_at', toTs);
         if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
         q = filterQ(q, filters, applyProductScopedFilters);
         const { data: tx } = await q.limit(5000);
-        const map = new Map<string, { name: string; qty: number; cost: number; count: number }>();
+        const map = new Map<string, { branchId: string; name: string; qty: number; cost: number; count: number }>();
         (tx || []).forEach((t: Record<string, unknown>) => {
           const product = t.product as { name?: string } | null;
           const name = product?.name || (lang === 'ar' ? 'غير معروف' : 'Unknown');
-          const e = map.get(name) || { name, qty: 0, cost: 0, count: 0 };
+          const branchId = String(t.branch_id || '');
+          const key = `${branchId}\u0000${name}`;
+          const e = map.get(key) || { branchId, name, qty: 0, cost: 0, count: 0 };
           const qty = -Number(t.quantity);
           e.qty += qty;
           e.cost += qty * Number(t.unit_cost || 0);
           e.count += 1;
-          map.set(name, e);
+          map.set(key, e);
         });
-        const rows = Array.from(map.values()).sort((a, b) => b.qty - a.qty).map((e) => ({
+        const rows = Array.from(map.values()).sort((a, b) => b.qty - a.qty).map((e) => withBranch(e.branchId, {
           [lang === 'ar' ? 'المكوّن' : 'Component']: e.name,
           [lang === 'ar' ? 'الكمية المستهلكة' : 'Consumed Qty']: e.qty,
           [lang === 'ar' ? 'تكلفة الاستهلاك' : 'Consumption Cost']: e.cost,
@@ -370,19 +409,21 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
         setChartData(rows.slice(0, 10).map((r) => ({ name: String(Object.values(r)[0]), value: Number(Object.values(r)[1]) })));
         setSummary({ total: rows.reduce((s, r) => s + Number(Object.values(r)[2]), 0), count: rows.length });
       } else if (reportType === 'top_consumed_components') {
-        let q = supabase.from('stock_transactions').select('product_id, quantity, product:products(name)').eq('component_flow', true).eq('transaction_type', 'sale').gte('created_at', fromTs).lte('created_at', toTs);
+        let q = supabase.from('stock_transactions').select('branch_id, product_id, quantity, product:products(name)').eq('component_flow', true).eq('transaction_type', 'sale').gte('created_at', fromTs).lte('created_at', toTs);
         if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
         q = filterQ(q, filters, applyProductScopedFilters);
         const { data: tx } = await q.limit(5000);
-        const map = new Map<string, { name: string; qty: number }>();
+        const map = new Map<string, { branchId: string; name: string; qty: number }>();
         (tx || []).forEach((t: Record<string, unknown>) => {
           const product = t.product as { name?: string } | null;
           const name = product?.name || (lang === 'ar' ? 'غير معروف' : 'Unknown');
-          const e = map.get(name) || { name, qty: 0 };
+          const branchId = String(t.branch_id || '');
+          const key = `${branchId}\u0000${name}`;
+          const e = map.get(key) || { branchId, name, qty: 0 };
           e.qty += -Number(t.quantity);
-          map.set(name, e);
+          map.set(key, e);
         });
-        const rows = Array.from(map.values()).sort((a, b) => b.qty - a.qty).map((p) => ({
+        const rows = Array.from(map.values()).sort((a, b) => b.qty - a.qty).map((p) => withBranch(p.branchId, {
           [lang === 'ar' ? 'المكوّن' : 'Component']: p.name,
           [lang === 'ar' ? 'الكمية المستهلكة' : 'Consumed Qty']: p.qty,
         }));
@@ -399,15 +440,18 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
           if (!sale) return false;
           return sale.created_at >= fromTs && sale.created_at <= toTs;
         });
-        const prodMap = new Map<string, { name: string; quantity: number }>();
+        const prodMap = new Map<string, { branchId: string; name: string; quantity: number }>();
         filtered.forEach((item: Record<string, unknown>) => {
           const product = item.product as { name: string } | null;
+          const sale = item.sale as { branch_id?: string } | null;
           const name = product?.name || (lang === 'ar' ? 'غير معروف' : 'Unknown');
-          const existing = prodMap.get(name) || { name, quantity: 0 };
+          const branchId = String(sale?.branch_id || '');
+          const key = `${branchId}\u0000${name}`;
+          const existing = prodMap.get(key) || { branchId, name, quantity: 0 };
           existing.quantity += Number(item.quantity);
-          prodMap.set(name, existing);
+          prodMap.set(key, existing);
         });
-        const rows = Array.from(prodMap.values()).sort((a, b) => b.quantity - a.quantity).map((p) => ({
+        const rows = Array.from(prodMap.values()).sort((a, b) => b.quantity - a.quantity).map((p) => withBranch(p.branchId, {
           [lang === 'ar' ? 'المنتج' : 'Product']: p.name,
           [lang === 'ar' ? 'الكمية' : 'Quantity']: p.quantity,
         }));
@@ -424,11 +468,16 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
         const catName = filters.category
           ? options.categories.find((c) => c.id === filters.category)?.name ?? filters.category
           : '';
+        const productIds = (res.data || []).map((r) => r.product_id);
+        const productBranchResult = productIds.length > 0
+          ? await supabase.from('products').select('id, branch_id').in('id', productIds)
+          : { data: [] as { id: string; branch_id: string }[] };
+        const productBranches = new Map((productBranchResult.data || []).map((p) => [p.id, p.branch_id]));
         const rows = (res.data || [])
           .filter((r) => r.recipe_item_count > 0)
           .filter((r) => !filters.product || r.product_id === filters.product)
           .filter((r) => !catName || r.category_name === catName)
-          .map((r) => ({
+          .map((r) => withBranch(productBranches.get(r.product_id) || effectiveBranchFilter, {
             [lang === 'ar' ? 'المنتج' : 'Product']: r.product_name,
             [lang === 'ar' ? 'تكلفة الوصفة' : 'Recipe Cost']: Number(r.actual_cost),
             [lang === 'ar' ? 'سعر البيع' : 'Sale Price']: Number(r.sale_price),
@@ -439,7 +488,7 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
         setChartData(rows.slice(0, 10).map((r) => ({ name: String(Object.values(r)[0]), value: Number(Object.values(r)[3]) })));
         setSummary({ total: rows.reduce((s, r) => s + Number(Object.values(r)[1]), 0), count: rows.length });
       } else if (reportType === 'low_stock') {
-        let lowStockQuery = supabase.from('inventory').select('quantity, product:products(name, barcode, low_stock_threshold, product_type), warehouse:warehouses(name)');
+        let lowStockQuery = supabase.from('inventory').select('branch_id, quantity, product:products(name, barcode, low_stock_threshold, product_type), warehouse:warehouses(name)');
         if (effectiveBranchFilter) lowStockQuery = lowStockQuery.eq('branch_id', effectiveBranchFilter);
         lowStockQuery = filterQ(lowStockQuery, filters, applyProductScopedFilters);
         const { data: inv } = await lowStockQuery;
@@ -447,10 +496,10 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
           .map((i: Record<string, unknown>) => {
             const product = i.product as { name: string; barcode: string | null; low_stock_threshold: number } | null;
             const warehouse = i.warehouse as { name: string } | null;
-            return { product, warehouse: warehouse?.name || '', qty: Number(i.quantity), threshold: product?.low_stock_threshold || 5, barcode: product?.barcode || '' };
+            return { branchId: i.branch_id, product, warehouse: warehouse?.name || '', qty: Number(i.quantity), threshold: product?.low_stock_threshold || 5, barcode: product?.barcode || '' };
           })
           .filter((r) => r.qty <= r.threshold)
-          .map((r) => ({
+          .map((r) => withBranch(r.branchId, {
             [lang === 'ar' ? 'المنتج' : 'Product']: r.product?.name || '-',
             [lang === 'ar' ? 'الباركود' : 'Barcode']: r.barcode,
             [lang === 'ar' ? 'المستودع' : 'Warehouse']: r.warehouse,
@@ -461,20 +510,22 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
         setChartData(rows.slice(0, 10).map((r) => ({ name: String(Object.values(r)[0]), value: Number(Object.values(r)[3]) })));
         setSummary({ total: 0, count: rows.length });
       } else if (reportType === 'cashier_performance') {
-        let q = supabase.from('sales').select('cashier_id, total, payment_method, status, created_at, users:users!fk_sales_cashier(full_name, email)').gte('created_at', fromTs).lte('created_at', toTs);
+        let q = supabase.from('sales').select('branch_id, cashier_id, total, payment_method, status, created_at, users:users!fk_sales_cashier(full_name, email)').gte('created_at', fromTs).lte('created_at', toTs);
         if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
         const { data: sales } = await q;
-        const empMap = new Map<string, { name: string; total: number; count: number; refundCount: number }>();
+        const empMap = new Map<string, { branchId: string; name: string; total: number; count: number; refundCount: number }>();
         (sales || []).forEach((s: Record<string, unknown>) => {
           const cashier = s.users as { full_name?: string; email?: string } | null;
           const name = cashier?.full_name || cashier?.email || (lang === 'ar' ? 'غير معروف' : 'Unknown');
-          const existing = empMap.get(name) || { name, total: 0, count: 0, refundCount: 0 };
+          const branchId = String(s.branch_id || '');
+          const key = `${branchId}\u0000${String(s.cashier_id || name)}`;
+          const existing = empMap.get(key) || { branchId, name, total: 0, count: 0, refundCount: 0 };
           existing.total += Number(s.total);
           existing.count += 1;
           if (s.status === 'refunded' || s.status === 'cancelled') existing.refundCount += 1;
-          empMap.set(name, existing);
+          empMap.set(key, existing);
         });
-        const rows = Array.from(empMap.values()).sort((a, b) => b.total - a.total).map((e) => ({
+        const rows = Array.from(empMap.values()).sort((a, b) => b.total - a.total).map((e) => withBranch(e.branchId, {
           [lang === 'ar' ? 'الموظف' : 'Employee']: e.name,
           [lang === 'ar' ? 'الفواتير' : 'Invoices']: e.count,
           [lang === 'ar' ? 'الإجمالي' : 'Total']: e.total,
@@ -486,41 +537,41 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
         setChartData(Array.from(empMap.values()).sort((a, b) => b.total - a.total).slice(0, 10).map((e) => ({ name: e.name, value: e.total })));
         setSummary({ total: (sales || []).reduce((s: number, r: Record<string, unknown>) => s + Number(r.total), 0), count: (sales || []).length });
       } else if (reportType === 'returns') {
-        let q = supabase.from('sales').select('id, invoice_number, total, status, created_at, customer:customers(name), cashier:users!fk_sales_cashier(full_name)').in('status', ['refunded', 'cancelled']).gte('created_at', fromTs).lte('created_at', toTs);
+        let q = supabase.from('sales').select('id, branch_id, invoice_number, total, status, created_at, customer:customers(name), cashier:users!fk_sales_cashier(full_name)').in('status', ['refunded', 'cancelled']).gte('created_at', fromTs).lte('created_at', toTs);
         if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
         const { data: returns } = await q;
         const STATUS_LABELS: Record<string, string> = { refunded: t('refunded'), cancelled: t('statusCancelled') };
         const rows = (returns || []).map((s: Record<string, unknown>) => {
           const customer = s.customer as { name?: string } | null;
           const cashier = s.cashier as { full_name?: string } | null;
-          return {
+          return withBranch(s.branch_id, {
             [lang === 'ar' ? 'رقم الفاتورة' : 'Invoice']: s.invoice_number,
             [lang === 'ar' ? 'التاريخ' : 'Date']: formatDate(s.created_at as string, lang),
             [lang === 'ar' ? 'العميل' : 'Customer']: customer?.name || '-',
             [lang === 'ar' ? 'أمين الصندوق' : 'Cashier']: cashier?.full_name || '-',
             [lang === 'ar' ? 'المبلغ' : 'Amount']: Number(s.total),
             [lang === 'ar' ? 'الحالة' : 'Status']: STATUS_LABELS[String(s.status)] || s.status,
-          };
+          });
         });
         setData(rows);
         setChartData([]);
         setSummary({ total: rows.reduce((s, r) => s + Number(Object.values(r)[4] || 0), 0), count: rows.length });
       } else if (reportType === 'production_waste') {
-        let q = supabase.from('waste_entries').select('id, created_at, quantity, unit_cost, total_cost, reason, product:products(name), branch:warehouses(name)').gte('created_at', fromTs).lte('created_at', toTs);
+        let q = supabase.from('waste_entries').select('id, branch_id, created_at, quantity, unit_cost, total_cost, reason, product:products(name), warehouse:warehouses(name)').gte('created_at', fromTs).lte('created_at', toTs);
         if (effectiveBranchFilter) q = q.eq('branch_id', effectiveBranchFilter);
         const { data: waste } = await q;
         const rows = (waste || []).map((w: Record<string, unknown>) => {
           const product = w.product as { name?: string } | null;
-          const branch = w.branch as { name?: string } | null;
-          return {
+          const warehouse = w.warehouse as { name?: string } | null;
+          return withBranch(w.branch_id, {
             [lang === 'ar' ? 'المنتج' : 'Product']: product?.name || '-',
             [lang === 'ar' ? 'التاريخ' : 'Date']: formatDate(w.created_at as string, lang),
             [lang === 'ar' ? 'الكمية' : 'Quantity']: Number(w.quantity),
             [lang === 'ar' ? 'تكلفة الوحدة' : 'Unit Cost']: Number(w.unit_cost),
             [lang === 'ar' ? 'التكلفة الإجمالية' : 'Total Cost']: Number(w.total_cost),
             [lang === 'ar' ? 'السبب' : 'Reason']: w.reason || '-',
-            [lang === 'ar' ? 'المستودع' : 'Warehouse']: branch?.name || '-',
-          };
+            [lang === 'ar' ? 'المستودع' : 'Warehouse']: warehouse?.name || '-',
+          });
         });
         setData(rows);
         setChartData(rows.slice(0, 10).map((r) => ({ name: String(Object.values(r)[0]), value: Number(Object.values(r)[4]) })));
@@ -535,7 +586,7 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
       filename: `report_${reportType}_${from}_${to}`,
       sheetName: reportType,
       title: reportTypes.find(r => r.key === reportType)?.label ?? reportType,
-      subtitle: `${from} — ${to}`,
+      subtitle: `${reportBranchLabel} — ${from} — ${to}`,
       totalRow: summary.total ? { [lang === 'ar' ? 'الإجمالي' : 'Total']: summary.total, [lang === 'ar' ? 'العدد' : 'Count']: summary.count } : undefined,
       currencyColumns: [lang === 'ar' ? 'الإجمالي' : 'Total', lang === 'ar' ? 'المبلغ' : 'Amount', lang === 'ar' ? 'الربح' : 'Profit', lang === 'ar' ? 'المبيعات' : 'Sales', lang === 'ar' ? 'المشتريات' : 'Purchases', lang === 'ar' ? 'المصروفات' : 'Expenses', lang === 'ar' ? 'الإيراد' : 'Revenue', lang === 'ar' ? 'المدفوع' : 'Paid'],
       lang,
@@ -635,7 +686,7 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
       if (typeof value === 'number' && moneyKeys.includes(h)) return formatCurrency(value, currency, lang);
       return String(value ?? '');
     }));
-    openPrintWindow({ title: reportLabel, subtitle: `${from} - ${to}`, headers, rows, lang: lang as 'ar' | 'en' });
+    openPrintWindow({ title: reportLabel, subtitle: `${reportBranchLabel} — ${from} - ${to}`, headers, rows, lang: lang as 'ar' | 'en' });
   };
 
   return (

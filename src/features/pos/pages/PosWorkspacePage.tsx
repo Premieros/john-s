@@ -154,9 +154,11 @@ export function PosWorkspacePage() {
   }, []);
 
   const sellableStock = stockMap;
+  const currentBranchName = branches.find((b) => b.id === effectiveBranch)?.name || effectiveBranch;
 
   const pos = usePosOrder({
     branchId: effectiveBranch,
+    branchName: currentBranchName,
     orderId: orderIdParam || null,
     customers,
     effSettings,
@@ -288,6 +290,7 @@ export function PosWorkspacePage() {
               setCategories(catList);
               if (offlineData.customers.length > 0) setCustomers(offlineData.customers);
               if (offlineData.settings) setSettings(offlineData.settings);
+              if (offlineData.branches.length > 0) setBranches(offlineData.branches);
               if (offlineData.stockMap) setStockMap(offlineData.stockMap);
               setLoading(false);
             }
@@ -543,7 +546,6 @@ export function PosWorkspacePage() {
     );
   }
 
-  const currentBranchName = branches.find((b) => b.id === effectiveBranch)?.name || '';
   const isCheckout = pos.checkoutOpen;
 
   const handleSidebarSelectTable = (table: DiningTable) => {
@@ -1040,4 +1042,3 @@ export function PosWorkspacePage() {
     </div>
   );
 }
-

@@ -5,6 +5,7 @@ import { supabase } from '@/api';
 
 export interface ReceiptData {
   invoice: string;
+  branchName: string;
   items: { name: string; qty: number; price: number; total: number }[];
   subtotal: number;
   discount: number;
@@ -180,6 +181,7 @@ export async function buildReceiptHtml(receipt: ReceiptData, s: Settings, lang: 
     ${s.store_address ? `<div class="center sub">${escapeHtml(s.store_address)}</div>` : ''}
     ${s.store_phone ? `<div class="center sub">${isAr ? 'هاتف' : 'Tel'}: ${escapeHtml(s.store_phone)}</div>` : ''}
     ${s.receipt_header ? `<div class="center sub">${escapeHtml(s.receipt_header)}</div>` : ''}
+    <div class="center sub">${isAr ? 'الفرع' : 'Branch'}: ${escapeHtml(receipt.branchName)}</div>
     <div class="divider"></div>
     <div class="row"><span>${isAr ? 'الفاتورة' : 'Invoice'}: ${escapeHtml(receipt.invoice)}</span></div>
     <div class="row"><span>${isAr ? 'التاريخ' : 'Date'}: ${new Date(receipt.date).toLocaleString(isAr ? 'ar-SA' : 'en-US')}</span></div>

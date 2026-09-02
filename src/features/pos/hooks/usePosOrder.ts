@@ -24,6 +24,7 @@ export interface ActiveShiftInfo {
 
 export interface UsePosOrderInput {
   branchId: string;
+  branchName: string;
   orderId: string | null;
   customers: Customer[];
   effSettings: Settings | null;
@@ -44,7 +45,7 @@ const EMPTY_CART: CartItem[] = [];
 const VALID_PAYMENT_METHODS: PosPaymentMethod[] = ['cash', 'card', 'transfer', 'credit'];
 
 export function usePosOrder(input: UsePosOrderInput) {
-  const { branchId, orderId, customers, effSettings, isCashier, activeShift, stockMap } = input;
+  const { branchId, branchName, orderId, customers, effSettings, isCashier, activeShift, stockMap } = input;
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
   const { user } = useAuth();
@@ -636,6 +637,7 @@ export function usePosOrder(input: UsePosOrderInput) {
 
       const receiptPayload: ReceiptData = {
         invoice: invoiceNumber,
+        branchName,
         items: cart.map((i) => ({ name: i.product.name, qty: i.quantity, price: i.unit_price, total: i.quantity * i.unit_price - i.discount_amount })),
         subtotal, discount: discountValue, tax: taxAmount, total,
         paid: paidAmountToUse, change, date: new Date().toISOString(),
@@ -668,7 +670,7 @@ export function usePosOrder(input: UsePosOrderInput) {
     } finally {
       setCompleting(false);
     }
-  }, [cart, completing, branchId, isCashier, activeShift, orderType, tableId, getStock, paymentMethod, total, paidAmount, customerId, subtotal, discountValue, discountType, taxAmount, change, activeOrderId, activeOrderNumber, guestCount, customers, activeTable, effSettings, lang, isAr, show, t]);
+  }, [cart, completing, branchId, branchName, isCashier, activeShift, orderType, tableId, getStock, paymentMethod, total, paidAmount, customerId, subtotal, discountValue, discountType, taxAmount, change, activeOrderId, activeOrderNumber, guestCount, customers, activeTable, effSettings, lang, isAr, show, t]);
 
   const printReceipt = useCallback(async () => {
     if (!lastReceipt || !effSettings) return;

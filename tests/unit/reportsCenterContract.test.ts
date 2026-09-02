@@ -106,6 +106,17 @@ describe('Reports Center contract (6H-P4)', () => {
     expect(reportExportSource).toContain('text/csv;charset=utf-8');
   });
 
+  it('keeps every operational report row branch-identifiable, including all-branch aggregates', () => {
+    expect(reportsSource).toContain("const branchColumn = lang === 'ar' ? 'الفرع' : 'Branch'");
+    expect(reportsSource).toContain('const withBranch =');
+    expect(reportsSource).toContain("select('id, branch_id, invoice_number, total, created_at");
+    expect(reportsSource).toContain("select('branch_id, payment_method, total')");
+    expect(reportsSource).toContain('const branchTotals = new Map');
+    expect(reportsSource).toContain('productBranches.get(r.product_id)');
+    expect(reportsSource).toContain('subtitle: `${reportBranchLabel} — ${from} — ${to}`');
+    expect(reportsSource).toContain('`${reportBranchLabel} — ${from} - ${to}`');
+  });
+
   it('provides compact grouped navigation and column customization', () => {
     expect(deepLinkSource).toContain('مركز التقارير');
     expect(deepLinkSource).toContain('data-report-nav={key}');
