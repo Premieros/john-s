@@ -6,7 +6,6 @@ import { useCan, isAdminRole, type Permission } from '../lib/permissions';
 import { APP_ROUTES } from '@/core/navigation/routes';
 
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then(m => ({ default: m.LoginPage })));
-const RegisterPage = lazy(() => import('../features/auth/pages/RegisterPage').then(m => ({ default: m.RegisterPage })));
 const DashboardPage = lazy(() => import('../features/dashboard/pages/DashboardEnhancedPage').then(m => ({ default: m.DashboardEnhancedPage })));
 const OperationsCenterPage = lazy(() => import('../features/operations/pages/OperationsCenterPage').then(m => ({ default: m.OperationsCenterPage })));
 const InventoryCenterPage = lazy(() => import('../features/inventory/pages/InventoryCenterPage').then(m => ({ default: m.InventoryCenterPage })));
@@ -103,7 +102,7 @@ export function AppRoutes() {
     <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path={APP_ROUTES.login} element={<PublicRoute><LoginPage /></PublicRoute>} />
-        <Route path={APP_ROUTES.register} element={<PublicRoute><RegisterPage /></PublicRoute>} />
+        <Route path={APP_ROUTES.register} element={<Navigate to={APP_ROUTES.login} replace />} />
         <Route path={APP_ROUTES.subscription} element={<Navigate to={APP_ROUTES.dashboard} replace />} />
         <Route path={APP_ROUTES.subscriptions} element={<Navigate to={APP_ROUTES.superAdmin} replace />} />
         <Route path={APP_ROUTES.dashboard} element={<ProtectedRoute permission="dashboard.view"><DashboardPage /></ProtectedRoute>} />
