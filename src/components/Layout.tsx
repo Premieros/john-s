@@ -4,7 +4,7 @@ import {
   Activity, AlertTriangle, ArrowLeftRight, BarChart3, BadgeDollarSign, Boxes, BookOpenText, Building2, Calculator, ChefHat,
   ChevronDown, ClipboardCheck, FileSpreadsheet, FileText, FlaskConical,
   Globe, HandCoins, Landmark, Layers, LayoutDashboard, LogOut, Menu, Moon, NotebookPen,
-  Package, Receipt, Scale, ScrollText, Settings, ShoppingCart, SlidersHorizontal, Sparkles, Store, Sun,
+  Package, Receipt, Scale, ScrollText, Settings, ShoppingCart, SlidersHorizontal, Store, Sun,
   Tags, Timer, Trash2, Truck, UserCog, Users, Wallet, Warehouse, X,
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
@@ -69,7 +69,7 @@ const TOP_TABS = [
   { key: 'general', label: ['عام', 'General'], route: APP_ROUTES.dashboard },
   { key: 'branches', label: ['الفروع', 'Branches'], route: APP_ROUTES.branches },
   { key: 'inventory', label: ['المخزون', 'Inventory'], route: APP_ROUTES.inventory },
-  { key: 'kitchen', label: ['المطبخ', 'Kitchen'], route: APP_ROUTES.pos },
+  { key: 'kitchen', label: ['المطبخ', 'Kitchen'], route: APP_ROUTES.kitchenDisplay },
 ] as const;
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -132,16 +132,14 @@ export function Layout({ children }: { children: ReactNode }) {
       ? 'branches'
       : location.pathname.startsWith(APP_ROUTES.inventory) || location.pathname.startsWith(APP_ROUTES.warehouses)
         ? 'inventory'
-        : location.pathname.startsWith(APP_ROUTES.pos)
+        : location.pathname.startsWith(APP_ROUTES.kitchenDisplay)
           ? 'kitchen'
           : '';
 
   return (
     <div dir={ar ? 'rtl' : 'ltr'} className="min-h-screen bg-ui-page text-ui-text overflow-x-hidden" data-testid="app-shell">
 
-      {/* ── Header: fixed, full-width, z-[60] ── */}
       <header data-testid="app-header" className={`fixed top-0 start-0 end-0 ${ar ? 'lg:start-[260px]' : 'lg:end-[260px]'} z-[60] flex h-[64px] items-center justify-between gap-3 liquid-glass-header px-4 shadow-ui-sm sm:px-6`}>
-        {/* Left side: hamburger + command + tabs */}
         <div className="flex min-w-0 items-center gap-3">
           <button data-testid="sidebar-open" type="button" onClick={() => setMobileOpen(true)} className="rounded-lg p-2 text-ui-muted hover:bg-ui-page-alt lg:hidden" aria-label={ar ? 'فتح القائمة' : 'Open sidebar'}>
             <Menu className="h-5 w-5" />
@@ -164,18 +162,13 @@ export function Layout({ children }: { children: ReactNode }) {
                   }`}
                 >
                   {tab.label[ar ? 0 : 1]}
-                  {tab.key === 'kitchen' && (
-                    <span className="ms-1.5 rounded-full bg-ui-success px-1.5 py-0.5 text-[9px] font-bold text-ui-primary-fg">{ar ? 'جديد' : 'New'}</span>
-                  )}
                 </NavLink>
               );
             })}
           </div>
         </div>
 
-        {/* Right side: branch + actions */}
         <div className="relative flex items-center gap-1.5 sm:gap-2" ref={branchMenuRef}>
-          {/* Branch selector */}
           <div className="relative">
             <button
               data-testid="branch-indicator"
@@ -203,13 +196,11 @@ export function Layout({ children }: { children: ReactNode }) {
             )}
           </div>
 
-          {/* Offline Sync Status Indicator */}
           <div className="hidden sm:flex">
             <OfflineStatusIndicator />
           </div>
 
           <ApprovalInbox ar={ar} />
-          {/* Active orders */}
           <button data-testid="active-orders-button" type="button" onClick={() => navigate('/floor-plan')} className="relative rounded-xl p-2 text-ui-muted transition-colors hover:bg-ui-page-alt hover:text-ui-text" aria-label={ar ? 'الطلبات النشطة' : 'Active orders'}>
             <Activity className="h-5 w-5" />
             {counts.active > 0 && (
@@ -221,7 +212,6 @@ export function Layout({ children }: { children: ReactNode }) {
 
           <div className="hidden h-6 w-px bg-ui-border sm:block" />
 
-          {/* User */}
           <button data-testid="user-menu-button" type="button" onClick={() => navigate(APP_ROUTES.settings)} className="flex items-center gap-2.5 rounded-xl p-1.5 pe-2 transition-colors hover:bg-ui-page-alt">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-ui-primary-soft text-xs font-bold text-ui-primary">
               {(user?.full_name || user?.email || 'A').slice(0, 1).toUpperCase()}
@@ -232,27 +222,22 @@ export function Layout({ children }: { children: ReactNode }) {
             </div>
           </button>
 
-          {/* Language */}
           <button data-testid="language-toggle" type="button" onClick={() => setLang(ar ? 'en' : 'ar')} className="hidden items-center gap-1.5 rounded-xl border border-ui-border px-2.5 py-1.5 text-xs font-semibold text-ui-muted transition-colors hover:bg-ui-page-alt sm:flex">
             <Globe className="h-3.5 w-3.5" />
             <span className="hidden md:inline">{ar ? 'العربية' : 'English'}</span>
           </button>
 
-          {/* Theme */}
           <button data-testid="theme-toggle" type="button" onClick={toggleTheme} className="rounded-xl p-2 text-ui-muted transition-colors hover:bg-ui-page-alt hover:text-ui-text" aria-label={ar ? 'تغيير المظهر' : 'Toggle theme'}>
             {theme === 'light' ? <Moon className="h-4.5 w-4.5" /> : <Sun className="h-4.5 w-4.5" />}
           </button>
 
-          {/* Sign out */}
           <button data-testid="sign-out-button" type="button" onClick={signOut} className="rounded-xl p-2 text-ui-subtle transition-colors hover:bg-ui-danger-soft hover:text-ui-danger" aria-label={ar ? 'تسجيل الخروج' : 'Sign out'}>
             <LogOut className="h-4.5 w-4.5" />
           </button>
         </div>
       </header>
 
-      {/* ── Sidebar: fixed, z-50, below header ── */}
       <aside data-testid="app-sidebar" className={`fixed top-0 bottom-0 ${ar ? 'start-0' : 'end-0'} z-50 w-[260px] liquid-glass border-e border-ui-border shadow-ui-md transition-transform duration-200 ease-[var(--ui-ease)] ${mobileOpen ? 'translate-x-0' : ar ? 'translate-x-full' : 'translate-x-full'} lg:translate-x-0`}>
-        {/* Sidebar header */}
         <div className="flex h-14 items-center justify-between border-b border-ui-border px-5">
           <Logo variant="horizontal" size={28} tone="mono" showTagline={false} className="text-ui-primary" />
           <button data-testid="sidebar-close" type="button" onClick={() => setMobileOpen(false)} className="rounded-lg p-2 text-ui-muted hover:bg-ui-page-alt lg:hidden" aria-label={ar ? 'إغلاق القائمة' : 'Close sidebar'}>
@@ -260,7 +245,6 @@ export function Layout({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        {/* Navigation */}
         <nav data-testid="app-navigation" className="h-[calc(100%-56px)] overflow-y-auto px-3 py-4">
           {(Object.keys(MENU_GROUPS) as MenuGroup[]).map((group) => {
             const items = grouped[group] ?? [];
@@ -296,28 +280,13 @@ export function Layout({ children }: { children: ReactNode }) {
               </section>
             );
           })}
-
-          {/* Assistant card */}
-          <div data-testid="assistant-card" className="mt-4 rounded-xl border border-ui-border bg-ui-page p-3.5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-ui-primary-soft text-ui-primary">
-                <Sparkles className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-ui-text">{ar ? 'مساعد Premier' : 'Premier Assistant'}</p>
-                <p className="text-[10px] text-ui-subtle">{ar ? 'قريباً' : 'Coming soon'}</p>
-              </div>
-            </div>
-          </div>
         </nav>
       </aside>
 
-      {/* ── Mobile backdrop ── */}
       {mobileOpen && (
         <button data-testid="mobile-sidebar-backdrop" type="button" className="fixed inset-0 z-40 bg-ui-text/20 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} aria-label={ar ? 'إغلاق' : 'Close'} />
       )}
 
-      {/* ── Main content: offset for header (pt) + sidebar (ms/me) ── */}
       <div className={`pt-[64px] ${ar ? 'lg:ms-[260px]' : 'lg:me-[260px]'} min-h-screen`}>
         <ReturnContextBanner />
         <main data-testid="app-main" className="min-h-[calc(100vh-64px)] bg-ui-page p-4 sm:p-6 lg:p-7">
