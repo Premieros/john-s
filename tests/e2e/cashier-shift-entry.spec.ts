@@ -57,7 +57,16 @@ async function mockCashierBackend(page: Page) {
   });
 
   await page.route(`${SUPABASE_ORIGIN}/rest/v1/users**`, async (route) => {
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([fakeUser]) });
+    // Supabase/PostgREST returns a JSON object for .maybeSingle() requests and
+    // an array for normal collection reads. Mirror that behavior so permission
+    // checks exercise the same user shape as production.
+    const accept = route.request().headers()['accept'] || '';
+    const single = accept.includes('application/vnd.pgrst.object+json');
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(single ? fakeUser : [fakeUser]),
+    });
   });
   await page.route(`${SUPABASE_ORIGIN}/rest/v1/roles**`, async (route) => {
     return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
