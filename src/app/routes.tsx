@@ -82,8 +82,12 @@ function ProtectedRoute({
 
   if (loading) return <PageLoader />;
   if (!session) return <Navigate to={APP_ROUTES.login} replace />;
-  if (superAdminOnly && user?.role !== 'super_admin') return <Navigate to={APP_ROUTES.dashboard} replace />;
-  if (ownerOnly && !isAdminRole(user?.role)) return <Navigate to={APP_ROUTES.dashboard} replace />;
+  // A valid authenticated session may exist a render before its application
+  // user profile is hydrated. Do not convert that transient state into a
+  // permission denial/redirect; wait for the profile so role checks are real.
+  if (!user) return <PageLoader />;
+  if (superAdminOnly && user.role !== 'super_admin') return <Navigate to={APP_ROUTES.dashboard} replace />;
+  if (ownerOnly && !isAdminRole(user.role)) return <Navigate to={APP_ROUTES.dashboard} replace />;
   if (permission && !can(permission)) return <Navigate to={APP_ROUTES.dashboard} replace />;
 
   if (fullscreen) return <>{children}</>;
