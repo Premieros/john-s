@@ -12,7 +12,7 @@ export interface MenuItemConfig {
   id: string;
   route: AppRoute;
   icon: MenuIcon;
-  labelKey?: TranslationKey;
+  labelKey: TranslationKey;
   label?: { ar: string; en: string };
   permission?: Permission;
   group: MenuGroup;
@@ -34,26 +34,21 @@ export const MENU_ITEMS: MenuItemConfig[] = [
   { id: 'dashboard', route: APP_ROUTES.dashboard, icon: 'dashboard', labelKey: 'dashboard', permission: 'dashboard.view', group: 'main' },
   { id: 'pos', route: APP_ROUTES.pos, icon: 'pos', labelKey: 'pos', permission: 'pos.sell', group: 'main' },
   { id: 'kitchen-display', route: APP_ROUTES.kitchenDisplay, icon: 'kitchenDisplay', labelKey: 'kitchenDisplay', permission: 'pos.sell', group: 'main' },
-  
   { id: 'operations-center', route: APP_ROUTES.operationsCenter, icon: 'pos', labelKey: 'orders', permission: 'dashboard.view', group: 'centers' },
   { id: 'inventory-center', route: APP_ROUTES.inventoryCenter, icon: 'inventory', labelKey: 'inventory', permission: 'inventory.view', group: 'centers' },
   { id: 'procurement-center', route: APP_ROUTES.procurementCenter, icon: 'purchases', labelKey: 'purchases', permission: 'purchases.view', group: 'centers' },
   { id: 'waste-center', route: APP_ROUTES.wasteCenter, icon: 'wasteCenter', labelKey: 'wasteCenter', permission: 'production.waste', group: 'centers' },
-  
   { id: 'products', route: APP_ROUTES.products, icon: 'products', labelKey: 'products', permission: 'products.view', group: 'catalog' },
-  { id: 'product-modifiers', route: APP_ROUTES.productModifiers, icon: 'productModifiers', label: { ar: 'موديفاير المنتجات', en: 'Product Modifiers' }, permission: 'products.manage', group: 'catalog' },
+  { id: 'product-modifiers', route: APP_ROUTES.productModifiers, icon: 'productModifiers', labelKey: 'products', label: { ar: 'موديفاير المنتجات', en: 'Product Modifiers' }, permission: 'products.manage', group: 'catalog' },
   { id: 'recipes', route: APP_ROUTES.recipes, icon: 'recipes', labelKey: 'recipes', permission: 'recipes.view', group: 'catalog' },
   { id: 'raw-materials', route: APP_ROUTES.rawMaterials, icon: 'rawMaterials', labelKey: 'rawMaterials', permission: 'raw_materials.view', group: 'catalog' },
   { id: 'categories', route: APP_ROUTES.categories, icon: 'categories', labelKey: 'categories', permission: 'categories.view', group: 'catalog' },
   { id: 'components', route: APP_ROUTES.components, icon: 'components', labelKey: 'components', permission: 'components.view', group: 'catalog' },
   { id: 'inventory-units', route: APP_ROUTES.inventoryUnits, icon: 'inventoryUnits', labelKey: 'inventoryUnits', permission: 'raw_materials.view', group: 'catalog' },
-  
   { id: 'branches', route: APP_ROUTES.branches, icon: 'branches', labelKey: 'branches', permission: 'branches.manage', group: 'operations' },
   { id: 'import-export', route: APP_ROUTES.importExport, icon: 'importExport', labelKey: 'importExport', permission: 'settings.manage', group: 'operations' },
-  
   { id: 'customers', route: APP_ROUTES.customers, icon: 'customers', labelKey: 'customers', permission: 'customers.view', group: 'people' },
   { id: 'suppliers', route: APP_ROUTES.suppliers, icon: 'suppliers', labelKey: 'suppliers', permission: 'suppliers.view', group: 'people' },
-  
   { id: 'expenses', route: APP_ROUTES.expenses, icon: 'expenses', labelKey: 'expenses', permission: 'expenses.view', group: 'finance' },
   { id: 'costing-center', route: APP_ROUTES.costingCenter, icon: 'costingCenter', labelKey: 'costingCenter', permission: 'reports.costing', group: 'finance' },
   { id: 'accounts', route: APP_ROUTES.accounts, icon: 'accounts', labelKey: 'chartOfAccounts', permission: 'accounts.view', group: 'finance' },
@@ -65,7 +60,6 @@ export const MENU_ITEMS: MenuItemConfig[] = [
   { id: 'sales', route: APP_ROUTES.sales, icon: 'sales', labelKey: 'salesInvoices', permission: 'sales.view', group: 'finance' },
   { id: 'shifts', route: APP_ROUTES.shifts, icon: 'shifts', labelKey: 'shifts', permission: 'shifts.view', group: 'finance' },
   { id: 'reports', route: APP_ROUTES.reports, icon: 'reports', labelKey: 'reports', permission: 'reports.view', group: 'finance' },
-  
   { id: 'super-admin', route: APP_ROUTES.superAdmin, icon: 'superAdmin', labelKey: 'superAdmin', permission: 'settings.manage', group: 'admin', superAdminOnly: true },
   { id: 'users', route: APP_ROUTES.users, icon: 'users', labelKey: 'users', permission: 'users.view', group: 'admin' },
   { id: 'kitchen-stations', route: APP_ROUTES.kitchenStations, icon: 'kitchenStations', labelKey: 'kitchenStations', permission: 'settings.manage', group: 'admin' },
