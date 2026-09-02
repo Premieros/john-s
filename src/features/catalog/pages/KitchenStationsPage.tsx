@@ -415,7 +415,6 @@ export function KitchenStationsPage() {
         onConfirm={() => void handleDelete()}
         title={ar ? 'حذف المحطة' : 'Delete Station'}
         message={ar ? 'هل تريد حذف محطة المطبخ؟' : 'Delete this kitchen station?'}
-        confirmText={ar ? 'حذف' : 'Delete'}
       />
     </DesignSurface>
   );
