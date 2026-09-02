@@ -1,4 +1,4 @@
-import type { DiningTable, Order, OrderItem } from '@/lib/types';
+import type { DiningTable, Order, OrderItem, ProductModifierSnapshot } from '@/lib/types';
 
 export interface OrderKitchenSend {
   id: string;
@@ -21,6 +21,7 @@ export interface KitchenSendItem {
   bonus_quantity: number;
   total: number;
   notes: string | null;
+  modifiers?: ProductModifierSnapshot[] | null;
 }
 
 export interface KitchenSendResult {
