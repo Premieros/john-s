@@ -61,18 +61,40 @@ export function KitchenPanel({ open, onClose, orders, itemsByOrder, kitchenSends
           </div>
         )}
 
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {sends.map((send) => {
             const item = itemById[send.order_item_id];
             const name = item?.product_id ? (productNames[item.product_id] || '—') : '—';
+            const modifiers = item?.modifiers_snapshot || [];
             return (
-              <div key={send.id} className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2 min-w-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-ui-warning shrink-0" />
-                  <span className="truncate font-medium text-ui-text">{name}</span>
-                  <span className="shrink-0 text-[11px] font-bold text-ui-warning">× {Number(item?.quantity ?? 0)}</span>
-                </span>
-                <span className="shrink-0 text-[11px] text-ui-subtle tabular-nums">{formatClockTime(send.sent_at, lang)}</span>
+              <div key={send.id} className="rounded-lg bg-ui-surface/60 px-2.5 py-2 space-y-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-ui-warning shrink-0" />
+                    <span className="truncate font-medium text-ui-text">{name}</span>
+                    <span className="shrink-0 text-[11px] font-bold text-ui-warning">× {Number(item?.quantity ?? 0)}</span>
+                  </span>
+                  <span className="shrink-0 text-[11px] text-ui-subtle tabular-nums">{formatClockTime(send.sent_at, lang)}</span>
+                </div>
+                {modifiers.length > 0 && (
+                  <div className="ps-3.5 flex flex-wrap gap-1" data-testid={`kitchen-item-modifiers-${send.order_item_id}`}>
+                    {modifiers.map((modifier) => (
+                      <span
+                        key={`${modifier.group_id}-${modifier.option_id}`}
+                        className="inline-flex items-center rounded-md border border-ui-warning/25 bg-ui-warning/10 px-1.5 py-0.5 text-[10px] font-bold text-ui-warning"
+                      >
+                        {isAr
+                          ? modifier.option_name
+                          : modifier.option_name_en || modifier.option_name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {item?.notes && (
+                  <div className="ps-3.5 text-[10px] font-semibold text-ui-danger">
+                    {isAr ? 'ملاحظة' : 'Note'}: {item.notes}
+                  </div>
+                )}
               </div>
             );
           })}
