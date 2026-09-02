@@ -1,11 +1,13 @@
 -- Final audit: keep sale input validation explicit so callers can distinguish
--- malformed product identifiers from invalid quantities without weakening the
--- authoritative pricing boundary introduced by P2.
+-- malformed product identifiers from invalid quantities without weakening P2.
 
 DO $do$
 DECLARE
   v_src text;
-  v_old text := $old$    IF v_product_id IS NULL OR v_qty <= 0 THEN RETURN jsonb_build_object('success',false,'error','INVALID_QUANTITY_OR_PRODUCT'); END IF;$old$;
+  v_old_compact text := $old$    IF v_product_id IS NULL OR v_qty <= 0 THEN RETURN jsonb_build_object('success',false,'error','INVALID_QUANTITY_OR_PRODUCT'); END IF;$old$;
+  v_old_multiline text := $old$    IF v_product_id IS NULL OR v_qty <= 0 THEN
+      RETURN jsonb_build_object('success',false,'error','INVALID_QUANTITY_OR_PRODUCT');
+    END IF;$old$;
   v_new text := $new$    IF v_product_id IS NULL THEN
       RETURN jsonb_build_object('success',false,'error','INVALID_PRODUCT');
     END IF;
@@ -26,10 +28,14 @@ BEGIN
   END IF;
 
   IF position(v_new IN v_src) = 0 THEN
-    IF position(v_old IN v_src) = 0 THEN
+    IF position(v_old_compact IN v_src) > 0 THEN
+      v_src := replace(v_src, v_old_compact, v_new);
+    ELSIF position(v_old_multiline IN v_src) > 0 THEN
+      v_src := replace(v_src, v_old_multiline, v_new);
+    ELSE
       RAISE EXCEPTION 'process_sale input validation block changed unexpectedly';
     END IF;
-    EXECUTE replace(v_src, v_old, v_new);
+    EXECUTE v_src;
   END IF;
 END
 $do$;
