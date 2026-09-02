@@ -74,20 +74,20 @@ export function DataTable<T extends { id?: string }>({ columns, data, loading, e
   };
 
   return (
-    <div data-testid="data-table" className="overflow-x-auto rounded-xl">
-      <table className="w-full text-sm">
+    <div data-testid="data-table" className="max-w-full overflow-x-auto overscroll-x-contain rounded-xl touch-pan-x [scrollbar-gutter:stable]">
+      <table className="w-full min-w-max text-xs sm:text-sm">
         <thead>
           <tr className="border-b border-ui-border bg-ui-page-alt/70">
             {showCheckbox && (
-              <th className="px-4 py-3 w-10">
+              <th className="w-10 px-3 py-3 sm:px-4">
                 <input type="checkbox" checked={allSelected} onChange={toggleAll}
-                  className="w-4 h-4 rounded border-ui-border-strong text-ui-primary focus:ring-ui-ring" />
+                  className="h-5 w-5 rounded border-ui-border-strong text-ui-primary focus:ring-ui-ring sm:h-4 sm:w-4" />
               </th>
             )}
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-4 py-3 text-start font-semibold text-ui-muted text-xs uppercase tracking-wider ${col.className || ''}`}
+                className={`whitespace-nowrap px-3 py-3 text-start text-[11px] font-semibold uppercase tracking-wider text-ui-muted sm:px-4 sm:text-xs ${col.className || ''}`}
               >
                 {col.header}
               </th>
@@ -105,14 +105,14 @@ export function DataTable<T extends { id?: string }>({ columns, data, loading, e
               className={`hover:bg-ui-page-alt/60 transition-colors duration-150 ${onRowClick ? 'cursor-pointer' : ''} ${selectedIds?.has(row.id || '') ? 'bg-ui-primary-soft/50' : ''}`}
             >
               {showCheckbox && (
-                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                <td className="px-3 py-3 sm:px-4" onClick={(e) => e.stopPropagation()}>
                   <input type="checkbox" checked={!!(row.id && selectedIds?.has(row.id))}
                     onChange={() => row.id && toggleRow(row.id)}
-                    className="w-4 h-4 rounded border-ui-border-strong text-ui-primary focus:ring-ui-ring" />
+                    className="h-5 w-5 rounded border-ui-border-strong text-ui-primary focus:ring-ui-ring sm:h-4 sm:w-4" />
                 </td>
               )}
               {columns.map((col) => (
-                <td key={col.key} className={`px-4 py-3 text-ui-text ${col.className || ''}`}>
+                <td key={col.key} className={`px-3 py-3 text-ui-text sm:px-4 ${col.className || ''}`}>
                   {col.render ? col.render(row) : (row as Record<string, unknown>)[col.key] as ReactNode}
                 </td>
               ))}
