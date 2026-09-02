@@ -42,7 +42,6 @@ export interface ReportFilterBarProps {
 }
 
 export function ReportFilterBar({
-  reportType,
   filters,
   onFilterChange,
   showDate,
@@ -64,36 +63,22 @@ export function ReportFilterBar({
   count,
   currency,
   lang,
-  financialTypes = [],
-  canFinancial = false,
-  onFinancialSelect,
-  reportTypes = [],
-  onReportTypeChange,
 }: ReportFilterBarProps) {
   const { t } = useLanguage();
+
   return (
-    <Card className="mb-4 p-4 border-ui-border bg-ui-surface shadow-ui">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="min-w-[220px]">
-            <label className="block text-sm font-medium text-ui-muted mb-1.5">{t('reports')}</label>
-            <select data-testid="report-type-select" value={reportType} onChange={(e) => onReportTypeChange?.(e.target.value)}
-              className="h-10 w-full rounded-ui border border-ui-border bg-ui-surface-raised px-3 text-sm font-semibold text-ui-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ui-ring">
-              <optgroup label={lang === 'ar' ? 'التقارير التشغيلية' : 'Operational reports'}>
-                {reportTypes.map((rt) => <option key={rt.key} value={rt.key}>{rt.label}</option>)}
-              </optgroup>
-              {canFinancial && financialTypes.length > 0 && (
-                <optgroup label={lang === 'ar' ? 'التقارير المالية' : 'Financial reports'}>
-                  {financialTypes.map((ft) => <option key={ft.key} value={ft.key}>{ft.label}</option>)}
-                </optgroup>
-              )}
-            </select>
-          </div>
+    <Card className="mb-3 border-ui-border bg-ui-surface p-3 shadow-ui-sm">
+      <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
           {showDate && (
-            <div className="min-w-[200px]">
-              <label className="block text-sm font-medium text-ui-muted mb-1.5">{t('filterByPeriod')}</label>
-              <select data-testid="report-context-filter" value={period} onChange={(e) => onPeriodChange(e.target.value)}
-                className="h-10 w-full rounded-ui border border-ui-border bg-ui-surface-raised px-3 text-sm font-semibold text-ui-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ui-ring">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-ui-muted">{t('filterByPeriod')}</label>
+              <select
+                data-testid="report-context-filter"
+                value={period}
+                onChange={(e) => onPeriodChange(e.target.value)}
+                className="h-9 w-full rounded-ui border border-ui-border bg-ui-surface-raised px-2.5 text-xs font-semibold text-ui-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ui-ring"
+              >
                 <option value="custom">{lang === 'ar' ? 'مخصص' : 'Custom'}</option>
                 <option value="today">{lang === 'ar' ? 'اليوم' : 'Today'}</option>
                 <option value="yesterday">{lang === 'ar' ? 'أمس' : 'Yesterday'}</option>
@@ -105,57 +90,71 @@ export function ReportFilterBar({
               </select>
             </div>
           )}
-          {showDate && <Input label={t('from')} type="date" value={from} onChange={(e) => onFromChange(e.target.value)} />}
-          {showDate && <Input label={t('to')} type="date" value={to} onChange={(e) => onToChange(e.target.value)} />}
+
+          {showDate && (
+            <Input
+              label={t('from')}
+              type="date"
+              value={from}
+              onChange={(e) => onFromChange(e.target.value)}
+            />
+          )}
+
+          {showDate && (
+            <Input
+              label={t('to')}
+              type="date"
+              value={to}
+              onChange={(e) => onToChange(e.target.value)}
+            />
+          )}
+
           {showBranchFilter && (
             <div>
-              <label className="block text-sm font-medium text-ui-muted mb-1.5">{t('filterByBranch')}</label>
-              <select value={branchFilterValue} onChange={(e) => onBranchFilterChange(e.target.value)}
-                className="h-10 min-w-[180px] rounded-ui border border-ui-border bg-ui-surface-raised px-3 text-sm font-semibold text-ui-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ui-ring">
+              <label className="mb-1 block text-xs font-medium text-ui-muted">{t('filterByBranch')}</label>
+              <select
+                value={branchFilterValue}
+                onChange={(e) => onBranchFilterChange(e.target.value)}
+                className="h-9 w-full rounded-ui border border-ui-border bg-ui-surface-raised px-2.5 text-xs font-semibold text-ui-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ui-ring"
+              >
                 <option value="">{t('allBranches')}</option>
-                {branches.map((b) => <option key={b.id} value={b.id}>{lang === 'ar' ? b.name : (b.name_en || b.name)}</option>)}
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {lang === 'ar' ? b.name : (b.name_en || b.name)}
+                  </option>
+                ))}
               </select>
             </div>
           )}
-          <div className="flex gap-4 text-sm">
-            <div className="rounded-ui-lg bg-ui-page-alt px-4 py-2 border border-ui-border">
-              <span className="text-ui-muted">{t('total')}: </span>
-              <span className="font-bold text-ui-accent">{formatCurrency(total, currency, lang)}</span>
+
+          {filterDimensions.map((dim) => (
+            <div key={dim} data-testid="report-contextual-filters">
+              <label className="mb-1 block text-xs font-medium text-ui-muted">{filterLabel(dim)}</label>
+              <select
+                data-filter-dim={dim}
+                value={filters[dim] || ''}
+                onChange={(e) => onFilterChange(dim, e.target.value)}
+                className="h-9 w-full rounded-ui border border-ui-border bg-ui-surface-raised px-2.5 text-xs font-semibold text-ui-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ui-ring"
+              >
+                <option value="">{allLabel(dim)}</option>
+                {filterOptions(dim).map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </div>
-            <div className="rounded-ui-lg bg-ui-page-alt px-4 py-2 border border-ui-border">
-              <span className="text-ui-muted">{t('count')}: </span>
-              <span className="font-bold text-ui-text">{count}</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2 border-t border-ui-border pt-3">
-          {reportTypes.map((rt) => (
-            <button key={rt.key} data-report-type={rt.key} onClick={() => onReportTypeChange?.(rt.key)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-ui-lg text-sm font-medium transition-colors ${reportType === rt.key ? 'bg-ui-primary text-ui-primary-fg shadow-ui-sm' : 'bg-ui-page-alt text-ui-muted border border-ui-border hover:bg-ui-primary-soft hover:text-ui-primary'}`}>
-              {rt.icon} {rt.label}
-            </button>
-          ))}
-          {canFinancial && financialTypes.map((ft) => (
-            <button key={ft.key} data-report-type={ft.key} onClick={() => onFinancialSelect?.(ft.key)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-ui-lg text-sm font-medium transition-colors bg-ui-page-alt text-ui-muted border border-ui-border hover:bg-ui-primary-soft hover:text-ui-primary`}>
-              {ft.label}
-            </button>
           ))}
         </div>
-        {filterDimensions.length > 0 && (
-          <div data-testid="report-contextual-filters" className="flex flex-wrap items-end gap-4 border-t border-ui-border pt-3">
-            {filterDimensions.map((dim) => (
-              <div key={dim} className="min-w-[180px]">
-                <label className="block text-sm font-medium text-ui-muted mb-1.5">{filterLabel(dim)}</label>
-                <select data-filter-dim={dim} value={filters[dim] || ''} onChange={(e) => onFilterChange(dim, e.target.value)}
-                  className="h-10 w-full rounded-ui border border-ui-border bg-ui-surface-raised px-3 text-sm font-semibold text-ui-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ui-ring">
-                  <option value="">{allLabel(dim)}</option>
-                  {filterOptions(dim).map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                </select>
-              </div>
-            ))}
+
+        <div className="flex flex-wrap items-center gap-2 border-t border-ui-border pt-2 text-xs">
+          <div className="rounded-lg bg-ui-page-alt px-3 py-1.5 border border-ui-border">
+            <span className="text-ui-muted">{t('total')}: </span>
+            <span className="font-black text-ui-accent">{formatCurrency(total, currency, lang)}</span>
           </div>
-        )}
+          <div className="rounded-lg bg-ui-page-alt px-3 py-1.5 border border-ui-border">
+            <span className="text-ui-muted">{t('count')}: </span>
+            <span className="font-black text-ui-text">{count}</span>
+          </div>
+        </div>
       </div>
     </Card>
   );
