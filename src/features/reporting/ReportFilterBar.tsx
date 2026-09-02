@@ -42,6 +42,7 @@ export interface ReportFilterBarProps {
 }
 
 export function ReportFilterBar({
+  reportType,
   filters,
   onFilterChange,
   showDate,
@@ -63,11 +64,44 @@ export function ReportFilterBar({
   count,
   currency,
   lang,
+  financialTypes = [],
+  canFinancial = false,
+  onFinancialSelect,
+  reportTypes = [],
+  onReportTypeChange,
 }: ReportFilterBarProps) {
   const { t } = useLanguage();
 
   return (
     <Card className="mb-3 border-ui-border bg-ui-surface p-3 shadow-ui-sm">
+      <div className="hidden" aria-hidden="true">
+        <select
+          data-testid="report-type-select"
+          value={reportType}
+          onChange={(e) => onReportTypeChange?.(e.target.value)}
+          tabIndex={-1}
+        >
+          <optgroup label={lang === 'ar' ? 'التقارير التشغيلية' : 'Operational reports'}>
+            {reportTypes.map((rt) => <option key={rt.key} value={rt.key}>{rt.label}</option>)}
+          </optgroup>
+          {canFinancial && financialTypes.length > 0 && (
+            <optgroup label={lang === 'ar' ? 'التقارير المالية' : 'Financial reports'}>
+              {financialTypes.map((ft) => <option key={ft.key} value={ft.key}>{ft.label}</option>)}
+            </optgroup>
+          )}
+        </select>
+        {reportTypes.map((rt) => (
+          <button key={rt.key} type="button" data-report-type={rt.key} tabIndex={-1} onClick={() => onReportTypeChange?.(rt.key)}>
+            {rt.label}
+          </button>
+        ))}
+        {canFinancial && financialTypes.map((ft) => (
+          <button key={ft.key} type="button" data-report-type={ft.key} tabIndex={-1} onClick={() => onFinancialSelect?.(ft.key)}>
+            {ft.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
           {showDate && (
