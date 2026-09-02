@@ -12,6 +12,20 @@ export interface ItemPayload {
   notes?: string | null;
 }
 
+const normalizedModifierIds = (ids?: string[]) => [...(ids || [])].sort();
+
+export function cartLineKey(item: Pick<CartItem, 'product' | 'modifier_option_ids' | 'item_note'>): string {
+  return `${item.product.id}|${normalizedModifierIds(item.modifier_option_ids).join(',')}|${item.item_note || ''}`;
+}
+
+export function orderItemLineKey(item: Pick<OrderItem, 'product_id' | 'modifier_option_ids' | 'notes'>): string {
+  return `${item.product_id || ''}|${normalizedModifierIds(item.modifier_option_ids).join(',')}|${item.notes || ''}`;
+}
+
+export function sameCartConfiguration(a: Pick<CartItem, 'product' | 'modifier_option_ids' | 'item_note'>, b: Pick<CartItem, 'product' | 'modifier_option_ids' | 'item_note'>): boolean {
+  return cartLineKey(a) === cartLineKey(b);
+}
+
 export function cartToItems(cart: CartItem[]): ItemPayload[] {
   return cart.map((i) => ({
     product_id: i.product.id,
