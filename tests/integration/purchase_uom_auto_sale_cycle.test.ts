@@ -47,7 +47,7 @@ describe.skipIf(skip)('purchase UOM -> raw stock -> availability -> auto product
       [userId, `purchase-uom-${userId}@example.test`, branchId],
     );
     await client.query(`INSERT INTO public.warehouses (id,name,branch_id,is_active) VALUES ($1,'Purchase UOM WH',$2,true)`, [warehouseId, branchId]);
-    await client.query(`INSERT INTO public.suppliers (id,name,branch_id,is_active) VALUES ($1,'Purchase UOM Supplier',$2,true)`, [supplierId, branchId]);
+    await client.query(`INSERT INTO public.suppliers (id,name,branch_id) VALUES ($1,'Purchase UOM Supplier',$2)`, [supplierId, branchId]);
     await client.query(`INSERT INTO public.units (id,code,name,symbol,is_active) VALUES ($1,$2,'Gram','جم',true)`, [gramUnitId, `G-${randomUUID()}`]);
     await client.query(
       `INSERT INTO public.raw_materials (id,code,name,unit_id,min_stock,default_cost,is_active,branch_id)
