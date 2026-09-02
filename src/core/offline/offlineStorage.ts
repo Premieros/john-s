@@ -24,7 +24,10 @@ export interface OfflineHoldOrderQueueItem {
 }
 
 const DB_NAME = 'premier_pos_offline_db';
-const DB_VERSION = 1;
+// Version 2 guarantees every currently required store exists for users who
+// already have an older v1 database. Keeping the version at 1 left those
+// clients permanently unable to create newly-added stores.
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -79,12 +82,25 @@ export function openOfflineDb(): Promise<IDBDatabase> {
     };
 
     req.onsuccess = () => {
-      resolve(req.result);
+      const db = req.result;
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
     };
 
     req.onerror = () => {
       reject(req.error);
     };
+
+    req.onblocked = () => {
+      reject(new Error('IndexedDB upgrade is blocked by another open tab'));
+    };
+  }).catch((error) => {
+    // A failed/blocked open must not poison all later attempts in this tab.
+    dbPromise = null;
+    throw error;
   });
 
   return dbPromise;
@@ -107,9 +123,10 @@ export async function saveOfflineCache<T>(storeName: string, items: T[]): Promis
       store.put(item);
     }
 
-    return new Promise((res, rej) => {
+    await new Promise<void>((res, rej) => {
       tx.oncomplete = () => res();
       tx.onerror = () => rej(tx.error);
+      tx.onabort = () => rej(tx.error);
     });
   } catch (err) {
     console.warn(`[OfflineDB] Failed to cache ${storeName}:`, err);
@@ -119,12 +136,19 @@ export async function saveOfflineCache<T>(storeName: string, items: T[]): Promis
 export async function getOfflineCache<T>(storeName: string): Promise<T[]> {
   try {
     const db = await openOfflineDb();
-    return new Promise((resolve) => {
-      const tx = db.transaction(storeName, 'readonly');
+    return await new Promise<T[]>((resolve, reject) => {
+      let tx: IDBTransaction;
+      try {
+        tx = db.transaction(storeName, 'readonly');
+      } catch (error) {
+        reject(error);
+        return;
+      }
       const store = tx.objectStore(storeName);
       const req = store.getAll();
       req.onsuccess = () => resolve(req.result as T[]);
       req.onerror = () => resolve([]);
+      tx.onabort = () => resolve([]);
     });
   } catch (err) {
     console.warn(`[OfflineDB] Failed to load ${storeName}:`, err);
@@ -145,11 +169,18 @@ export async function saveOfflineSetting(key: string, value: unknown): Promise<v
 export async function getOfflineSetting<T>(key: string): Promise<T | null> {
   try {
     const db = await openOfflineDb();
-    return new Promise((resolve) => {
-      const tx = db.transaction('system_settings', 'readonly');
+    return await new Promise<T | null>((resolve, reject) => {
+      let tx: IDBTransaction;
+      try {
+        tx = db.transaction('system_settings', 'readonly');
+      } catch (error) {
+        reject(error);
+        return;
+      }
       const req = tx.objectStore('system_settings').get(key);
       req.onsuccess = () => resolve(req.result ? (req.result.value as T) : null);
       req.onerror = () => resolve(null);
+      tx.onabort = () => resolve(null);
     });
   } catch {
     return null;
@@ -179,14 +210,21 @@ export async function enqueueOfflineSale(sale: Omit<OfflineSaleQueueItem, 'statu
 export async function getPendingSalesCount(): Promise<number> {
   try {
     const db = await openOfflineDb();
-    return new Promise((resolve) => {
-      const tx = db.transaction('sales_queue', 'readonly');
+    return await new Promise<number>((resolve, reject) => {
+      let tx: IDBTransaction;
+      try {
+        tx = db.transaction('sales_queue', 'readonly');
+      } catch (error) {
+        reject(error);
+        return;
+      }
       const req = tx.objectStore('sales_queue').getAll();
       req.onsuccess = () => {
         const items = (req.result as OfflineSaleQueueItem[]) || [];
         resolve(items.filter((i) => i.status === 'pending' || i.status === 'failed').length);
       };
       req.onerror = () => resolve(0);
+      tx.onabort = () => resolve(0);
     });
   } catch {
     return 0;
@@ -196,11 +234,18 @@ export async function getPendingSalesCount(): Promise<number> {
 export async function getAllOfflineSales(): Promise<OfflineSaleQueueItem[]> {
   try {
     const db = await openOfflineDb();
-    return new Promise((resolve) => {
-      const tx = db.transaction('sales_queue', 'readonly');
+    return await new Promise<OfflineSaleQueueItem[]>((resolve, reject) => {
+      let tx: IDBTransaction;
+      try {
+        tx = db.transaction('sales_queue', 'readonly');
+      } catch (error) {
+        reject(error);
+        return;
+      }
       const req = tx.objectStore('sales_queue').getAll();
       req.onsuccess = () => resolve((req.result as OfflineSaleQueueItem[]) || []);
       req.onerror = () => resolve([]);
+      tx.onabort = () => resolve([]);
     });
   } catch {
     return [];
