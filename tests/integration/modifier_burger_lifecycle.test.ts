@@ -231,12 +231,16 @@ describe.skipIf(skip)('Burger modifier transactional lifecycle', () => {
     expect(await unitQty(cheeseUnit)).toBe(before.cheese - 3);
     expect(await unitQty(onionUnit)).toBe(before.onion - 1);
 
-    const saleItems = await client.query<{ id: string; notes: string; total: string }>(
-      `SELECT id,notes,total::text FROM public.sale_items WHERE sale_id=$1 ORDER BY notes`,
+    const saleItems = await client.query<{ id: string; modifiers_snapshot: unknown; total: string }>(
+      `SELECT id,modifiers_snapshot,total::text FROM public.sale_items WHERE sale_id=$1 ORDER BY id`,
       [saleId],
     );
-    const singleItem = saleItems.rows.find((r) => r.notes === 'single-extra-cheese');
+    const singleItem = saleItems.rows.find((r) => {
+      const snapshot = JSON.stringify(r.modifiers_snapshot);
+      return snapshot.includes('Single') && snapshot.includes('Extra Cheese');
+    });
     expect(singleItem).toBeTruthy();
+    expect(Number(singleItem!.total)).toBe(110);
 
     const effectRows = await client.query<{ target_id: string; quantity: string }>(
       `SELECT target_id::text,quantity::text FROM public.sale_item_inventory_effects WHERE sale_item_id=$1`,
