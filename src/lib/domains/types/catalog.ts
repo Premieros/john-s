@@ -32,6 +32,35 @@ export interface Product {
   category?: Category;
 }
 
+export interface ProductModifierOption {
+  id: string;
+  name: string;
+  name_en: string | null;
+  price_delta: number;
+  is_default: boolean;
+  sort_order: number;
+}
+
+export interface ProductModifierGroup {
+  id: string;
+  name: string;
+  name_en: string | null;
+  min_selections: number;
+  max_selections: number;
+  sort_order: number;
+  options: ProductModifierOption[];
+}
+
+export interface ProductModifierSnapshot {
+  group_id: string;
+  group_name: string;
+  group_name_en: string | null;
+  option_id: string;
+  option_name: string;
+  option_name_en: string | null;
+  price_delta: number;
+}
+
 export interface ProductUnit {
   id: string;
   product_id: string;
@@ -201,7 +230,9 @@ export interface CartItem {
   unit_price: number;
   discount_amount: number;
   bonus_quantity: number;
-  modifiers?: { name: string }[];
+  modifier_option_ids?: string[];
+  modifiers?: { id?: string; group_name?: string; name: string; price_delta?: number }[];
+  item_note?: string;
 }
 
 export interface Warehouse {
