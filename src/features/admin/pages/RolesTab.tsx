@@ -1,5 +1,5 @@
-﻿import { useEffect, useState } from 'react';
-import { Plus, Save, Trash2, ShieldCheck } from 'lucide-react';
+﻿import { useEffect, useMemo, useState } from 'react';
+import { Plus, Save, Trash2, ShieldCheck, Search, CheckCheck } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useToast } from '@/components/Toast';
 import { useRoles, type RoleScope } from '@/context/RolesContext';
@@ -24,6 +24,8 @@ export function RolesTab() {
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({ role: '', name_ar: '', name_en: '', scope: 'global' as RoleScope, branch_id: '', description_ar: '', description_en: '' });
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [selectedRole, setSelectedRole] = useState('');
+  const [permissionSearch, setPermissionSearch] = useState('');
 
   useEffect(() => {
     if (loading || Object.keys(rolePermissionsMap).length === 0) return;
@@ -38,6 +40,11 @@ export function RolesTab() {
 
   const roles: string[] = rolesList.length > 0 ? rolesList.map((r) => r.role) : Object.keys(ROLE_META);
 
+  useEffect(() => {
+    if (roles.length === 0) return;
+    if (!selectedRole || !roles.includes(selectedRole)) setSelectedRole(roles[0]);
+  }, [roles, selectedRole]);
+
   const toggle = (role: string, perm: Permission) => {
     setDrafts((prev) => {
       const list = prev[role] ?? rolePermissionsMap[role] ?? [];
@@ -48,6 +55,14 @@ export function RolesTab() {
 
   const setAll = (role: string, value: boolean) => {
     setDrafts((prev) => ({ ...prev, [role]: value ? [...ALL_PERMISSIONS] : [] }));
+  };
+
+  const setGroup = (role: string, permissions: Permission[], value: boolean) => {
+    setDrafts((prev) => {
+      const base = new Set(prev[role] ?? rolePermissionsMap[role] ?? []);
+      permissions.forEach((p) => { if (value) base.add(p); else base.delete(p); });
+      return { ...prev, [role]: [...base] };
+    });
   };
 
   const save = async (role: string) => {
@@ -73,29 +88,55 @@ export function RolesTab() {
     if (!res.success) {
       if (res.error === 'ROLE_EXISTS') show(isAr ? 'الدور موجود بالفعل' : 'Role already exists', 'error');
       else if (res.error === 'ROLE_CODE_REQUIRED') show(isAr ? 'أدخل رمزًا صالحًا للدور' : 'Enter a valid role code', 'error');
-      else show(isAr ? 'تعذر إنشاء الدور: ' : 'Failed to create role: ' + (res.error || 'unknown'), 'error');
+      else show(`${isAr ? 'تعذر إنشاء الدور: ' : 'Failed to create role: '}${res.error || 'unknown'}`, 'error');
       return;
     }
     await logAudit('create', 'roles', res.role, { role: createForm.role });
     show(t('saveSuccess'), 'success');
     setCreating(false);
+    setSelectedRole(res.role || createForm.role);
     setCreateForm({ role: '', name_ar: '', name_en: '', scope: 'global', branch_id: '', description_ar: '', description_en: '' });
   };
 
   const confirmDelete = async () => {
     if (!deleting) return;
-    const res = await deleteRole(deleting);
+    const roleToDelete = deleting;
+    const res = await deleteRole(roleToDelete);
     if (!res.success) {
       if (res.error === 'ROLE_IN_USE') show(isAr ? 'الدور مستخدم من قبل أحد الموظفين ولا يمكن حذفه' : 'Role is assigned to users and cannot be deleted', 'error');
       else if (res.error === 'SYSTEM_ROLE') show(isAr ? 'لا يمكن حذف الأدوار النظامية' : 'System roles cannot be deleted', 'error');
       else if (res.error === 'PERMISSION_DENIED') show(isAr ? 'ليس لديك صلاحية حذف هذا الدور' : 'You do not have permission to delete this role', 'error');
-      else show(isAr ? 'تعذر حذف الدور: ' : 'Failed to delete role: ' + (res.error || 'unknown'), 'error');
+      else show(`${isAr ? 'تعذر حذف الدور: ' : 'Failed to delete role: '}${res.error || 'unknown'}`, 'error');
       return;
     }
-    await logAudit('delete', 'roles', deleting, { role: deleting });
+    await logAudit('delete', 'roles', roleToDelete, { role: roleToDelete });
     show(t('deleteSuccess'), 'success');
     setDeleting(null);
+    setSelectedRole('');
   };
+
+  const currentRole = selectedRole || roles[0] || '';
+  const currentDef = rolesList.find((r) => r.role === currentRole);
+  const currentSystem = !!ROLE_META[currentRole as Role];
+  const currentAdmin = isAdminRole(currentRole as Role);
+  const currentCustom = !!currentRole && !currentSystem;
+  const currentPermissions = drafts[currentRole] ?? rolePermissionsMap[currentRole] ?? [];
+
+  const visibleGroups = useMemo(() => {
+    const q = permissionSearch.trim().toLowerCase();
+    if (!q) return PERMISSION_GROUPS;
+    return PERMISSION_GROUPS.map((group) => ({
+      ...group,
+      permissions: group.permissions.filter((perm) => {
+        const labels = PERMISSION_LABELS[perm];
+        return perm.toLowerCase().includes(q)
+          || (labels?.ar || '').toLowerCase().includes(q)
+          || (labels?.en || '').toLowerCase().includes(q)
+          || group.ar.toLowerCase().includes(q)
+          || group.en.toLowerCase().includes(q);
+      }),
+    })).filter((group) => group.permissions.length > 0);
+  }, [permissionSearch]);
 
   if (loading) {
     return (
@@ -107,131 +148,141 @@ export function RolesTab() {
   }
 
   return (
-    <div className="space-y-5">
-      <Card className="p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-4">
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-ui-text mb-2 flex items-center gap-2">
+            <h3 className="font-semibold text-ui-text flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-brand-600 dark:text-brand-400" /> {t('rolesTab')}
             </h3>
-            <p className="text-sm text-ui-subtle dark:text-ui-subtle">
-              {isAr
-                ? 'تُحفظ الصلاحيات في قاعدة البيانات وتُطبَّق فورًا على جميع المستخدمين أصحاب الدور. الأدوار الإدارية (مدير عام / مالك) تملك كل الصلاحيات تلقائيًا.'
-                : 'Permissions are stored in the database and apply immediately to every user with that role. Admin roles (Super Admin / Owner) always have full access.'}
+            <p className="mt-1 text-sm text-ui-subtle">
+              {isAr ? 'اختر الدور ثم فعّل ما يحتاجه فقط. جميع صلاحيات النظام متاحة هنا في مكان واحد.' : 'Choose a role, then enable only what it needs. Every system permission is managed here.'}
             </p>
           </div>
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus className="w-4 h-4" /> {isAr ? 'دور جديد' : 'New role'}
-          </Button>
+          <Button size="sm" onClick={() => setCreating(true)}><Plus className="w-4 h-4" /> {isAr ? 'دور جديد' : 'New role'}</Button>
         </div>
       </Card>
 
-      {roles.map((role) => {
-        const def = rolesList.find((r) => r.role === role);
-        const system = !!ROLE_META[role as Role];
-        const admin = isAdminRole(role as Role);
-        const custom = !system;
-        const list = drafts[role] ?? rolePermissionsMap[role] ?? [];
-        const count = list.length;
-        return (
-          <Card key={role} className="p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="font-semibold text-ui-text">{roleMeta[role]?.[lang] || role}</h4>
-                  {def?.scope === 'branch' && (
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-ui-info-soft text-ui-info">
-                      {isAr ? 'فرع' : 'Branch'} {branches.find((b) => b.id === def.branch_id)?.name || ''}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-ui-subtle dark:text-ui-subtle mt-0.5">
-                  {count} / {ALL_PERMISSIONS.length} {isAr ? 'صلاحية' : 'permissions'} · <code className="text-ui-subtle">{role}</code>
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {admin ? (
-                  <span className="px-3 py-1.5 rounded-lg bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400 text-xs font-medium">
-                    {isAr ? 'كامل الصلاحيات تلقائيًا' : 'Full access by default'}
+      <Card className="p-3 sm:p-4">
+        <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label={isAr ? 'الأدوار' : 'Roles'}>
+          {roles.map((role) => {
+            const def = rolesList.find((r) => r.role === role);
+            const count = (drafts[role] ?? rolePermissionsMap[role] ?? []).length;
+            const active = role === currentRole;
+            return (
+              <button
+                key={role}
+                type="button"
+                onClick={() => { setSelectedRole(role); setPermissionSearch(''); }}
+                className={`shrink-0 rounded-xl border px-3 py-2 text-start transition ${active ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-950/30 dark:text-brand-300' : 'border-ui-border bg-ui-surface text-ui-text hover:bg-ui-page-alt'}`}
+              >
+                <span className="block text-sm font-semibold">{roleMeta[role]?.[lang] || role}</span>
+                <span className="block text-[11px] text-ui-subtle mt-0.5">
+                  {isAdminRole(role as Role) ? (isAr ? 'وصول كامل' : 'Full access') : `${count}/${ALL_PERMISSIONS.length}`}
+                  {def?.scope === 'branch' ? ` · ${isAr ? 'فرع' : 'Branch'}` : ''}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      {currentRole && (
+        <Card className="p-4 sm:p-5">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-lg font-bold text-ui-text">{roleMeta[currentRole]?.[lang] || currentRole}</h4>
+                <span className="px-2 py-0.5 rounded-full text-xs bg-ui-page-alt text-ui-muted">{currentSystem ? (isAr ? 'نظامي' : 'System') : (isAr ? 'مخصص' : 'Custom')}</span>
+                {currentDef?.scope === 'branch' && (
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-ui-info-soft text-ui-info">
+                    {isAr ? 'فرع' : 'Branch'}: {branches.find((b) => b.id === currentDef.branch_id)?.name || '-'}
                   </span>
-                ) : (
-                  <>
-                    <Button size="sm" variant="outline" onClick={() => setAll(role, true)}>{t('all')}</Button>
-                    <Button size="sm" variant="outline" onClick={() => setAll(role, false)}>{t('none')}</Button>
-                    <Button size="sm" onClick={() => save(role)} disabled={savingRole === role}>
-                      <Save className="w-4 h-4" /> {savingRole === role ? '...' : t('save')}
-                    </Button>
-                  </>
-                )}
-                {custom && (
-                  <Button size="sm" variant="danger" onClick={() => setDeleting(role)}>
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
                 )}
               </div>
+              <p className="mt-1 text-xs text-ui-subtle"><code>{currentRole}</code> · {currentAdmin ? ALL_PERMISSIONS.length : currentPermissions.length} / {ALL_PERMISSIONS.length} {isAr ? 'صلاحية' : 'permissions'}</p>
             </div>
 
-            {admin ? (
-              <p className="text-sm text-ui-subtle">{isAr ? 'لا يمكن تقييد هذا الدور.' : 'This role cannot be restricted.'}</p>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {PERMISSION_GROUPS.map((group) => {
-                  const groupAll = group.permissions.every((p) => list.includes(p));
-                  const groupSome = group.permissions.some((p) => list.includes(p));
+            <div className="flex flex-wrap gap-2">
+              {!currentAdmin && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => setAll(currentRole, true)}><CheckCheck className="w-4 h-4" /> {t('all')}</Button>
+                  <Button size="sm" variant="outline" onClick={() => setAll(currentRole, false)}>{t('none')}</Button>
+                  <Button size="sm" onClick={() => save(currentRole)} disabled={savingRole === currentRole}>
+                    <Save className="w-4 h-4" /> {savingRole === currentRole ? '...' : t('save')}
+                  </Button>
+                </>
+              )}
+              {currentCustom && <Button size="sm" variant="danger" onClick={() => setDeleting(currentRole)}><Trash2 className="w-4 h-4" /> {t('delete')}</Button>}
+            </div>
+          </div>
+
+          {currentAdmin ? (
+            <div className="rounded-xl border border-brand-200 bg-brand-50/70 p-4 text-sm text-brand-800 dark:border-brand-900 dark:bg-brand-950/20 dark:text-brand-300">
+              {isAr ? 'هذا دور إداري كامل الصلاحيات ولا يمكن تقييده من شاشة الصلاحيات.' : 'This is a full-access administrative role and cannot be restricted here.'}
+            </div>
+          ) : (
+            <>
+              <div className="relative mb-4">
+                <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-ui-subtle" />
+                <input
+                  value={permissionSearch}
+                  onChange={(e) => setPermissionSearch(e.target.value)}
+                  placeholder={isAr ? 'ابحث عن صلاحية مثل البيع، المرتجعات، التقارير...' : 'Search permissions: sales, refunds, reports...'}
+                  className="w-full rounded-xl border border-ui-border bg-ui-surface py-2.5 ps-9 pe-3 text-sm text-ui-text outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                {visibleGroups.map((group) => {
+                  const selectedCount = group.permissions.filter((p) => currentPermissions.includes(p)).length;
+                  const groupAll = group.permissions.length > 0 && selectedCount === group.permissions.length;
                   return (
-                    <div key={group.key} className="border border-ui-border rounded-xl overflow-hidden">
-                      <div className="flex items-center justify-between px-3 py-2 bg-ui-page-alt/60">
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={groupAll}
-                            ref={(el) => { if (el) el.indeterminate = groupSome && !groupAll; }}
-                            onChange={() => {
-                              const value = !groupAll;
-                              setDrafts((prev) => {
-                                const base = new Set(prev[role] ?? rolePermissionsMap[role] ?? []);
-                                group.permissions.forEach((p) => { if (value) base.add(p); else base.delete(p); });
-                                return { ...prev, [role]: [...base] };
-                              });
-                            }}
-                            className="w-4 h-4 rounded border-ui-border text-brand-600 focus:ring-brand-500"
-                          />
-                          <span className="font-semibold text-sm text-ui-text">{group[lang]}</span>
-                        </label>
+                    <section key={group.key} className="rounded-xl border border-ui-border overflow-hidden bg-ui-surface">
+                      <div className="flex items-center justify-between gap-3 px-3 py-2.5 bg-ui-page-alt/70 border-b border-ui-border">
+                        <div>
+                          <h5 className="font-semibold text-sm text-ui-text">{group[lang]}</h5>
+                          <p className="text-[11px] text-ui-subtle">{selectedCount}/{group.permissions.length} {isAr ? 'مفعّلة' : 'enabled'}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setGroup(currentRole, group.permissions, !groupAll)}
+                          className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline"
+                        >
+                          {groupAll ? (isAr ? 'إلغاء الكل' : 'Clear all') : (isAr ? 'تحديد الكل' : 'Select all')}
+                        </button>
                       </div>
-                      <div className="px-3 py-2 space-y-1.5">
+                      <div className="divide-y divide-ui-border">
                         {group.permissions.map((perm) => (
-                          <label key={perm} className="flex items-center gap-2.5 cursor-pointer py-0.5">
+                          <label key={perm} className="flex items-center justify-between gap-3 px-3 py-2.5 cursor-pointer hover:bg-ui-page-alt/50">
+                            <span className="text-sm text-ui-muted">{PERMISSION_LABELS[perm]?.[lang] || perm}</span>
                             <input
                               type="checkbox"
-                              checked={list.includes(perm)}
-                              onChange={() => toggle(role, perm)}
+                              checked={currentPermissions.includes(perm)}
+                              onChange={() => toggle(currentRole, perm)}
                               className="w-4 h-4 rounded border-ui-border text-brand-600 focus:ring-brand-500"
                             />
-                            <span className="text-sm text-ui-muted">{PERMISSION_LABELS[perm]?.[lang] || perm}</span>
                           </label>
                         ))}
                       </div>
-                    </div>
+                    </section>
                   );
                 })}
               </div>
-            )}
-          </Card>
-        );
-      })}
-      <p className="text-xs text-ui-subtle px-1">{isAr ? 'الدور المبني من القاعدة: أي تغيير يظهر فورًا، بدون إعادة تسجيل دخول.' : 'DB-backed roles: changes apply immediately, no re-login needed.'}</p>
 
-      {/* Create role modal */}
+              {visibleGroups.length === 0 && (
+                <div className="py-10 text-center text-sm text-ui-subtle">{isAr ? 'لا توجد صلاحيات مطابقة للبحث.' : 'No permissions match your search.'}</div>
+              )}
+            </>
+          )}
+        </Card>
+      )}
+
+      <p className="text-xs text-ui-subtle px-1">{isAr ? 'أي تغيير يتم حفظه في قاعدة البيانات ويُطبّق فورًا بدون إعادة تسجيل الدخول.' : 'Saved permission changes apply immediately without requiring a new login.'}</p>
+
       <Modal open={creating} onClose={() => setCreating(false)} title={isAr ? 'دور جديد' : 'New role'}>
         <div className="space-y-4">
-          <Input
-            label={isAr ? 'الرمز (بالإنجليزية)' : 'Code (English)'}
-            value={createForm.role}
-            onChange={(e) => setCreateForm({ ...createForm, role: e.target.value.replace(/\s+/g, '_').toLowerCase() })}
-            placeholder="floor_supervisor"
-            autoComplete="off"
-          />
+          <Input label={isAr ? 'الرمز (بالإنجليزية)' : 'Code (English)'} value={createForm.role} onChange={(e) => setCreateForm({ ...createForm, role: e.target.value.replace(/\s+/g, '_').toLowerCase() })} placeholder="floor_supervisor" autoComplete="off" />
           <Input label={isAr ? 'الاسم (عربي)' : 'Name (Arabic)'} value={createForm.name_ar} onChange={(e) => setCreateForm({ ...createForm, name_ar: e.target.value })} />
           <Input label={isAr ? 'الاسم (إنجليزي)' : 'Name (English)'} value={createForm.name_en} onChange={(e) => setCreateForm({ ...createForm, name_en: e.target.value })} />
           <Select label={isAr ? 'النطاق' : 'Scope'} value={createForm.scope} onChange={(e) => setCreateForm({ ...createForm, scope: e.target.value as RoleScope })}>
@@ -247,8 +298,8 @@ export function RolesTab() {
           <Input label={isAr ? 'الوصف (عربي)' : 'Description (Arabic)'} value={createForm.description_ar} onChange={(e) => setCreateForm({ ...createForm, description_ar: e.target.value })} />
           <Input label={isAr ? 'الوصف (إنجليزي)' : 'Description (English)'} value={createForm.description_en} onChange={(e) => setCreateForm({ ...createForm, description_en: e.target.value })} />
           <div className="flex justify-end gap-2">
-            <button onClick={() => setCreating(false)} className="px-4 py-2 rounded-lg bg-ui-page-alt text-ui-text text-sm font-medium">{t('cancel')}</button>
-            <button onClick={submitCreate} className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium">{t('save')}</button>
+            <Button variant="secondary" onClick={() => setCreating(false)}>{t('cancel')}</Button>
+            <Button onClick={submitCreate}>{t('save')}</Button>
           </div>
         </div>
       </Modal>
@@ -258,7 +309,7 @@ export function RolesTab() {
         onClose={() => setDeleting(null)}
         onConfirm={confirmDelete}
         title={isAr ? 'حذف الدور' : 'Delete role'}
-        message={isAr ? 'هل تريد حذف هذا الدور؟ لن يتمكن المستخدمون المرتبطون به من تسجيل الدخول.' : 'Delete this role? Users assigned to it will no longer be able to sign in.'}
+        message={isAr ? 'هل تريد حذف هذا الدور؟ لا يمكن حذف دور مستخدم من أحد الموظفين.' : 'Delete this role? A role assigned to users cannot be deleted.'}
         confirmLabel={t('delete')}
         cancelLabel={t('cancel')}
       />
