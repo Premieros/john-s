@@ -19,6 +19,7 @@ import { usePosOrder } from '../hooks/usePosOrder';
 import { useActiveOrders } from '../hooks/useActiveOrders';
 import { usePosPermissions } from '../hooks/usePosPermissions';
 import { usePosKeyboard } from '../hooks/usePosKeyboard';
+import { cartLineKey, orderItemLineKey } from '../utils/cart';
 import { OrderStartWizard, type StartStep, type StartOrderOptions } from '../components/start/OrderStartWizard';
 import { ProductBrowser } from '../components/catalog/ProductBrowser';
 import { ProductConfigModal } from '../components/catalog/ProductConfigModal';
@@ -190,7 +191,8 @@ export function PosWorkspacePage() {
     if (pos.cart.length === 0) return false;
     if (kitchenSendsForActive.length === 0) return true;
     return pos.cart.some((cItem) => {
-      const orderItem = orderItemsForActive.find((oi) => oi.product_id === cItem.product.id);
+      const lineKey = cartLineKey(cItem);
+      const orderItem = orderItemsForActive.find((oi) => orderItemLineKey(oi) === lineKey);
       if (!orderItem) return true;
       return !sentItemIds.has(orderItem.id);
     });
@@ -571,8 +573,8 @@ export function PosWorkspacePage() {
     return await pos.transferOrderToTable(orderId, fromTableId, toTableId);
   };
 
-  const handleConfirmVoid = async (productId: string, voidQuantity: number, reason: string) => {
-    await pos.voidSentItem(productId, voidQuantity, reason);
+  const handleConfirmVoid = async (lineKey: string, voidQuantity: number, reason: string) => {
+    await pos.voidSentItem(lineKey, voidQuantity, reason);
   };
 
   const rightPanel = isCheckout ? (
@@ -943,10 +945,17 @@ export function PosWorkspacePage() {
           currency={pos.effCurrency}
           onConfirm={(item) => {
             if (configItem) {
-              pos.setQty(item.product.id, item.quantity);
-              pos.setItemDiscount(item.product.id, item.discount_amount);
+              pos.replaceCartLine(cartLineKey(configItem), item);
             } else {
-              pos.addToCart(item.product, item.quantity, item.modifiers || [], item.discount_amount);
+              pos.addToCart(
+                item.product,
+                item.quantity,
+                item.modifiers || [],
+                item.discount_amount,
+                item.modifier_option_ids || [],
+                item.unit_price,
+                item.item_note,
+              );
             }
             setConfigProduct(null);
             setConfigItem(null);
