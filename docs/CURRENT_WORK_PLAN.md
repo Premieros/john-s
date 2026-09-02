@@ -1,259 +1,172 @@
 # CURRENT WORK PLAN — john-s
 
-> المرجع الرئيسي لحالة العمل الحالية. يُحدّث بعد كل إصلاح أو قرار معماري أو نتيجة CI مهمة.
+> **Source of truth** لأي نموذج أو مطور يدخل يكمل العمل. اقرأ هذا الملف أولًا، ولا تعِد فتح أعمال أُغلقت إلا إذا ظهر Regression مثبت.
 
-آخر تحديث: 2026-09-02
+آخر تحديث: **2026-09-02**
 
-## 1) الحالة العامة — Baseline أخضر ✅
+## 1) الحالة الحالية — Release Baseline أخضر ✅
 
-المشروع يعمل على `main` مع Supabase Production: `azzdesuowpdcoflmyezn`.
+- Repository: `Premieros/john-s`
+- Branch: `main`
+- Supabase Production: `azzdesuowpdcoflmyezn`
+- HEAD المعتمد: `5617da55725dd7cb1a160b8b1376c6c7254e619b`
+- Verify main #197 / run `33600846169`: **SUCCESS**
+  - lint ✅
+  - typecheck ✅
+  - typecheck all suites ✅
+  - unit tests ✅
+  - build ✅
+  - Fresh DB canonical migrations ✅
+  - schema verification ✅
+  - Integration + Security/RLS regression ✅
+  - Playwright Browser Smoke ✅
+- Deploy #199 / run `33600846236`: **SUCCESS**
 
-Baseline المعتمد بعد الفحص الشامل:
-- HEAD الذي اجتاز البوابات: `d0249fb50da0733d6cbb5aa7e3a0481a2bfe21b1`.
-- Verify main #178 / run `33594520386`: **SUCCESS**.
-- App: lint ✅ typecheck ✅ typecheck:all ✅ unit ✅ build ✅
-- Fresh DB: canonical migrations ✅ schema verification ✅
-- Integration + Security + RLS regression ✅
-- Playwright Browser Smoke ✅
-- Deploy #180 / run `33594520436`: **SUCCESS**.
-
-أحدث User-facing UI baseline:
-- HEAD: `0c4b4c63d6596e5c75dcd73d28dedd0a9c848a36`.
-- Verify main #190 / run `33597512656`: **SUCCESS**.
-- App + Unit + Build ✅ Fresh DB + Integration/Security/RLS ✅ Browser Smoke ✅
-- Deploy #192 / run `33597512599`: **SUCCESS**.
-
-تم تطبيق آخر hardening أيضًا على Production، مع بقاء التسجيل العام مغلقًا.
-
----
-
-## 2) سلامة Production — فحص شامل ✅
-
-نتائج الفحص المباشر:
-- مخزون سالب: **0**.
-- دفعات مخزون سالبة: **0**.
-- قيود محاسبية غير متوازنة: **0**.
-- Orphan sale/purchase/order items: **0**.
-- اختلافات إجماليات البيع: **0**.
-- اختلافات إجماليات الشراء: **0**.
-- استلام مشتريات أكبر من المطلوب: **0**.
-- خلل حالة الطاولات/الطلبات المفتوحة: **0**.
-- المنتجات القابلة للبيع ذات مسار مخزون: **335/335**.
-- جداول تشغيلية بدون RLS: **0**.
-- Supabase Security Advisor: لا توجد **ERRORS** حالية.
-
-تحذيرات الأداء المتبقية ليست Release Blockers؛ لم يتم حذف `unused indexes` عشوائيًا لأن الإنتاج حديث وقد لا تكون الإحصائيات ممثلة للاستخدام الحقيقي بعد.
+هذا هو الـbaseline الذي يبدأ منه أي عمل جديد.
 
 ---
 
-## 3) Security Surface Hardening — مكتمل ✅
+## 2) دورة التشغيل الكاملة — مثبتة بالاختبار ✅
 
-Migrations الرئيسية في دفعة الإغلاق:
-- `20260902073000_final_security_surface_hardening.sql`
-- `20260902074000_final_anon_deny_by_default.sql`
-- `20260902075000_disable_legacy_privileged_client_rpcs.sql`
-- `20260902075500_lock_internal_accounting_and_legacy_kds_helpers.sql`
-- `20260902080000_remove_verified_duplicate_indexes.sql`
-- `20260902081000_final_branch_rpc_isolation.sql`
-- `20260902082000_allow_db_admin_internal_setup_helpers.sql`
-- `20260902083000_grant_service_role_internal_rpcs.sql`
+تم إضافة Release Gate حقيقي في:
+`tests/integration/pos_operational_lifecycle.test.ts`
 
-الحالة النهائية:
-- `anon` لا يملك صلاحيات مباشرة على جداول `public`.
-- الاستثناءان قبل تسجيل الدخول فقط: `get_login_email(text)` و`record_login_failure(text)`.
-- `register_tenant` مغلق أمام `anon` و`authenticated` ويعمل كـinternal provisioning فقط.
-- `bootstrap_initial_super_admin` مغلق أمام `anon` و`authenticated`.
-- `service_role` و`postgres` يحتفظان بالوصول الداخلي المطلوب بدون إعادة فتح RPCs للعميل.
-- `schema_migrations` مغلق عن العملاء مع RLS.
-- View `units` تعمل `security_invoker`.
-- `search_path` للدوال الحساسة مثبت إلى `public, pg_temp` حيث لزم.
-- دوال الخصم المباشر للمخزون، Audit helpers، Accounting seed helpers، وLegacy KDS inventory helpers ليست RPCs عامة للعميل.
-- تم إغلاق تسريب branch availability/RPCs التي كانت تقبل `branch_id` خارجيًا بدون تحقق كافٍ.
-- الاختبارات تثبت صراحةً أن `anon` لا يستطيع تشغيل Tenant provisioning.
+الدورة التي تمر فعليًا على Fresh DB:
 
-ملاحظة خارج الكود: Supabase Leaked Password Protection ما زالت إعدادًا من لوحة Auth وليست migration داخل المستودع.
+`authenticated cashier → open shift → create order → send to KDS → process sale → inventory deduction → refund requires manager approval → manager approves → refund restores inventory → approval consumed once → close shift`
+
+المثبت داخل الدورة:
+- فتح الوردية يتم عبر RPC الحقيقي.
+- إنشاء الطلب يستخدم سعر الخادم، ولا يثق في السعر المزور من العميل.
+- KDS لا يخصم المخزون.
+- البيع يخصم المخزون **مرة واحدة فقط**.
+- Refund للكاشير يُرفض قبل موافقة المدير.
+- موافقة المدير تعمل وتُستهلك مرة واحدة.
+- Full refund يعيد المخزون فعليًا.
+- الوردية تُغلق بنجاح بعد الدورة.
 
 ---
 
-## 4) بيانات التشغيل / Excel ✅
+## 3) إصلاح Refund للمخزون الهجين ✅
 
-- المنتجات: **352/352**.
-- الأقسام: **30/30**.
-- أسماء المنتجات المكررة: **0**.
-- منتجات بدون قسم: **0**.
-- الخامات: **215**.
-- المنتجات ذات الوصفة: **265**.
-- أسطر الوصفات: **1205**.
-- وصفات فارغة: **0**.
-- منتجات بلا وصفة مصدر: **87**.
+Migration:
+`20260902084000_refund_hybrid_inventory_restoration.sql`
 
-التكلفة لا تعتمد تكلفة Excel ثابتة؛ الخامات والمصنعات تعتمد على المشتريات والدفعات الفعلية.
+المشكلة التي اكتشفها اختبار دورة التشغيل:
+- `process_refund` القديم كان يعيد مخزون `inventory_batches/inventory_ledger` التقليدي فقط.
+- البيع الحديث قد يكون خصم من `inventory_units` أو خامات Recipe مباشرة.
+- بالتالي كان يمكن أن يتم Refund مالي ناجح بدون إعادة المخزون الحقيقي، أو إنشاء Product stock وهمي بدل المسار الذي خُصم.
 
----
+الحل الحالي:
+- بيع يعتمد على `inventory_units` → Refund يعيد وحدات المخزون.
+- بيع يعتمد على raw recipe → Refund يعيد الخامات التي خُصمت.
+- Ready/legacy product → يحتفظ بمسار استرجاع Product inventory القديم.
+- الاسترجاع محدود بكمية الخصم الفعلية ويطرح ما سبق إرجاعه، لمنع Over-restoration في partial/repeated refunds.
+- لا يتم إنشاء phantom product stock لبيع Hybrid.
 
-## 5) Hybrid Inventory / Manufacturing ✅
+تم تطبيق migration على **Production** بنجاح.
 
-- المنتجات المصنعة الداخلية: **17** ومخفية من POS كمنتجات بيع مستقلة.
-- `inventory_units` المصنعة: **17**.
-- علاقات Product → manufactured unit: **52**.
-- Nested manufacturing مدعوم عبر `inventory_unit_recipe_units`.
-- البيع يخصم مرة واحدة فقط من المسار الفعلي:
-  - direct raw recipe → خامات FIFO.
-  - manufactured unit → `inventory_unit_batches`.
-  - ready product → `inventory_batches/inventory`.
-- لا يوجد منتج قابل للبيع بلا مسار مخزون: **335/335**.
-
-قاعدة ثابتة: KDS لا يخصم المخزون؛ نقطة الخصم هي البيع.
-
----
-
-## 6) KDS / Orders ✅
-
-- `send_to_kitchen` State/Snapshot فقط.
-- `sent_quantity` يدعم Delta عند زيادة كمية سطر سبق إرساله.
-- Approved kitchen void يخفض الكمية المرسلة الصافية.
-- Legacy KDS inventory consumption/reversal RPCs مقفلة عن العميل.
-- Cancel sent item محمي Server-side ويمر عبر Manager Approval للكاشير عند الحاجة.
+تحقق Production بعد التطبيق:
+- `process_refund` مرتبط بـ `_restore_refund_hybrid_inventory` ✅
+- `authenticated` يستطيع تشغيل `process_refund` حسب قواعده ✅
+- `anon` لا يستطيع تشغيل Refund ✅
+- الـhelper الداخلي غير متاح لـ`authenticated` ✅
+- `service_role` يحتفظ بتنفيذ الـhelper ✅
+- Negative inventory unit batches: **0**
+- Negative product batches: **0**
+- Negative raw-material batches: **0**
+- Invalid negative sales totals/paid amounts: **0**
 
 ---
 
-## 7) Manager Approvals — P1 ✅ أساسيًا
+## 4) قواعد معمارية ثابتة — لا تغيّرها بدون قرار صريح
 
-مكتمل Server-side مع Audit:
-- Discount.
-- Reprint.
-- Cancel sent item.
-- Refund.
-- Change payment method.
-- Force close shift.
-- Open drawer authorization/audit.
-- Realtime approval inbox + استهلاك الموافقة مرة واحدة.
-- Cashier/Manager approval lifecycle مغطى بالاختبارات.
-
-المتبقي الاختياري فقط:
-- حسم `void_order` إذا كان سيبقى له مسار تشغيل مستقل عن cancel/refund.
-- Hardware drawer pulse يحتاج Printer/Hardware bridge؛ قاعدة البيانات تغطي الإذن والموافقة والتدقيق فقط.
+- **KDS لا يخصم المخزون.** `send_to_kitchen` = state/snapshot/delta فقط.
+- **البيع هو نقطة خصم المخزون**، مرة واحدة فقط.
+- Refund يجب أن يعكس نفس Inventory Path الذي خصمه البيع.
+- لا نثق في أسعار/إجماليات مالية قادمة من العميل؛ الخادم هو المرجع.
+- لا نحذف أو نضعف RLS أو Tests لإنجاح CI.
+- كل البيانات branch-scoped يجب أن تبقى معزولة Server-side.
+- Public signup مغلق؛ المستخدمون/Tenant provisioning من الإدارة أو المسار الداخلي فقط.
+- Internal/security/accounting/inventory helpers لا تُفتح لـ`anon` أو `authenticated` فقط لإرضاء اختبار.
+- عمليات الكاشير الحساسة تمر Permission أو Manager Approval Server-side.
+- لا تعرض Demo/Seed tools في Production.
+- لا تضف زرًا لميزة Backend غير مكتملة.
 
 ---
 
-## 8) Sale Financial Authority — P2 ✅
+## 5) Inventory الحالي ✅
 
-- Online POS يكتب عبر `process_sale` فقط.
-- Direct INSERT إلى `sales` و`sale_items` من المستخدم المسجل مرفوض.
-- أسعار السطور والإجماليات والضريبة النهائية Server-authoritative.
-- لا يتم الوثوق في `subtotal`, `tax_amount`, `total`, `unit_price` القادمة من الواجهة.
-- `paid_amount` لا يتجاوز إجمالي الخادم.
-- الكميات غير الموجبة مرفوضة قبل الكتابة.
-- رفض الخادم لا يتحول إلى Offline success.
-- فشل الشبكة الغامض لا يُصفّ تلقائيًا كبيع Offline لتجنب البيع المكرر.
-- Create/update order staging أصبح Server-authoritative بدل تخزين totals مزورة من العميل.
-- ضريبة الفرع تستخدم effective branch settings مع fallback للإعدادات العامة.
-- خصومات السطر/الفاتورة تمر القيود وموافقة المدير عند الحاجة.
-- أخطاء `INVALID_PRODUCT` و`INVALID_QUANTITY` مفصولة بوضوح.
+Hybrid inventory هو التصميم المعتمد:
+- Sellable products: **335**
+  - Direct raw recipe: **196**
+  - Manufactured-unit path: **52**
+  - Ready products: **87**
+- Internal manufactured products: **17**، ومخفية من POS كمنتجات بيع مستقلة.
+- كل المنتجات القابلة للبيع لها Inventory Path: **335/335**.
+- Nested manufactured units مدعومة.
+- التكلفة التشغيلية تعتمد المشتريات/الدفعات الفعلية، لا تكلفة Excel ثابتة.
 
----
-
-## 9) Purchase UOM / Partial Receiving ✅
-
-Migrations:
-- `20260902020000_purchase_raw_uom_normalization.sql`
-- `20260902061000_purchase_receipt_uom_accounting.sql`
-- `20260902071000_purchase_order_input_uom_validation.sql`
-
-مغلق:
-- kg ↔ g و l ↔ ml بالتحويل الصحيح للكمية والتكلفة.
-- UOM غير المتوافق يرفض بدل تلويث المخزون.
-- Partial receipts تطبع الكمية المستلمة الفعلية لا كامل PO line.
-- حركة كل GRN تحفظ مرجع `purchase_receipt`.
-- إكمال عدة GRNs يبني قيمة المخزون/القيد من كامل أمر الشراء.
-- Manual PO يجمع subtotal/total من البنود.
-- `paid_amount` لا يتجاوز PO total.
-- Integration E2E يغطي: 2kg @ 120/kg → 0.5 + 1.5 → 2000g @ 0.12/g → قيد 240 متوازن.
+بيانات الاستيراد المرجعية:
+- Products: **352**
+- Categories: **30**
+- Raw materials: **215**
+- Products with recipes: **265**
+- Recipe lines: **1205**
+- Empty recipes: **0**
 
 ---
 
-## 10) Branch Visibility — P3 ✅
+## 6) Security / Permissions — مغلق أساسيًا ✅
 
-`BranchBadge` والهوية الفعلية للفرع مغطاة في:
-- Products + Raw Materials.
-- Sales / invoices / refunds + Shifts.
-- Purchases + Receipts + Backorders.
-- Purchase Requests + RFQs.
-- Inventory + Warehouses + Transfers.
-- Inventory Batches + Inventory Ledger.
-- Users.
-- Customers + Suppliers + exports.
-- Audit Log.
-- Reports والتجميعات عند اختيار كل الفروع.
-- POS receipt وShift/Z reports الأساسية.
+الحالة المطلوبة والمثبتة:
+- `anon` بلا وصول مباشر لجداول `public`.
+- الاستثناءات الضرورية قبل Login فقط: `get_login_email(text)` و`record_login_failure(text)`.
+- `register_tenant` و`bootstrap_initial_super_admin` غير متاحين لـ`anon/authenticated`.
+- Direct inventory mutation/internal accounting/audit/legacy KDS helpers ليست Client RPCs عامة.
+- Branch isolation مغطى بـRLS/Integration tests.
+- Manager Approval مغطى للعمليات الحساسة، ومنها Refund، Discount، Reprint، Cancel sent item، Change payment method، Open drawer، Force close shift.
+- التسجيل العام في الواجهة محذوف.
 
-Backorders RPC يعيد `branch_id` ويحافظ على branch isolation.
+إعداد خارجي متبقٍ وليس migration:
+- **Supabase Leaked Password Protection** يحتاج تفعيلًا من Auth settings إذا كان متاحًا للحساب/الخطة.
 
 ---
 
-## 11) Products vs POS — P4 ✅
+## 7) User-facing UI — المراجعة مكتملة ✅
 
-- ProductsPage: server-side search على `name`, `name_en`, `barcode`, `sku`.
-- Pagination حقيقية من السيرفر.
-- POS catalog: `branch_id = effectiveBranch` + `is_active = true`.
-- تعديلات/حذف المنتجات تبطل Offline POS catalog cache.
-- Contract tests تثبت عدم الرجوع إلى بحث داخل أول 100 سجل أو نطاق فرع مختلف.
+المرجع التفصيلي: `docs/UI_VISIBILITY_AUDIT.md`
 
----
+الحالة الأساسية:
+- POS يعرض Counters للطلبات النشطة، Delivery، الطاولات المشغولة، وKDS.
+- Discount / Hold-Resume / Send to Kitchen / Print / Pay / Table transfer ومسارات الموافقة ظاهرة حسب السياق والصلاحية.
+- Approval Inbox ظاهر في Header.
+- Refund وChange Payment Method ظاهرين من Sales.
+- Open Drawer وForce Close Shift موجودان في Shift UI.
+- Kitchen top navigation يفتح KDS الحقيقي.
+- Kitchen Stations لها مدخل إداري واضح.
+- Public Register UI ورابط Create Account محذوفان.
+- Demo/Seed button محذوف من Super Admin.
+- Placeholder `Premier Assistant — Coming soon` وعلامة `New` الوهمية محذوفان.
 
-## 12) User-facing UI Visibility / Production Surface ✅
+ميزات **غير منفذة بالكامل** وليست مجرد أزرار مخفية:
+- `Split Bill`
+- `Merge Tables`
 
-التفاصيل الكاملة: `docs/UI_VISIBILITY_AUDIT.md`.
-
-ما تم تثبيته في الواجهة:
-- POS يعرض فوق مباشرة عدادات: الطلبات النشطة، الدليفري، الطاولات المشغولة، وKDS.
-- أزرار POS الأساسية ظاهرة حسب السياق والصلاحية: Discount، Hold/Resume، Send to Kitchen، Print، Pay، نقل الطاولة، وإلغاء/تعديل السطر المرسل عبر الموافقة.
-- `ApprovalInbox` ظاهر في الـHeader.
-- Refund وChange Payment Method ظاهرين من شاشة Sales.
-- Open Drawer وForce Close Shift ظاهرين في Shift modal.
-- تبويب المطبخ العلوي يفتح KDS الحقيقي بدل POS، ولا يظهر لمن لا يملك `pos.sell`.
-- Kitchen Stations أصبحت مدخلًا واضحًا في قسم الإدارة لمستخدم `settings.manage`.
-- الصفحات الثانوية للمخزون والمشتريات تصل لها مراكز Inventory/Procurement/Operations بدل تكرار عشرات الروابط في الـSidebar.
-
-تنظيف Production:
-- حُذفت صفحة التسجيل العام `RegisterPage`، و`/register` يحول إلى Login.
-- حُذف رابط “إنشاء حساب” من شاشة Login؛ الحسابات تنشأ داخليًا من الإدارة فقط.
-- حُذف زر Seed/Demo data من Super Admin.
-- صُحح وصف User Creation Toggle ليعني إنشاء الموظفين داخليًا، وليس فتح Public signup.
-- حُذفت علامة “جديد” الثابتة للمطبخ وكارت `Premier Assistant — Coming soon` غير الوظيفي.
-- أزيل عقد الاختبار القديم الذي كان يجبر بقاء كارت Assistant الوهمي، ولم يتم إرجاع العنصر فقط لإرضاء CI.
-
-فجوات ليست UI مخفية:
-- `Split Bill` و`Merge Tables` لا يوجد لهما تنفيذ تشغيلي كامل حاليًا؛ لا نضيف لهما زرًا شكليًا قبل Backend contract + tests.
-
-التحقق النهائي لهذه الدفعة:
-- Verify main #190 / run `33597512656`: **SUCCESS** (App + Unit + Build + Fresh DB + Integration/Security/RLS + Browser Smoke).
-- Deploy #192 / run `33597512599`: **SUCCESS**.
+لا تضف لهما UI شكليًا؛ إذا طُلبتا يجب تنفيذهما Backend + UI + tests كميزة كاملة.
 
 ---
 
-## 13) قرارات ثابتة
+## 8) الخطوة التالية
 
-- لا نحذف أو نضعف RLS أو الاختبارات لتجاوز فشل.
-- لا نثق في بيانات العميل في العمليات المالية.
-- Public signup مغلق؛ Tenant provisioning داخلي فقط.
-- لا نفتح Internal RPCs للمستخدم المسجل لمجرد إنجاح الاختبارات.
-- KDS لا يخصم المخزون؛ البيع يخصم مرة واحدة فقط.
-- لا ننشئ self-links أو مخزونًا وهميًا للعرض.
-- التكلفة التشغيلية من المشتريات/الدفعات الفعلية.
-- كل عملية حساسة للكاشير تمر Permission أو Manager Approval Server-side.
-- كل سجل branch-scoped يجب أن يحترم العزل ويعرض هوية الفرع حيث يلزم.
-- لا نعرض أدوات Demo/Seed في Production، ولا نضيف زرًا لوظيفة Backend غير مكتملة.
+لا تعِد مراجعة hardening أو دورة البيع الحالية بدون سبب مثبت؛ الـbaseline الحالي أخضر.
 
----
+الأولوية التالية حسب طلب المستخدم:
+1. أي ملاحظات UI/UX أو وظائف جديدة يحددها المستخدم بعد معاينة النسخة المنشورة.
+2. عند طلب `Split Bill` أو `Merge Tables`: تصميم Contract وتشغيل كامل ثم UI واختبارات.
+3. مراجعة `npm audit` وترقية التبعيات عالية الخطورة بشكل مدروس؛ **لا تستخدم `npm audit fix --force` عشوائيًا**.
+4. تفعيل Leaked Password Protection من Supabase Auth إن أمكن.
+5. Release polish / UX / performance بعد تثبيت الوظائف المطلوبة.
 
-## 14) الخطوة التالية
-
-الفحص الشامل والإغلاق الأمني وP1/P2/P3/P4 الأساسية ومراجعة ظهور الواجهة أصبحت على baseline أخضر.
-
-العمل التالي يجب أن يكون **تشغيليًا/Release polish وليس إعادة فتح hardening المكتمل**:
-1. فحص دورة تشغيل بشرية على الموقع المنشور: Login → فتح وردية → طلب → KDS → بيع → طباعة → Refund/Approval → إغلاق وردية.
-2. إذا كانت مطلوبة للإصدار: تصميم وتنفيذ `Split Bill` و`Merge Tables` كميزات كاملة Backend + UI + tests، وليس أزرارًا شكلية.
-3. تفعيل Leaked Password Protection من إعدادات Supabase Auth إذا كان الحساب/الخطة يدعمها.
-4. مراجعة `npm audit` وترقية التبعيات عالية الخطورة بطريقة غير كاسرة؛ لا تستخدم `npm audit fix --force` عشوائيًا.
-5. تحسينات UX/Performance غير الحاجبة بعد تثبيت الإصدار.
+### قاعدة تسليم لأي نموذج جديد
+ابدأ من HEAD والـCI المذكورين في القسم 1، اقرأ هذا الملف و`docs/UI_VISIBILITY_AUDIT.md`، ثم نفّذ المطلوب الجديد فقط. لا تعيد بناء أو فحص أجزاء مغلقة إلا إذا ظهر فشل CI أو Regression قابل لإعادة الإنتاج.
