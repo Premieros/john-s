@@ -27,11 +27,14 @@ DECLARE
   v_role text;
   v_has_assignments boolean;
   v_main_station_id uuid;
+  v_is_service_role boolean := COALESCE(current_setting('role', true), '') = 'service_role';
 BEGIN
-  -- EXECUTE is restricted to authenticated/service_role below. Branch access
-  -- remains server-side via user_may_access_branch(). Do not require auth.uid()
-  -- here because CI/service-role callers intentionally use the server context.
-  IF p_branch_id IS NULL OR NOT public.user_may_access_branch(p_branch_id) THEN
+  -- EXECUTE is restricted to authenticated/service_role below. Ordinary client
+  -- callers remain branch-scoped; the trusted PostgreSQL service_role may read
+  -- across branches for server/CI administration and cannot be assumed from
+  -- auth.uid() because the CI auth stub deliberately impersonates a user.
+  IF p_branch_id IS NULL
+     OR (NOT v_is_service_role AND NOT public.user_may_access_branch(p_branch_id)) THEN
     RETURN;
   END IF;
 
@@ -109,7 +112,8 @@ BEGIN
     FROM queue_items qi
     WHERE (p_station IS NULL OR qi.station_code = p_station)
       AND (
-        v_role IN ('super_admin','owner','branch_manager')
+        v_is_service_role
+        OR v_role IN ('super_admin','owner','branch_manager')
         OR NOT v_has_assignments
         OR EXISTS (
           SELECT 1 FROM public.user_kitchen_station_assignments a
