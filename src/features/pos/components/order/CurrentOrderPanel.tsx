@@ -5,6 +5,7 @@ import { formatCurrency } from '@/lib/format';
 import type { CartItem, Customer, DiningTable, OrderItem, OrderType } from '@/lib/types';
 import type { KitchenSendItem } from '../../types';
 import { computeSentState } from '../../utils/sentState';
+import { cartLineKey } from '../../utils/cart';
 import { formatClockTime, timeAgo } from '../../utils/timeAgo';
 import { deriveCartStage } from '../../utils/orderStage';
 import { ORDER_TYPES } from '../../utils/orderTypes';
@@ -43,11 +44,11 @@ interface CurrentOrderPanelProps {
   onGuestCountChange: (n: number | null) => void;
   onDiscountTypeChange: (v: 'amount' | 'percent') => void;
   onDiscountAmountChange: (v: number) => void;
-  onUpdateQty: (productId: string, delta: number) => void;
-  onSetQty: (productId: string, qty: number) => void;
-  onRemove: (productId: string) => void;
+  onUpdateQty: (lineKey: string, delta: number) => void;
+  onSetQty: (lineKey: string, qty: number) => void;
+  onRemove: (lineKey: string) => void;
   onClear: () => void;
-  onSetItemDiscount: (productId: string, discount: number) => void;
+  onSetItemDiscount: (lineKey: string, discount: number) => void;
   onHold: () => void;
   onSendKitchen: () => void;
   onPrint: () => void;
@@ -105,7 +106,7 @@ export function CurrentOrderPanel({
   const [showDiscount, setShowDiscount] = useState(false);
 
   const sentState = computeSentState(cart, orderItems, sentOrderItemIds, sessionSent);
-  const newCount = cart.filter((i) => (sentState[i.product.id]?.newQty || 0) > 0).length;
+  const newCount = cart.filter((i) => (sentState[cartLineKey(i)]?.newQty || 0) > 0).length;
   const allSent = cart.length > 0 && newCount === 0;
   const ago = activeOrderCreatedAt ? timeAgo(activeOrderCreatedAt) : null;
   const stage = deriveCartStage(cart, sentState, false);
@@ -115,7 +116,6 @@ export function CurrentOrderPanel({
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-ui-surface">
-      {/* Top Header */}
       <div className="px-3 py-2.5 border-b border-ui-border flex-shrink-0 space-y-2">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-ui-primary-soft flex items-center justify-center">
@@ -141,7 +141,6 @@ export function CurrentOrderPanel({
           )}
         </div>
 
-        {/* Order Type & Context Chips */}
         <div className="flex items-center gap-1.5 flex-wrap">
           {activeOrderNumber ? (
             <OrderTypePill type={orderType} />
@@ -169,7 +168,6 @@ export function CurrentOrderPanel({
             </div>
           )}
 
-          {/* Table Selector Pill */}
           {orderType === 'dine_in' && (
             <button
               type="button"
@@ -183,7 +181,6 @@ export function CurrentOrderPanel({
             </button>
           )}
 
-          {/* Customer Selector Pill */}
           <button
             type="button"
             onClick={onOpenCustomerModal}
@@ -195,7 +192,6 @@ export function CurrentOrderPanel({
             </span>
           </button>
 
-          {/* Guests count for dine-in */}
           {orderType === 'dine_in' && (
             <label className="flex items-center gap-1 text-[11px] text-ui-muted">
               {isAr ? 'أفراد' : 'Guests'}:
@@ -225,7 +221,6 @@ export function CurrentOrderPanel({
         </div>
       </div>
 
-      {/* Cart Items List */}
       <div className="flex-1 overflow-y-auto px-2.5 py-2">
         {empty ? (
           <div className="flex flex-col items-center justify-center h-full text-ui-subtle">
@@ -240,10 +235,11 @@ export function CurrentOrderPanel({
         ) : (
           <div className="space-y-1.5">
             {cart.map((item) => {
-              const st = sentState[item.product.id] || { sentQty: 0, newQty: item.quantity, sent: false, partial: false };
+              const lineKey = cartLineKey(item);
+              const st = sentState[lineKey] || { sentQty: 0, newQty: item.quantity, sent: false, partial: false };
               return (
                 <div
-                  key={item.product.id}
+                  key={lineKey}
                   className="flex items-center gap-2 p-2 rounded-xl bg-ui-page-alt hover:bg-ui-page-alt/80 transition-colors group"
                 >
                   <div
@@ -262,8 +258,11 @@ export function CurrentOrderPanel({
                     </div>
                     {item.modifiers?.length ? (
                       <p className="mt-0.5 truncate text-[10px] text-ui-subtle">
-                        {item.modifiers.map((m) => m.name.replace('note:', '📝 ')).join(' · ')}
+                        {item.modifiers.map((m) => m.name).join(' · ')}
                       </p>
+                    ) : null}
+                    {item.item_note ? (
+                      <p className="mt-0.5 truncate text-[10px] text-ui-subtle">📝 {item.item_note}</p>
                     ) : null}
                   </div>
 
@@ -275,7 +274,7 @@ export function CurrentOrderPanel({
                         if (st.sentQty > 0 && item.quantity <= st.sentQty && onVoidItem) {
                           onVoidItem(item, st.sentQty);
                         } else {
-                          onUpdateQty(item.product.id, -1);
+                          onUpdateQty(lineKey, -1);
                         }
                       }}
                       className="h-7 w-7 rounded-lg border border-ui-border flex items-center justify-center text-ui-text hover:bg-ui-surface active:scale-95"
@@ -291,7 +290,7 @@ export function CurrentOrderPanel({
                     <button
                       data-testid={`pos-cart-qty-increase-${item.product.id}`}
                       aria-label={isAr ? `زيادة كمية ${item.product.name}` : `Increase quantity ${item.product.name}`}
-                      onClick={() => onUpdateQty(item.product.id, 1)}
+                      onClick={() => onUpdateQty(lineKey, 1)}
                       className="h-7 w-7 rounded-lg bg-ui-accent text-ui-primary-fg flex items-center justify-center hover:bg-ui-accent/90 active:scale-95 shadow-ui-sm"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -308,7 +307,7 @@ export function CurrentOrderPanel({
                         if (st.sentQty > 0 && onVoidItem) {
                           onVoidItem(item, st.sentQty);
                         } else {
-                          onRemove(item.product.id);
+                          onRemove(lineKey);
                         }
                       }}
                       aria-label={isAr ? `حذف ${item.product.name}` : `Remove ${item.product.name}`}
@@ -324,7 +323,6 @@ export function CurrentOrderPanel({
         )}
       </div>
 
-      {/* Totals & Action Bar */}
       <div className="border-t border-ui-border p-3 flex-shrink-0 space-y-2">
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-xl bg-ui-page-alt p-2">
@@ -345,7 +343,6 @@ export function CurrentOrderPanel({
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="flex gap-2">
           {canDiscount && (
             <button
@@ -402,7 +399,6 @@ export function CurrentOrderPanel({
           </button>
         </div>
 
-        {/* Discount Drawer */}
         {showDiscount && (
           <div data-testid="pos-discount-editor" className="rounded-xl border border-ui-border p-2 bg-ui-page-alt space-y-1">
             <div className="flex gap-2">
