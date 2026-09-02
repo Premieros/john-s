@@ -421,4 +421,7 @@ Migration الجديدة للـBackorders:
 - أضيفت حالات رفض quantity = 0 وquantity = -1 مع إثبات عدم إنشاء فاتورة.
 - عُدلت اختبارات RLS القديمة لتعكس العقد الجديد: البيع وسطور البيع RPC-only، لا Direct DML.
 - التحقق المحلي: typecheck كامل ✅، 342 unit/component tests ✅، lint ✅، build ✅.
-- المتبقي قبل إغلاق الدفعة نهائيًا: Verify DB/Integration/Security/RLS وBrowser Smoke وDeploy على GitHub.
+- Commit الإنتاج: `7c4513a030315ad9199abff493db07007106c948`.
+- Verify main run `33577577166`: App + DB/Integration/Security/RLS + Browser Smoke = **SUCCESS**.
+- Deploy run `33577577181`: **SUCCESS**.
+- أُغلقت دفعة P2 المالية الأساسية بعد نجاح التحقق الكامل؛ الأولوية التالية هي Purchase UOM conversion audit ثم E2E دورة المشتريات.
