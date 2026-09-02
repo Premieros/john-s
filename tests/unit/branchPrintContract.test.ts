@@ -16,6 +16,13 @@ describe('printed document branch identity', () => {
     expect(workspace).toContain('branchName: currentBranchName');
   });
 
+  it('keeps a completed sale successful while a reprint approval is pending', () => {
+    const posOrder = read('src/features/pos/hooks/usePosOrder.ts');
+    expect(posOrder).toContain("error.code === 'REPRINT_APPROVAL_PENDING'");
+    expect(posOrder).toContain('A print approval/error must never');
+    expect(posOrder).toContain('showReceiptPrintError(error)');
+  });
+
   it('keeps shift closing documents branch-labelled', () => {
     const shiftReport = read('src/features/trade/services/shiftClosingReport.ts');
     expect(shiftReport).toContain('branchName: string');

@@ -9,7 +9,7 @@ import { logAudit } from '@/lib/audit';
 import type { CartItem, Customer, DiningTable, Order, OrderItem, OrderType, Product, RpcResult, Settings } from '@/lib/types';
 import { ORDER_TYPE_KEY } from '../utils/orderTypes';
 import { cartToItems, orderItemsToCart } from '../utils/cart';
-import { buildReceiptHtml, buildKitchenTicketHtml, openPrintWindow, type ReceiptData } from '../utils/printing';
+import { buildReceiptHtml, buildKitchenTicketHtml, openPrintWindow, ReceiptPrintApprovalError, type ReceiptData } from '../utils/printing';
 import { fetchOrderForWorkspace } from '../services/posOrders';
 import { sendOrderToKitchen } from '../services/kitchen';
 import { processSaleForOrder, nextInvoiceNumber, fetchBranchWarehouseId } from '../services/payment';
@@ -82,6 +82,22 @@ export function usePosOrder(input: UsePosOrderInput) {
   const [receiptSaleId, setReceiptSaleId] = useState<string | null>(null);
 
   const effCurrency = effSettings?.currency || 'EGP';
+
+  const showReceiptPrintError = useCallback((error: unknown) => {
+    if (error instanceof ReceiptPrintApprovalError && error.code === 'REPRINT_APPROVAL_PENDING') {
+      show(
+        isAr
+          ? 'طلب إعادة الطباعة أُرسل للمدير أو ما زال قيد المراجعة. بعد الموافقة اضغط طباعة مرة أخرى.'
+          : 'The reprint request was sent to the manager or is still pending. After approval, press Print again.',
+        'success',
+      );
+      return;
+    }
+    show(
+      error instanceof Error ? error.message : (isAr ? 'تعذر طباعة الإيصال' : 'Could not print the receipt'),
+      'error',
+    );
+  }, [isAr, show]);
 
   // Apply the configured default payment method once settings are loaded,
   // unless the cashier already picked a method this session.
@@ -663,20 +679,30 @@ export function usePosOrder(input: UsePosOrderInput) {
       show(t('saleCompleted'), 'success');
 
       if (effSettings?.receipt_auto_print) {
-        const html = await buildReceiptHtml(receiptPayload, effSettings, lang, isAr);
-        openPrintWindow(html, effSettings.receipt_width_mm || 80);
+        try {
+          const html = await buildReceiptHtml(receiptPayload, effSettings, lang, isAr);
+          openPrintWindow(html, effSettings.receipt_width_mm || 80);
+        } catch (error) {
+          // The sale is already committed. A print approval/error must never
+          // make the completed sale appear to have failed.
+          showReceiptPrintError(error);
+        }
       }
       return true;
     } finally {
       setCompleting(false);
     }
-  }, [cart, completing, branchId, branchName, isCashier, activeShift, orderType, tableId, getStock, paymentMethod, total, paidAmount, customerId, subtotal, discountValue, discountType, taxAmount, change, activeOrderId, activeOrderNumber, guestCount, customers, activeTable, effSettings, lang, isAr, show, t]);
+  }, [cart, completing, branchId, branchName, isCashier, activeShift, orderType, tableId, getStock, paymentMethod, total, paidAmount, customerId, subtotal, discountValue, discountType, taxAmount, change, activeOrderId, activeOrderNumber, guestCount, customers, activeTable, effSettings, lang, isAr, show, showReceiptPrintError, t]);
 
   const printReceipt = useCallback(async () => {
     if (!lastReceipt || !effSettings) return;
-    const html = await buildReceiptHtml(lastReceipt, effSettings, lang, isAr);
-    openPrintWindow(html, effSettings.receipt_width_mm || 80);
-  }, [lastReceipt, effSettings, lang, isAr]);
+    try {
+      const html = await buildReceiptHtml(lastReceipt, effSettings, lang, isAr);
+      openPrintWindow(html, effSettings.receipt_width_mm || 80);
+    } catch (error) {
+      showReceiptPrintError(error);
+    }
+  }, [lastReceipt, effSettings, lang, isAr, showReceiptPrintError]);
 
   const closeReceipt = useCallback(() => setReceiptSaleId(null), []);
 
