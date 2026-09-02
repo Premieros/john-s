@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -95,7 +94,9 @@ export function LoginPage() {
                 </>}
                 <Button data-testid="login-submit" type="submit" size="lg" className="w-full" disabled={loading}>{loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>{t('signIn')}<ArrowRight className="w-4 h-4" /></>}</Button>
               </form>
-              <p className="mt-5 text-center text-sm text-ui-subtle dark:text-ui-subtle">{t('noAccount')}{' '}<Link to="/register" className="font-semibold text-brand-600 hover:underline dark:text-gold-400">{t('signUp')}</Link></p>
+              <p className="mt-5 text-center text-xs text-ui-subtle dark:text-ui-subtle">
+                {isAr ? 'إنشاء وإدارة الحسابات يتم من خلال إدارة النظام فقط.' : 'Accounts are created and managed by system administrators only.'}
+              </p>
             </div>
           </div>
         </div>
