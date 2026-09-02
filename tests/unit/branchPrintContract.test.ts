@@ -19,8 +19,19 @@ describe('printed document branch identity', () => {
   it('keeps a completed sale successful while a reprint approval is pending', () => {
     const posOrder = read('src/features/pos/hooks/usePosOrder.ts');
     expect(posOrder).toContain("error.code === 'REPRINT_APPROVAL_PENDING'");
-    expect(posOrder).toContain('A print approval/error must never');
     expect(posOrder).toContain('showReceiptPrintError(error)');
+
+    const saleSuccess = posOrder.indexOf("show(t('saleCompleted'), 'success')");
+    const autoPrint = posOrder.indexOf('if (effSettings?.receipt_auto_print)');
+    const returnSuccess = posOrder.indexOf('return true;', autoPrint);
+    expect(saleSuccess).toBeGreaterThan(-1);
+    expect(autoPrint).toBeGreaterThan(saleSuccess);
+    expect(returnSuccess).toBeGreaterThan(autoPrint);
+
+    const autoPrintBlock = posOrder.slice(autoPrint, returnSuccess);
+    expect(autoPrintBlock).toContain('try {');
+    expect(autoPrintBlock).toContain('catch (error)');
+    expect(autoPrintBlock).toContain('showReceiptPrintError(error)');
   });
 
   it('keeps shift closing documents branch-labelled', () => {
