@@ -169,7 +169,7 @@ describe.skipIf(skip)('POS operational lifecycle release gate', () => {
        ) AS r`,
       [invoice, ids.branchA, shiftId, ids.whA, ids.users.cashier, items, orderId],
     );
-    expect(sale.success).toBe(true);
+    expect(sale.success, `process_sale returned: ${JSON.stringify(sale)}`).toBe(true);
     expect(sale.sale_id).toBeTruthy();
     const saleId = String(sale.sale_id);
 
