@@ -9,8 +9,8 @@
 - Repository: `Premieros/john-s`
 - Branch: `main`
 - Supabase Production: `azzdesuowpdcoflmyezn`
-- آخر HEAD وظيفي أخضر قبل تحديث هذا السجل: `aa17b338ce5d5c3b24119f31ed2cb2bfeb89149a`
-- Verify: run `33668195994` / #297 ✅
+- آخر HEAD وظيفي أخضر قبل تحديث هذا السجل: `5d37212b72c8a1b633955fa136f1c31c1856baa7`
+- Verify: run `33674450546` / #308 ✅
   - lint ✅
   - typecheck ✅
   - test suites typecheck ✅
@@ -19,7 +19,7 @@
   - Fresh DB / canonical migrations ✅
   - integration + security/RLS ✅
   - browser-smoke ✅
-- Deploy: run `33668195754` / #299 ✅ على نفس HEAD.
+- Deploy: run `33674450523` / #310 ✅ على نفس HEAD.
 
 > بعد هذا التحديث يجب اعتماد commit تحديث السجل نفسه كـHEAD النهائي فقط بعد نجاح Verify/Deploy عليه.
 
@@ -72,127 +72,181 @@ Production migrations المسجلة:
 - global fixed Back button في الهيدر مع RTL/LTR.
 - Browser Smoke fixture يحاكي شفتًا مفتوحًا في سيناريوهات البيع الطبيعية؛ شرط التطبيق لم يُضعف.
 
-آخر تحقق لهذه المجموعة قبل بدء Financial Visibility كان أخضر بالكامل.
-
 ---
 
 ## 5) Financial Visibility Policy — مغلق ومطبق على Production ✅
 
-### القاعدة المطلوبة
+### القاعدة
 
-- `owner` فقط يرى **100%** من التاريخ المالي ضمن الفروع التي يحق له الوصول إليها.
+- `owner` فقط يرى **100%** من التاريخ المالي ضمن الفروع المسموح بها.
 - أي role آخر، بما فيه `super_admin` إذا لم يكن Owner:
-  - آخر **7 أيام = 100%**.
-  - الأقدم = **30% deterministic ثابتة**.
-- العينة ثابتة على مستوى الفرع والـroot row ولا تتغير بين المستخدمين أو مرات فتح الصفحة.
-- لا تظهر للمستخدم أي رسالة أو مؤشر يفيد بوجود بيانات مخفية أو نسبة 30%.
-- Branch isolation تظل شرطًا مستقلًا ولا يمكن للعينة تجاوزها.
+  - الفترة الحديثة = 100%.
+  - ما قبلها = deterministic percentage ثابتة.
+- القيم الافتراضية الحالية في Production: **7 أيام / 30%**.
+- لا تظهر للمستخدم المقيد أي إشارة لوجود بيانات مخفية أو نسبة الرؤية.
+- Branch isolation شرط مستقل دائمًا.
 - الحقيقة التشغيلية للمخزون والمحاسبة والخصم والاسترجاع تظل 100%.
 
-### 5.1 Sales root + children
+### 5.1 طبقات القراءة المحمية
 
-Repo migration:
+Repo migrations:
 - `supabase/migrations/20260902180000_financial_visibility_sales.sql`
-
-التنفيذ:
-- `private.sale_read_visible(...)`
-- `private.sale_read_visible_by_id(...)`
-- RESTRICTIVE SELECT policies على:
-  - `sales`
-  - `sale_items`
-
-اختبارات مثبتة:
-- Owner يرى كل التاريخ المسموح له فرعيًا.
-- non-owner يرى آخر 7 أيام كاملة.
-- القديم deterministic 30/100.
-- cashier وbranch_manager يحصلان على نفس العينة الثابتة.
-- super_admin لا يرث Owner full history.
-- sale_items ترث قرار parent sale.
-- فرع آخر مرفوض حتى لو hash bucket visible.
-
-### 5.2 Related financial reads
-
-Repo migration:
 - `supabase/migrations/20260902183000_financial_visibility_related_reads.sql`
-
-تمت حماية read-side على:
-- `purchases`
-- `purchase_items`
-- `expenses`
-- `customer_payments`
-- `supplier_payments`
-- `journal_entries`
-- `journal_entry_lines`
-- `stock_transactions`
-- `inventory_ledger`
-- `inventory_unit_entries`
-- `inventory_movements`
-- `raw_material_movements`
-- `shift_operations`
-
-مهم: aggregate/current stock truth لم يتم أخذ عينة منه ولم يتغير.
-
-### 5.3 Reporting RPCs
-
-Repo migration:
 - `supabase/migrations/20260902184500_financial_visibility_reporting_invoker.sql`
-
-دوال التقارير القرائية المالية allowlist أصبحت `SECURITY INVOKER` حتى تحترم RLS الخاصة بالمستخدم.
-- لا report RPC في allowlist بقي `SECURITY DEFINER`.
-- `anon` لا يملك EXECUTE.
-- `authenticated` يحتفظ بـEXECUTE.
-- operational/posting/mutation RPCs لم يتم تغيير security mode لها ضمن هذه المرحلة.
-
-### 5.4 Historical orders
-
-Repo migration:
 - `supabase/migrations/20260902190000_financial_visibility_order_history.sql`
 
-التنفيذ:
-- `private.order_read_visible(...)`
-- `private.order_read_visible_by_id(...)`
-- RESTRICTIVE SELECT policies على:
-  - `orders`
-  - `order_items`
+محمية read-side على المبيعات وبنودها، المشتريات وبنودها، المصروفات، المدفوعات، القيود، الحركات التاريخية، الطلبات التاريخية وبنودها، وتقارير القراءة المالية.
 
-القواعد:
-- `open/held` تظل **100% مرئية تشغيليًا** لمستخدم الفرع المصرح له مهما كان عمر الطلب أو bucket؛ POS/KDS/table workflow لا يُؤخذ منه sample.
-- `completed/cancelled` التاريخية تتبع Owner / 7 days / deterministic 30%.
-- order_items ترث parent order visibility.
-- لا تغيير في create/update/pay/KDS/process_sale.
+`open/held` تظل **100% مرئية تشغيليًا** للمستخدم المصرح له في الفرع مهما كان عمر الطلب أو نسبة التاريخ؛ POS/KDS/table workflow لا يدخل في sampling.
 
-اختبار Integration مخصص:
-- `tests/integration/financial_visibility_order_history.test.ts`
-- اجتاز Fresh DB + security/RLS regression ضمن run `33668195994` ✅
-
----
-
-## 6) Production rollout — Financial Visibility ✅
-
-طبقت الأربع migrations بالترتيب على Supabase Production `azzdesuowpdcoflmyezn` بعد CI أخضر فقط.
-
-Production migration registry:
+Production registry:
 - `20260902184106` — `financial_visibility_sales`
 - `20260902184129` — `financial_visibility_related_reads`
 - `20260902184138` — `financial_visibility_reporting_invoker`
 - `20260902184150` — `financial_visibility_order_history`
 
-Production read-only verification بعد التطبيق:
-- عدد `financial_visibility_%` policies = **17**.
-- كل الـ17 policy هي `RESTRICTIVE` ✅
-- report allowlist: `SECURITY DEFINER` remaining = **0** ✅
-- report allowlist: `anon` EXECUTE = **0** ✅
-- report allowlist: missing `authenticated` EXECUTE = **0** ✅
-- `private.order_read_visible` يحتوي guard صريح لـ`open/held` ✅
-- يحتوي نافذة `7 days` ✅
-- يحتوي deterministic `v_bucket < 30` ✅
-- وقت الفحص كان هناك `held = 1` في Production؛ لم يتم إنشاء بيانات وهمية للاختبار.
+Production verification السابقة:
+- 17 `financial_visibility_%` policies وكلها `RESTRICTIVE` ✅
+- report allowlist لا يحتوي SECURITY DEFINER متبقيًا ✅
+- `anon` لا يملك EXECUTE على report allowlist ✅
 
 ---
 
-## 7) أعمال مغلقة — لا تعِد فتحها بدون Regression مثبت
+## 6) Super Admin — إدارة Financial Visibility — مغلق ومطبق ✅
+
+طلب المستخدم: جعل 7 أيام / 30% قابلة للإدارة من داخل النظام بدل أن تكون hard-coded فقط.
+
+### Backend
+
+Repo migration:
+- `supabase/migrations/20260902222000_financial_visibility_admin_controls.sql`
+
+Production migration:
+- `20260902194257` — `financial_visibility_admin_controls` ✅
+
+التنفيذ:
+- private singleton: `private.financial_visibility_settings`.
+- default الحالي: `recent_days = 7`, `historical_percent = 30`.
+- RPCs:
+  - `get_financial_visibility_settings()`
+  - `update_financial_visibility_settings(integer, integer)`
+- القراءة/التعديل عبر RPC مقصوران منطقيًا على active `super_admin`؛ `anon` لا يملك EXECUTE.
+- التحقق من الحدود:
+  - الأيام 1..365.
+  - النسبة 0..100.
+- `private.sale_read_visible`, `private.financial_row_visible`, `private.order_read_visible` أصبحت تقرأ القيم من singleton بدل hard-code.
+- Owner full history محفوظ.
+- `open/held` operational guard محفوظ ✅
+- لا تغيير في write path أو stock/accounting truth.
+
+### UI
+
+- `src/features/admin/components/FinancialVisibilityAdminControl.tsx`
+- يظهر فقط عندما:
+  - `user.role === 'super_admin'`
+  - المسار `/super-admin`
+- زر واضح داخل Super Admin بعنوان **سياسة عرض البيانات**.
+- Modal لتعديل:
+  - الأيام الأخيرة المعروضة بالكامل.
+  - نسبة التاريخ الأقدم المعروضة.
+- الحفظ حقيقي عبر RPC وليس local/UI-only.
+
+اختبار مخصص:
+- `tests/integration/financial_visibility_admin_controls.test.ts`
+- يثبت permission denial لغير Super Admin، التعديل الديناميكي، بقاء Owner كاملًا، وبقاء `held` مرئيًا حتى عند historical_percent=0.
+
+---
+
+## 7) Kitchen Stations — اختيار الفرع وفئات المنتجات — مغلق ومطبق ✅
+
+المشكلة المثبتة:
+- صفحة محطات المطبخ كانت تعتمد على branch selector العام في الهيدر.
+- عندما يكون Super Admin على **كل الفروع** لا يوجد branch context داخل الصفحة، فيتعذر تحميل/تعيين المستخدمين والفئات بصورة واضحة.
+
+### Backend
+
+Repo migration:
+- `supabase/migrations/20260902222500_kitchen_station_editor_context.sql`
+
+Production migration:
+- `20260902194308` — `kitchen_station_editor_context` ✅
+
+RPC جديد read-only:
+- `get_kitchen_station_editor_context(uuid)`
+
+يرجع للفرع المحدد فقط:
+- branch identity.
+- active users.
+- product categories + current `kitchen_station_id`.
+
+الحماية:
+- يسمح فقط لـ`super_admin`, `owner`, `branch_manager` مع `user_may_access_branch(p_branch_id)`.
+- cashier مرفوض.
+- cross-branch branch_manager مرفوض.
+- `anon` لا يملك EXECUTE.
+- الحفظ ما زال عبر `save_kitchen_station_assignments` الموجود مسبقًا وبنفس branch/category mismatch guards.
+
+### UI
+
+`src/features/catalog/pages/KitchenStationsPage.tsx` أصبح يحتوي:
+- branch selector مستقل داخل الصفحة (`kitchen-station-branch-select`).
+- إذا كان global branch محددًا يتم مزامنته.
+- إذا كان Super Admin على All Branches يطلب منه اختيار فرع صراحة.
+- يعرض counts للمستخدمين والفئات لكل محطة في الفرع المختار.
+- assignment modal يعرض اسم الفرع صراحة.
+- يعرض **المستخدمين** و**فئات المنتجات** في مجموعتين منفصلتين.
+- Select all / Clear all للمستخدمين والفئات.
+- الحفظ مرتبط بالفرع المحدد فقط.
+- تعريف station نفسه يظل shared، بينما user/category assignments branch-specific.
+
+Production data observation وقت التحقق، بدون إنشاء بيانات وهمية:
+- فرع **نادي سموحة**: 30 فئة منتجات.
+- **الفرع الرئيسي**: 0 فئات منتجات.
+
+هذا يفسر لماذا قد يرى المستخدم قائمة فئات فارغة عند اختيار الفرع الرئيسي؛ الصفحة الآن توضح الفرع وتمنع الالتباس بين الفروع.
+
+اختبار مخصص:
+- `tests/integration/kitchen_station_editor_context.test.ts`
+- branch manager يرى مستخدمي/فئات فرعه فقط ✅
+- branch manager لا يقرأ فرعًا آخر ✅
+- cashier denied ✅
+- super admin allowed for accessible branch ✅
+
+---
+
+## 8) آخر تحقق كامل لهذه المرحلة
+
+HEAD الوظيفي:
+- `5d37212b72c8a1b633955fa136f1c31c1856baa7`
+
+Verify:
+- run `33674450546` / #308 ✅
+- lint ✅
+- typecheck ✅
+- unit ✅
+- build ✅
+- Fresh DB migrations ✅
+- integration/security/RLS ✅
+- browser-smoke ✅
+
+Deploy:
+- run `33674450523` / #310 ✅
+
+Production:
+- `financial_visibility_admin_controls` applied ✅
+- `kitchen_station_editor_context` applied ✅
+- defaults 7/30 verified ✅
+- three root visibility helpers read configurable limits ✅
+- active `open/held` order guard verified ✅
+- admin/kitchen RPCs unavailable to anon ✅
+- no fake Production data created ✅
+
+---
+
+## 9) أعمال مغلقة — لا تعِد فتحها بدون Regression مثبت
 
 - KDS legacy compatibility + modern exact sends.
+- Kitchen station branch/category assignment editor.
 - Product Modifiers + authoritative pricing/inventory effects.
 - exact sale-item inventory snapshots / partial refund.
 - exact sent-item void + sent-item mutation guards.
@@ -207,26 +261,26 @@ Production read-only verification بعد التطبيق:
 - Reports UX de-duplication.
 - fixed global Back button.
 - no-cart-without-open-shift enforcement.
-- Financial Visibility Policy بكامل طبقاتها المذكورة أعلاه.
+- Financial Visibility Policy + Super Admin controls.
 
 ---
 
-## 8) ما لا يجب فعله مستقبلًا
+## 10) ما لا يجب فعله مستقبلًا
 
 - لا تستخدم React/CSS وحدهما كحماية مالية.
 - لا تغير `process_sale` أو inventory deduction بسبب visibility.
 - لا تحذف أو تعدل totals الأصلية لكي تطابق ما يراه الموظف.
 - لا تستخدم sampling عشوائي متغير.
-- لا تعرض نصوصًا مثل `30%`, `limited`, `hidden sales` للمستخدم المقيد.
+- لا تعرض للمستخدم المقيد أن هناك نسبة مخفية أو مبيعات مخفية.
 - لا تمنح Super Admin تلقائيًا full financial history لمجرد دوره التقني.
-- لا تجعل current stock أو posting logic يقرأ 30% فقط.
-- لا تحول operational/write RPCs إلى سلوك جديد بلا Regression مثبت.
+- لا تجعل current stock أو posting logic يعمل على sample.
+- لا تعدل KDS runtime أو send-to-kitchen inventory behavior بسبب editor UI.
 
 ---
 
-## 9) تعريف نجاح Financial Visibility
+## 11) تعريف النجاح الحالي
 
-مكتمل على HEAD الوظيفي `aa17b338ce5d5c3b24119f31ed2cb2bfeb89149a`:
+مكتمل وظيفيًا على `5d37212b72c8a1b633955fa136f1c31c1856baa7`:
 - lint ✅
 - typecheck ✅
 - unit ✅
@@ -237,13 +291,13 @@ Production read-only verification بعد التطبيق:
 - Deploy ✅
 - Production migrations applied ✅
 - Production structural verification ✅
-- no fake Production data ✅
+- Source of Truth updated بهذا السجل ✅
 
-الإجراء التالي: **لا يوجد عمل مفتوح في Financial Visibility**. لا تبدأ مرحلة جديدة إلا بطلب المستخدم أو Regression مثبت.
+الإجراء التالي: لا يوجد عمل مفتوح في **Financial Visibility Admin** أو **Kitchen Stations branch/category editor**. لا تفتحها من جديد إلا بطلب جديد أو Regression مثبت.
 
 ---
 
-## 10) ملاحظات تشغيلية
+## 12) ملاحظات تشغيلية
 
 - `npm install` سبق أن أبلغ عن vulnerabilities؛ لا تستخدم `npm audit fix --force` بشكل أعمى.
 - Supabase Leaked Password Protection قد يحتاج Dashboard setting منفصلًا حسب الخطة.
