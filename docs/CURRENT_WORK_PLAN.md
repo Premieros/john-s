@@ -17,6 +17,12 @@ Baseline المعتمد بعد الفحص الشامل:
 - Playwright Browser Smoke ✅
 - Deploy #180 / run `33594520436`: **SUCCESS**.
 
+أحدث User-facing UI baseline:
+- HEAD: `0c4b4c63d6596e5c75dcd73d28dedd0a9c848a36`.
+- Verify main #190 / run `33597512656`: **SUCCESS**.
+- App + Unit + Build ✅ Fresh DB + Integration/Security/RLS ✅ Browser Smoke ✅
+- Deploy #192 / run `33597512599`: **SUCCESS**.
+
 تم تطبيق آخر hardening أيضًا على Production، مع بقاء التسجيل العام مغلقًا.
 
 ---
@@ -195,7 +201,38 @@ Backorders RPC يعيد `branch_id` ويحافظ على branch isolation.
 
 ---
 
-## 12) قرارات ثابتة
+## 12) User-facing UI Visibility / Production Surface ✅
+
+التفاصيل الكاملة: `docs/UI_VISIBILITY_AUDIT.md`.
+
+ما تم تثبيته في الواجهة:
+- POS يعرض فوق مباشرة عدادات: الطلبات النشطة، الدليفري، الطاولات المشغولة، وKDS.
+- أزرار POS الأساسية ظاهرة حسب السياق والصلاحية: Discount، Hold/Resume، Send to Kitchen، Print، Pay، نقل الطاولة، وإلغاء/تعديل السطر المرسل عبر الموافقة.
+- `ApprovalInbox` ظاهر في الـHeader.
+- Refund وChange Payment Method ظاهرين من شاشة Sales.
+- Open Drawer وForce Close Shift ظاهرين في Shift modal.
+- تبويب المطبخ العلوي يفتح KDS الحقيقي بدل POS، ولا يظهر لمن لا يملك `pos.sell`.
+- Kitchen Stations أصبحت مدخلًا واضحًا في قسم الإدارة لمستخدم `settings.manage`.
+- الصفحات الثانوية للمخزون والمشتريات تصل لها مراكز Inventory/Procurement/Operations بدل تكرار عشرات الروابط في الـSidebar.
+
+تنظيف Production:
+- حُذفت صفحة التسجيل العام `RegisterPage`، و`/register` يحول إلى Login.
+- حُذف رابط “إنشاء حساب” من شاشة Login؛ الحسابات تنشأ داخليًا من الإدارة فقط.
+- حُذف زر Seed/Demo data من Super Admin.
+- صُحح وصف User Creation Toggle ليعني إنشاء الموظفين داخليًا، وليس فتح Public signup.
+- حُذفت علامة “جديد” الثابتة للمطبخ وكارت `Premier Assistant — Coming soon` غير الوظيفي.
+- أزيل عقد الاختبار القديم الذي كان يجبر بقاء كارت Assistant الوهمي، ولم يتم إرجاع العنصر فقط لإرضاء CI.
+
+فجوات ليست UI مخفية:
+- `Split Bill` و`Merge Tables` لا يوجد لهما تنفيذ تشغيلي كامل حاليًا؛ لا نضيف لهما زرًا شكليًا قبل Backend contract + tests.
+
+التحقق النهائي لهذه الدفعة:
+- Verify main #190 / run `33597512656`: **SUCCESS** (App + Unit + Build + Fresh DB + Integration/Security/RLS + Browser Smoke).
+- Deploy #192 / run `33597512599`: **SUCCESS**.
+
+---
+
+## 13) قرارات ثابتة
 
 - لا نحذف أو نضعف RLS أو الاختبارات لتجاوز فشل.
 - لا نثق في بيانات العميل في العمليات المالية.
@@ -206,15 +243,17 @@ Backorders RPC يعيد `branch_id` ويحافظ على branch isolation.
 - التكلفة التشغيلية من المشتريات/الدفعات الفعلية.
 - كل عملية حساسة للكاشير تمر Permission أو Manager Approval Server-side.
 - كل سجل branch-scoped يجب أن يحترم العزل ويعرض هوية الفرع حيث يلزم.
+- لا نعرض أدوات Demo/Seed في Production، ولا نضيف زرًا لوظيفة Backend غير مكتملة.
 
 ---
 
-## 13) الخطوة التالية
+## 14) الخطوة التالية
 
-الفحص الشامل والإغلاق الأمني وP1/P2/P3/P4 الأساسية أصبحت على baseline أخضر.
+الفحص الشامل والإغلاق الأمني وP1/P2/P3/P4 الأساسية ومراجعة ظهور الواجهة أصبحت على baseline أخضر.
 
 العمل التالي يجب أن يكون **تشغيليًا/Release polish وليس إعادة فتح hardening المكتمل**:
 1. فحص دورة تشغيل بشرية على الموقع المنشور: Login → فتح وردية → طلب → KDS → بيع → طباعة → Refund/Approval → إغلاق وردية.
-2. تفعيل Leaked Password Protection من إعدادات Supabase Auth إذا كان الحساب/الخطة يدعمها.
-3. مراجعة `npm audit` وترقية التبعيات عالية الخطورة بطريقة غير كاسرة؛ لا تستخدم `npm audit fix --force` عشوائيًا.
-4. تحسينات UX/Performance غير الحاجبة بعد تثبيت الإصدار.
+2. إذا كانت مطلوبة للإصدار: تصميم وتنفيذ `Split Bill` و`Merge Tables` كميزات كاملة Backend + UI + tests، وليس أزرارًا شكلية.
+3. تفعيل Leaked Password Protection من إعدادات Supabase Auth إذا كان الحساب/الخطة يدعمها.
+4. مراجعة `npm audit` وترقية التبعيات عالية الخطورة بطريقة غير كاسرة؛ لا تستخدم `npm audit fix --force` عشوائيًا.
+5. تحسينات UX/Performance غير الحاجبة بعد تثبيت الإصدار.
