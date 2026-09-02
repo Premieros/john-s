@@ -148,7 +148,13 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="hidden h-6 w-px bg-ui-border lg:block" />
           <div data-testid="top-navigation" className="flex min-w-0 items-center gap-1 overflow-x-auto">
             {TOP_TABS.map((tab) => {
-              const allowed = tab.key === 'general' || tab.key === 'kitchen' ? true : tab.key === 'branches' ? can('branches.manage') : can('inventory.view');
+              const allowed = tab.key === 'general'
+                ? can('dashboard.view')
+                : tab.key === 'kitchen'
+                  ? can('pos.sell')
+                  : tab.key === 'branches'
+                    ? can('branches.manage')
+                    : can('inventory.view');
               if (!allowed) return null;
               return (
                 <NavLink
