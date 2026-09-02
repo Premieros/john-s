@@ -47,6 +47,14 @@ export function AccountsPage() {
   const [adminBranchFilter, setAdminBranchFilter] = useState('');
   const [form, setForm] = useState({ code: '', name: '', name_en: '', account_type: 'asset' as AccountType, is_active: true });
 
+  useEffect(() => {
+    if (!isAdminRole(user?.role) || adminBranchFilter || branches.length === 0) return;
+    const preferred = user?.branch_id && branches.some((b) => b.id === user.branch_id)
+      ? user.branch_id
+      : branches[0].id;
+    setAdminBranchFilter(preferred);
+  }, [user?.role, user?.branch_id, branches, adminBranchFilter]);
+
   const effectiveBranchFilter = isAdminRole(user?.role) ? (adminBranchFilter || null) : branchFilter;
   const currency = effectiveSettings(effectiveBranchFilter)?.currency || 'EGP';
   const isAr = lang === 'ar';
@@ -62,7 +70,7 @@ export function AccountsPage() {
 
   const loadBalances = useCallback(async () => {
     if (effectiveBranchFilter) {
-      const { data: tb } = await api.accounting.getTrialBalance( { p_branch_id: effectiveBranchFilter, p_to_date: new Date().toISOString().slice(0, 10) });
+      const { data: tb } = await api.accounting.getTrialBalance({ p_branch_id: effectiveBranchFilter, p_to_date: new Date().toISOString().slice(0, 10) });
       if (tb && Array.isArray(tb)) {
         const map: Record<string, number> = {};
         (tb as TrialBalanceRow[]).forEach((r) => { map[r.code] = Number(r.balance); });
@@ -114,7 +122,7 @@ export function AccountsPage() {
   const seedOpening = async () => {
     if (!effectiveBranchFilter) { show(t('filterByBranch'), 'error'); return; }
     setSeeding(true);
-    const { data, error } = await api.accounting.seedOpeningBalances( { p_branch_id: effectiveBranchFilter });
+    const { data, error } = await api.accounting.seedOpeningBalances({ p_branch_id: effectiveBranchFilter });
     setSeeding(false);
     if (error) { show(error.message, 'error'); return; }
     const r = data as { success: boolean; error?: string; detail?: string; total?: number; skipped?: boolean } | null;
@@ -127,9 +135,9 @@ export function AccountsPage() {
     reloadAccounts();
   };
 
-  const typeLabel = (t: AccountType) => {
-    const found = ACCOUNT_TYPES.find((x) => x.value === t);
-    return found ? (isAr ? { typeAsset: 'أصل', typeLiability: 'التزام', typeEquity: 'حقوق ملكية', typeIncome: 'إيراد', typeExpense: 'مصروف' }[found.labelKey] : { typeAsset: 'Asset', typeLiability: 'Liability', typeEquity: 'Equity', typeIncome: 'Income', typeExpense: 'Expense' }[found.labelKey]) : t;
+  const typeLabel = (accountType: AccountType) => {
+    const found = ACCOUNT_TYPES.find((x) => x.value === accountType);
+    return found ? (isAr ? { typeAsset: 'أصل', typeLiability: 'التزام', typeEquity: 'حقوق ملكية', typeIncome: 'إيراد', typeExpense: 'مصروف' }[found.labelKey] : { typeAsset: 'Asset', typeLiability: 'Liability', typeEquity: 'Equity', typeIncome: 'Income', typeExpense: 'Expense' }[found.labelKey]) : accountType;
   };
 
   const columns: Column<ChartOfAccount>[] = [
@@ -145,7 +153,7 @@ export function AccountsPage() {
       const b = balances[a.code];
       return <span className={b !== undefined && b < 0 ? 'text-ui-danger' : 'text-ui-text'}>{b !== undefined ? formatCurrency(Math.abs(b), currency, lang) : '-'}</span>;
     } },
-    { key: 'is_active', header: t('status'), render: (a) => <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${a.is_active ? 'bg-ui-success-soft text-ui-success  dark:text-ui-success' : 'bg-ui-page-alt text-ui-subtle dark:bg-ui-page-alt dark:text-ui-subtle'}`}>{a.is_active ? t('active') : t('inactive')}</span> },
+    { key: 'is_active', header: t('status'), render: (a) => <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${a.is_active ? 'bg-ui-success-soft text-ui-success dark:text-ui-success' : 'bg-ui-page-alt text-ui-subtle dark:bg-ui-page-alt dark:text-ui-subtle'}`}>{a.is_active ? t('active') : t('inactive')}</span> },
     { key: 'actions', header: t('actions'), render: (a) => (
       <div className="flex gap-1">
         {!a.is_system && canManage && (
@@ -187,7 +195,7 @@ export function AccountsPage() {
               <label className="text-sm font-medium text-ui-muted">{t('filterByBranch')}</label>
               <select value={adminBranchFilter} onChange={(e) => setAdminBranchFilter(e.target.value)}
                 className="px-3 py-2 rounded-lg text-sm border border-ui-border bg-ui-surface text-ui-text">
-                <option value="">{t('allBranches')}</option>
+                <option value="" disabled>{t('filterByBranch')}</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{isAr ? b.name : (b.name_en || b.name)}</option>)}
               </select>
             </div>
@@ -202,7 +210,7 @@ export function AccountsPage() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? t('edit') : t('add')}>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label={t('accountCode')} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editing?.is_system} required />
             <Select label={t('accountType')} value={form.account_type} onChange={(e) => setForm({ ...form, account_type: e.target.value as AccountType })} disabled={!!editing?.is_system}>
               {ACCOUNT_TYPES.map((at) => <option key={at.value} value={at.value}>{t(at.labelKey)}</option>)}
