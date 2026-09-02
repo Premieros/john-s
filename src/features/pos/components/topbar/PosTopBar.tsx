@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Wifi, WifiOff, Timer, Moon, Sun, LogOut, Clock3, MoreHorizontal, ListOrdered, RefreshCw, CalendarCheck } from 'lucide-react';
+import { Plus, Wifi, WifiOff, Timer, Moon, Sun, LogOut, Clock3, MoreHorizontal, ListOrdered, RefreshCw, CalendarCheck, ChefHat, Truck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -97,6 +97,28 @@ export function PosTopBar({
     };
   }, [refreshPending, triggerSync]);
 
+  const counterButton = (
+    key: string,
+    labelAr: string,
+    labelEn: string,
+    value: number,
+    icon: React.ReactNode,
+    panel: Exclude<PosPanelId, null>,
+  ) => (
+    <button
+      key={key}
+      type="button"
+      data-testid={`pos-counter-${key}`}
+      onClick={() => onPanel(panel)}
+      className="flex min-h-10 items-center gap-2 rounded-xl border border-ui-border bg-ui-surface px-2.5 text-ui-muted transition-colors hover:bg-ui-page-alt hover:text-ui-text"
+      title={isAr ? labelAr : labelEn}
+    >
+      <span className="text-ui-primary">{icon}</span>
+      <span className="hidden 2xl:inline text-[10px] font-bold">{isAr ? labelAr : labelEn}</span>
+      <span className="min-w-5 rounded-full bg-ui-primary-soft px-1.5 py-0.5 text-center text-[10px] font-black text-ui-primary">{value}</span>
+    </button>
+  );
+
   return (
     <header className="sticky top-0 z-50 flex min-h-16 items-center gap-2 border-b border-ui-border bg-ui-surface px-3 shadow-ui-sm md:px-4">
       {/* Brand & New Order */}
@@ -117,6 +139,14 @@ export function PosTopBar({
       </div>
 
       <div className="flex-1" />
+
+      {/* Key operational counters — visible on the POS instead of hidden in menus. */}
+      <div data-testid="pos-top-counters" className="hidden items-center gap-1 lg:flex">
+        {counterButton('active-orders', 'الطلبات النشطة', 'Active orders', counts.activeOrders, <ListOrdered className="h-3.5 w-3.5" />, 'orders')}
+        {counterButton('delivery', 'الدليفري', 'Delivery', counts.deliveryOrders, <Truck className="h-3.5 w-3.5" />, 'orders')}
+        {counterButton('tables', 'الطاولات المشغولة', 'Occupied tables', counts.occupiedTables, <CalendarCheck className="h-3.5 w-3.5" />, 'tables')}
+        {counterButton('kds', 'طلبات المطبخ', 'Kitchen queue', counts.kitchenOrders, <ChefHat className="h-3.5 w-3.5" />, 'kitchen')}
+      </div>
 
       {/* Offline Pending Sales Sync Indicator */}
       {pendingCount > 0 && (
