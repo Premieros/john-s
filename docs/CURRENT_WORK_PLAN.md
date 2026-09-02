@@ -354,3 +354,49 @@ Migration الجديدة للـBackorders:
 ### P3 المتبقي
 - Reports: فلتر الفرع موجود، لكن عند اختيار “كل الفروع” بعض النتائج لا تحمل اسم الفرع؛ يحتاج إصلاحًا حقيقيًا للبيانات وليس Badge شكليًا.
 - Print/documents: مراجعة أن الفرع ظاهر بوضوح في المستندات المطبوعة الأساسية.
+
+---
+## تحديث 2026-09-02 — الحالة الحالية بعد إغلاق Backorders وP3 Parties ✅
+
+### CI / Deploy
+- Verify main على `ed54f20206ce2195ccf1fd3763069a7c2135b804` اكتمل بالكامل SUCCESS: lint + typecheck + unit + build + DB migrations + schema verification + Integration/Security/RLS + Browser Smoke.
+- Deploy لنفس الدفعة اكتمل SUCCESS.
+- تحديث السجل السابق فشل أول مرة بسبب Base64 padding فقط، ثم تم إصلاح الأداة المؤقتة ونجح commit السجل `a9eed15c4e13143d82474ba4e54a283ea94454a3`.
+- تم حذف Workflow المؤقت بعد نجاحه في commit `3ba8ed7b1ea45c9ccff57513353d75cd8dd5b4a5`.
+
+### Backorders — Production مغلق ✅
+- Migration `20260902052000_purchase_backorders_branch_visibility.sql` مطبقة على Production.
+- `get_purchase_backorders(uuid)` يعيد `branch_id` فعليًا.
+- الدالة `SECURITY DEFINER` مع `search_path = public, pg_temp`.
+- `anon` لا يملك EXECUTE؛ التنفيذ محصور في `authenticated` و`service_role`.
+- Receiving يعرض `BranchBadge` في Backorders وفي نافذة الاستلام.
+
+### P3 Branch Visibility — المكتمل حتى الآن ✅
+- Products + Raw Materials.
+- Sales / invoices / refund rows + Shifts.
+- Purchases + Receipts + Backorders.
+- Purchase Requests + RFQs.
+- Inventory + Warehouses + Transfers.
+- Inventory Batches + Inventory Ledger.
+- Users.
+- Customers + Suppliers، مع اسم الفرع في Excel export.
+- Audit Log، مع branch filter فعلي وعرض `BranchBadge`.
+
+### P3 المتبقي
+- Reports: عند اختيار كل الفروع يجب أن تحمل النتائج هوية الفرع فعليًا، لا مجرد Badge شكلي.
+- Print/Documents: التأكد أن اسم الفرع ظاهر بوضوح في المستندات المطبوعة الأساسية.
+
+### P4 Products / POS — الحالة الفعلية
+- البحث في ProductsPage أصبح Server-side بالفعل عبر `usePaginatedRows` على `name`, `name_en`, `barcode`, `sku`.
+- Pagination مرتبطة بنتيجة البحث من السيرفر، وليست بحثًا داخل أول 100 فقط.
+- POS يحمل المنتجات حسب `branch_id = effectiveBranch` و`is_active = true`.
+- تعديلات/حذف المنتجات تبطل POS offline catalog cache.
+- أضيفت اختبارات عقد P4 في commits `313c7c2182e2325d84b15e910c95dd700f779a69` و`e028764338ae6c2dab483cc46cf3104b5f33cc71` لتثبيت server-side search ونطاق كتالوج POS.
+- المتبقي في P4: اعتماد نتيجة Verify النهائية لهذه الاختبارات، ثم إغلاق البند إذا نجحت.
+
+### الأولوية التالية
+1. إغلاق P3 Reports + Print/Documents.
+2. اعتماد regression coverage لـP4 وإغلاقه إذا نجح.
+3. إكمال Cashier/Manager E2E وباقي تحسينات الموافقات.
+4. استكمال P2 security audit المحدود للضرائب/الخصومات/الوحدات/الكميات.
+5. Purchase UOM conversion audit قبل اعتماد E2E مشتريات حقيقي.
