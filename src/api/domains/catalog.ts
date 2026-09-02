@@ -93,7 +93,7 @@ export const catalog = {
     let q = supabase.from('waste_entries').select('*, waste_category:waste_categories(*)').order('created_at', { ascending: false });
     if (filters?.branch_id) q = q.eq('branch_id', filters.branch_id);
     if (filters?.status) q = q.eq('status', filters.status);
-    if (filters?.waste_type) q = q.eq('waste_type', filters.status);
+    if (filters?.waste_type) q = q.eq('waste_type', filters.waste_type);
     if (filters?.limit) q = q.limit(filters.limit);
     const { data, error } = await q;
     if (error) throw error;
