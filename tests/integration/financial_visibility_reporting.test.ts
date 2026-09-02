@@ -54,15 +54,14 @@ describe.skipIf(skip)('financial reporting RPC visibility', () => {
     );
 
     expect(result.rows.length).toBeGreaterThan(0);
-    const remainingDefiners = result.rows.filter((row) => row.prosecdef);
-    expect(remainingDefiners).toEqual([]);
+    expect(result.rows.filter((row) => row.prosecdef)).toEqual([]);
   });
 
-  it('PUBLIC and anon cannot execute allowlisted report RPC overloads', async () => {
-    const result = await client.query<{ proname: string; public_exec: boolean; anon_exec: boolean }>(
+  it('anon cannot execute report RPCs while authenticated callers retain execute', async () => {
+    const result = await client.query<{ proname: string; anon_exec: boolean; authenticated_exec: boolean }>(
       `SELECT p.proname,
-              has_function_privilege('public', p.oid, 'EXECUTE') AS public_exec,
-              has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_exec
+              has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_exec,
+              has_function_privilege('authenticated', p.oid, 'EXECUTE') AS authenticated_exec
        FROM pg_proc p
        JOIN pg_namespace n ON n.oid = p.pronamespace
        WHERE n.nspname = 'public'
@@ -72,7 +71,9 @@ describe.skipIf(skip)('financial reporting RPC visibility', () => {
     );
 
     expect(result.rows.length).toBeGreaterThan(0);
-    expect(result.rows.every((row) => !row.public_exec && !row.anon_exec)).toBe(true);
+    // A PUBLIC EXECUTE grant would also make has_function_privilege('anon', ...)
+    // true, so this assertion catches both direct anon and inherited PUBLIC grants.
+    expect(result.rows.every((row) => !row.anon_exec && row.authenticated_exec)).toBe(true);
   });
 
   it('income statement remains callable by an authenticated owner under invoker mode', async (ctx: { skip?: () => unknown }) => {
