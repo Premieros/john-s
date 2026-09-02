@@ -38,7 +38,7 @@ describe.skipIf(skip)('POS operational lifecycle release gate', () => {
 
   const batchQty = async (): Promise<number> => {
     const r = await client.query<{ quantity: string }>(
-      `SELECT quantity::text AS quantity
+      `SELECT COALESCE(SUM(quantity), 0)::text AS quantity
          FROM public.inventory_unit_batches
         WHERE unit_id = $1 AND warehouse_id = $2`,
       [unitId, ids.whA],
@@ -249,7 +249,7 @@ describe.skipIf(skip)('POS operational lifecycle release gate', () => {
       [request.request_id],
     );
     expect(approvalRow.rows[0].status).toBe('consumed');
-    expect(await batchQty()).toBe(stockBeforeKds); // full refund restores stock.
+    expect(await batchQty()).toBe(stockBeforeKds); // full refund restores aggregate stock across batches.
 
     const closed = await rpc(
       ids.users.cashier,
