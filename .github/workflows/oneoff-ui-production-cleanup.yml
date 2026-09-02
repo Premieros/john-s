@@ -1,0 +1,94 @@
+name: One-off production UI cleanup
+
+on:
+  push:
+    paths:
+      - '.github/workflows/oneoff-ui-production-cleanup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Remove demo production controls and stale public-signup copy
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('src/features/admin/pages/SuperAdminConsolePage.tsx')
+          s = p.read_text()
+
+          s = s.replace("import { seedComprehensiveDemoData } from '@/lib/comprehensiveDemoSeeder';\n", '')
+          s = s.replace("import { ConfirmDialog } from '@/components/ConfirmDialog';\n", '')
+          s = s.replace("  const [demoBusy, setDemoBusy] = useState(false);\n  const [demoConfirmOpen, setDemoConfirmOpen] = useState(false);\n", '')
+
+          s = re.sub(
+              r"\n  const handleSeedBranchDemo = async \(\) => \{.*?\n  \};\n\n  const handleUpdateUser",
+              "\n  const handleUpdateUser",
+              s,
+              flags=re.S,
+          )
+
+          replacements = {
+              "'تخصيصات الفروع والبيانات التجريبية'": "'تخصيصات الفروع'",
+              "'Branch Overrides & Demo'": "'Branch Overrides'",
+              "'التحكم في إنشاء وتسجيل المستخدمين الجدد'": "'التحكم في إنشاء المستخدمين الجدد'",
+              "'User Registration & Account Creation'": "'Internal User Account Creation'",
+              "'مفتاح التحكم المركزي لسوبر أدمن لمنع أو السماح بإنشاء حسابات مستخدمين ومستأجرين جدد على مستوى المنصة بالكامل.'": "'مفتاح مركزي للسماح أو منع إنشاء حسابات الموظفين من داخل النظام. التسجيل العام للزوار يظل مغلقًا.'",
+              "'Master toggle to globally allow or block new tenant registrations and user creation across the entire platform.'": "'Master toggle for creating staff accounts from inside the system. Public visitor registration remains disabled.'",
+              "'مفعّل (يُسمح بالتسجيل)'": "'مفعّل (إنشاء داخلي)'",
+              "'معطّل (يُمنع التسجيل)'": "'معطّل (الإنشاء موقوف)'",
+              "'إيقاف التسجيل'": "'إيقاف إنشاء المستخدمين'",
+              "'تفعيل التسجيل'": "'تفعيل إنشاء المستخدمين'",
+              "'يستطيع الزوار وأصحاب المتاجر الجدد التسجيل من صفحة إنشاء الحساب /register، ويستطيع مدراء الفروع إضافة موظفين جدد وفقاً لصلاحياتهم.'": "'يستطيع المستخدمون المخولون داخل النظام إنشاء موظفين جدد وفق صلاحياتهم. لا توجد صفحة تسجيل عامة للزوار.'",
+              "'New tenants can freely sign up on the registration page, and branch managers can invite staff according to their role permissions.'": "'Authorized users can create staff accounts according to their permissions. There is no public visitor sign-up page.'",
+              "'يتم حظر جميع عمليات تسجيل الحسابات الجديدة فورياً على مستوى الخادم وقاعدة البيانات مع إظهار رسالة واضحة للمستخدم. فقط Super Admin يمكنه إدارة الحسابات.'": "'يتم منع إنشاء مستخدمين جدد من داخل النظام، بينما تظل الحسابات الحالية وتسجيل الدخول دون تغيير.'",
+              "'All registration attempts are blocked immediately at the database level with a clear notice. Only Super Admins retain access to manage accounts.'": "'New internal user creation is blocked while existing accounts and sign-in remain unchanged.'",
+              "'سجل تغييرات حالة التسجيل'": "'سجل تغييرات إنشاء المستخدمين'",
+              "'Registration Toggle Audit Log'": "'User Creation Toggle Audit Log'",
+              "'Centralized master hub for tenants, user registration controls, enterprise settings, permissions, and audit logs'": "'Centralized master hub for tenants, internal user creation controls, enterprise settings, permissions, and audit logs'",
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+
+          # Remove the production demo seed button, leaving only Save Branch Customizations.
+          s = re.sub(
+              r'''\n\s*<Button\n\s*variant="outline"\n\s*className="text-brand-600 border-brand-500/30 hover:bg-brand-500/10"\n\s*onClick=\{\(\) => setDemoConfirmOpen\(true\)\}\n\s*disabled=\{demoBusy\}\n\s*>.*?</Button>\n''',
+              '\n',
+              s,
+              flags=re.S,
+          )
+          s = s.replace('className="flex justify-between items-center pt-4 border-t border-ui-border"', 'className="flex justify-end items-center pt-4 border-t border-ui-border"')
+
+          # Remove the now-dead demo confirmation dialog.
+          s = re.sub(
+              r'''\n\s*\{\/\* Demo Data Confirmation \*\/\}\n\s*<ConfirmDialog.*?\n\s*\/>''',
+              '',
+              s,
+              flags=re.S,
+          )
+
+          if 'setDemoConfirmOpen' in s or 'seedComprehensiveDemoData' in s or 'demoBusy' in s:
+              raise SystemExit('demo UI cleanup incomplete')
+          if '/register' in s:
+              raise SystemExit('stale public register copy still present')
+
+          p.write_text(s)
+          PY
+      - name: Commit cleanup
+        run: |
+          git config user.name "Premier UI Audit"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/features/admin/pages/SuperAdminConsolePage.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: remove production demo controls"
+          git push
