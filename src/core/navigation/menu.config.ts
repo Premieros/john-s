@@ -4,7 +4,7 @@ import { APP_ROUTES, type AppRoute } from './routes';
 
 export type MenuGroup = 'main' | 'catalog' | 'operations' | 'centers' | 'people' | 'finance' | 'admin';
 export type MenuIcon =
-  | 'dashboard' | 'pos' | 'products' | 'categories' | 'components' | 'rawMaterials' | 'recipes' | 'inventory' | 'warehouses' | 'transfers'
+  | 'dashboard' | 'pos' | 'products' | 'productModifiers' | 'categories' | 'components' | 'rawMaterials' | 'recipes' | 'inventory' | 'warehouses' | 'transfers'
   | 'inventoryLedger' | 'stockCounts' | 'inventoryBatches' | 'stockValuation' | 'lowStockAlerts' | 'inventoryUnits' | 'wasteCenter' | 'kitchenDisplay' | 'kitchenStations' | 'costingCenter' | 'branches' | 'purchases' | 'customers' | 'suppliers' | 'expenses'
   | 'accounts' | 'payments' | 'journal' | 'treasury' | 'reconciliation' | 'financialReports' | 'sales' | 'shifts' | 'reports' | 'users' | 'auditLog' | 'settings' | 'superAdmin' | 'importExport';
 
@@ -12,7 +12,8 @@ export interface MenuItemConfig {
   id: string;
   route: AppRoute;
   icon: MenuIcon;
-  labelKey: TranslationKey;
+  labelKey?: TranslationKey;
+  label?: { ar: string; en: string };
   permission?: Permission;
   group: MenuGroup;
   superAdminOnly?: boolean;
@@ -40,6 +41,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
   { id: 'waste-center', route: APP_ROUTES.wasteCenter, icon: 'wasteCenter', labelKey: 'wasteCenter', permission: 'production.waste', group: 'centers' },
   
   { id: 'products', route: APP_ROUTES.products, icon: 'products', labelKey: 'products', permission: 'products.view', group: 'catalog' },
+  { id: 'product-modifiers', route: APP_ROUTES.productModifiers, icon: 'productModifiers', label: { ar: 'موديفاير المنتجات', en: 'Product Modifiers' }, permission: 'products.manage', group: 'catalog' },
   { id: 'recipes', route: APP_ROUTES.recipes, icon: 'recipes', labelKey: 'recipes', permission: 'recipes.view', group: 'catalog' },
   { id: 'raw-materials', route: APP_ROUTES.rawMaterials, icon: 'rawMaterials', labelKey: 'rawMaterials', permission: 'raw_materials.view', group: 'catalog' },
   { id: 'categories', route: APP_ROUTES.categories, icon: 'categories', labelKey: 'categories', permission: 'categories.view', group: 'catalog' },
