@@ -22,7 +22,7 @@ describe.skipIf(!dbUrl)('Multi-tenant foundation', () => {
   });
 
   it('creates an isolated organization, first branch, warehouse, owner membership, and trial atomically', async () => {
-    await client.query('SET LOCAL ROLE anon');
+    await client.query('SET LOCAL ROLE service_role');
 
     const result = await client.query(
       `SELECT public.register_tenant($1,$2,$3,$4,$5,$6,$7,$8) AS res`,
