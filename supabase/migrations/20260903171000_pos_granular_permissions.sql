@@ -1,0 +1,211 @@
+-- Granular POS permissions and server-side enforcement.
+-- UI visibility is not a security boundary; these triggers protect the
+-- authoritative mutation tables even when SECURITY DEFINER RPCs are called
+-- directly.
+
+CREATE OR REPLACE FUNCTION public._append_role_permission(p_permissions jsonb, p_permission text)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $$
+  SELECT CASE
+    WHEN COALESCE(p_permissions, '[]'::jsonb) ? p_permission THEN COALESCE(p_permissions, '[]'::jsonb)
+    ELSE COALESCE(p_permissions, '[]'::jsonb) || jsonb_build_array(p_permission)
+  END;
+$$;
+
+-- Owner / super admin remain unrestricted. Branch manager gets operational
+-- management inside the branch, but NOT cross-branch switching by default.
+UPDATE public.roles
+SET permissions = public._append_role_permission(
+  public._append_role_permission(
+    public._append_role_permission(
+      public._append_role_permission(
+        public._append_role_permission(
+          public._append_role_permission(
+            public._append_role_permission(
+              public._append_role_permission(
+                public._append_role_permission(
+                  public._append_role_permission(
+                    public._append_role_permission(COALESCE(permissions, '[]'::jsonb), 'pos.hold'),
+                    'pos.send_kitchen'),
+                  'pos.kds_view'),
+                'pos.print_kitchen'),
+              'pos.pay'),
+            'pos.void'),
+          'pos.cancel_order'),
+        'pos.refund'),
+      'pos.transfer_order'),
+    'pos.split_order'),
+  'pos.change_branch')
+WHERE role IN ('super_admin', 'owner');
+
+UPDATE public.roles
+SET permissions = public._append_role_permission(
+  public._append_role_permission(
+    public._append_role_permission(
+      public._append_role_permission(
+        public._append_role_permission(
+          public._append_role_permission(
+            public._append_role_permission(
+              public._append_role_permission(
+                public._append_role_permission(
+                  public._append_role_permission(COALESCE(permissions, '[]'::jsonb), 'pos.hold'),
+                  'pos.send_kitchen'),
+                'pos.kds_view'),
+              'pos.print_kitchen'),
+            'pos.pay'),
+          'pos.void'),
+        'pos.cancel_order'),
+      'pos.refund'),
+    'pos.transfer_order'),
+  'pos.split_order')
+WHERE role = 'branch_manager';
+
+-- Cashier baseline: sell, hold, kitchen send/view/print, payment. Privileged
+-- void/cancel/refund/transfer/split remain opt-in through the role editor.
+UPDATE public.roles
+SET permissions = public._append_role_permission(
+  public._append_role_permission(
+    public._append_role_permission(
+      public._append_role_permission(
+        public._append_role_permission(COALESCE(permissions, '[]'::jsonb), 'pos.hold'),
+        'pos.send_kitchen'),
+      'pos.kds_view'),
+    'pos.print_kitchen'),
+  'pos.pay')
+WHERE role = 'cashier';
+
+-- Kitchen staff need KDS visibility without receiving POS selling rights.
+UPDATE public.roles
+SET permissions = public._append_role_permission(COALESCE(permissions, '[]'::jsonb), 'pos.kds_view')
+WHERE role = 'kitchen';
+
+DROP FUNCTION public._append_role_permission(jsonb, text);
+
+CREATE OR REPLACE FUNCTION public.enforce_pos_permission_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_result record;
+BEGIN
+  -- Internal DB/service operations do not carry an end-user auth.uid().
+  -- Authenticated application calls must pass the permission gates below.
+  IF v_uid IS NULL THEN
+    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+    RETURN NEW;
+  END IF;
+
+  IF TG_TABLE_NAME = 'sales' THEN
+    IF TG_OP = 'INSERT' AND (NOT public.can_permission('pos.sell') OR NOT public.can_permission('pos.pay')) THEN
+      RAISE EXCEPTION 'PERMISSION_DENIED:pos.pay';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF TG_TABLE_NAME = 'order_kitchen_sends' THEN
+    IF NOT public.can_permission('pos.send_kitchen') THEN
+      RAISE EXCEPTION 'PERMISSION_DENIED:pos.send_kitchen';
+    END IF;
+    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+    RETURN NEW;
+  END IF;
+
+  IF TG_TABLE_NAME = 'orders' THEN
+    IF TG_OP = 'INSERT' THEN
+      IF NOT public.can_permission('pos.sell') THEN
+        RAISE EXCEPTION 'PERMISSION_DENIED:pos.sell';
+      END IF;
+      RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+      IF NOT public.can_permission('pos.cancel_order') THEN
+        RAISE EXCEPTION 'PERMISSION_DENIED:pos.cancel_order';
+      END IF;
+      RETURN OLD;
+    END IF;
+
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+      IF NEW.status = 'cancelled' AND NOT public.can_permission('pos.cancel_order') THEN
+        RAISE EXCEPTION 'PERMISSION_DENIED:pos.cancel_order';
+      ELSIF NEW.status = 'completed' AND (NOT public.can_permission('pos.sell') OR NOT public.can_permission('pos.pay')) THEN
+        RAISE EXCEPTION 'PERMISSION_DENIED:pos.pay';
+      ELSIF NEW.status IN ('open', 'held') AND NOT public.can_permission('pos.hold') THEN
+        RAISE EXCEPTION 'PERMISSION_DENIED:pos.hold';
+      END IF;
+    END IF;
+
+    IF NEW.table_id IS DISTINCT FROM OLD.table_id
+       AND OLD.table_id IS NOT NULL
+       AND NOT public.can_permission('pos.transfer_order') THEN
+      RAISE EXCEPTION 'PERMISSION_DENIED:pos.transfer_order';
+    END IF;
+
+    IF NEW.status IS NOT DISTINCT FROM OLD.status
+       AND NEW.table_id IS NOT DISTINCT FROM OLD.table_id
+       AND NOT public.can_permission('pos.sell') THEN
+      RAISE EXCEPTION 'PERMISSION_DENIED:pos.sell';
+    END IF;
+
+    RETURN NEW;
+  END IF;
+
+  IF TG_TABLE_NAME = 'order_items' THEN
+    IF TG_OP = 'INSERT' THEN
+      IF NOT public.can_permission('pos.sell') THEN
+        RAISE EXCEPTION 'PERMISSION_DENIED:pos.sell';
+      END IF;
+      RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+      IF NOT public.can_permission('pos.void') THEN
+        RAISE EXCEPTION 'PERMISSION_DENIED:pos.void';
+      END IF;
+      RETURN OLD;
+    END IF;
+
+    IF NEW.order_id IS DISTINCT FROM OLD.order_id THEN
+      IF NOT public.can_permission('pos.split_order') THEN
+        RAISE EXCEPTION 'PERMISSION_DENIED:pos.split_order';
+      END IF;
+    ELSIF NOT public.can_permission('pos.sell') THEN
+      RAISE EXCEPTION 'PERMISSION_DENIED:pos.sell';
+    END IF;
+
+    RETURN NEW;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_pos_permission_orders ON public.orders;
+CREATE TRIGGER trg_pos_permission_orders
+BEFORE INSERT OR UPDATE OR DELETE ON public.orders
+FOR EACH ROW EXECUTE FUNCTION public.enforce_pos_permission_mutation();
+
+DROP TRIGGER IF EXISTS trg_pos_permission_order_items ON public.order_items;
+CREATE TRIGGER trg_pos_permission_order_items
+BEFORE INSERT OR UPDATE OR DELETE ON public.order_items
+FOR EACH ROW EXECUTE FUNCTION public.enforce_pos_permission_mutation();
+
+DROP TRIGGER IF EXISTS trg_pos_permission_kitchen_sends ON public.order_kitchen_sends;
+CREATE TRIGGER trg_pos_permission_kitchen_sends
+BEFORE INSERT OR UPDATE OR DELETE ON public.order_kitchen_sends
+FOR EACH ROW EXECUTE FUNCTION public.enforce_pos_permission_mutation();
+
+DROP TRIGGER IF EXISTS trg_pos_permission_sales ON public.sales;
+CREATE TRIGGER trg_pos_permission_sales
+BEFORE INSERT ON public.sales
+FOR EACH ROW EXECUTE FUNCTION public.enforce_pos_permission_mutation();
+
+REVOKE ALL ON FUNCTION public.enforce_pos_permission_mutation() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.enforce_pos_permission_mutation() TO service_role;
