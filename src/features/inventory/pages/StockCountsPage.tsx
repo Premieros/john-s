@@ -82,6 +82,19 @@ export function StockCountsPage() {
   }
   useEffect(() => { loadMeta(); }, []);
 
+  useEffect(() => {
+    if (!createOpen) return;
+    setForm((current) => {
+      const candidateBranches = branchFilter ? branches.filter((b) => b.id === branchFilter) : branches;
+      const nextBranchId = current.branch_id || branchFilter || (candidateBranches.length === 1 ? candidateBranches[0].id : '');
+      if (!nextBranchId) return current;
+      const branchWarehouses = warehouses.filter((w) => w.branch_id === nextBranchId);
+      const nextWarehouseId = current.warehouse_id || (branchWarehouses.length === 1 ? branchWarehouses[0].id : '');
+      if (nextBranchId === current.branch_id && nextWarehouseId === current.warehouse_id) return current;
+      return { ...current, branch_id: nextBranchId, warehouse_id: nextWarehouseId };
+    });
+  }, [createOpen, branchFilter, branches, warehouses]);
+
   const filtered = counts.filter((c) => {
     if (statusFilter !== 'all' && c.status !== statusFilter) return false;
     if (branchId && c.branch_id !== branchId) return false;
@@ -93,7 +106,14 @@ export function StockCountsPage() {
   });
 
   const openCreate = () => {
-    setForm({ branch_id: branchFilter || '', warehouse_id: '', count_type: 'cycle', notes: '' });
+    const defaultBranchId = branchFilter || (visibleBranches.length === 1 ? visibleBranches[0].id : '');
+    const branchWarehouses = warehouses.filter((w) => w.branch_id === defaultBranchId);
+    setForm({
+      branch_id: defaultBranchId,
+      warehouse_id: branchWarehouses.length === 1 ? branchWarehouses[0].id : '',
+      count_type: 'cycle',
+      notes: '',
+    });
     setFormItems([{ product_id: '', counted_quantity: '', reason: '' }]);
     setCreateOpen(true);
   };
