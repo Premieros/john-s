@@ -69,6 +69,8 @@ export function StockCountsPage() {
   ];
 
   const visibleBranches = branchFilter ? branches.filter((b) => b.id === branchFilter) : branches;
+  const formProducts = form.branch_id ? products.filter((p) => p.branch_id === form.branch_id) : [];
+  const editProducts = editTarget ? products.filter((p) => p.branch_id === editTarget.branch_id) : [];
 
   async function loadMeta() {
     const [br, wh, pr] = await Promise.all([
@@ -332,7 +334,20 @@ export function StockCountsPage() {
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title={t('newStockCount')} size="lg">
         <div className="space-y-4">
           <div className="grid sm:grid-cols-3 gap-3">
-            <Select label={t('branch')} value={form.branch_id} onChange={(e) => { setForm({ ...form, branch_id: e.target.value, warehouse_id: '' }); }}>
+            <Select
+              label={t('branch')}
+              value={form.branch_id}
+              onChange={(e) => {
+                const nextBranchId = e.target.value;
+                const branchWarehouses = warehouses.filter((w) => w.branch_id === nextBranchId);
+                setForm({
+                  ...form,
+                  branch_id: nextBranchId,
+                  warehouse_id: branchWarehouses.length === 1 ? branchWarehouses[0].id : '',
+                });
+                setFormItems([{ product_id: '', counted_quantity: '', reason: '' }]);
+              }}
+            >
               <option value="">{t('branch')}</option>
               {visibleBranches.map((br) => <option key={br.id} value={br.id}>{br.name}</option>)}
             </Select>
@@ -357,7 +372,7 @@ export function StockCountsPage() {
                   <div className="col-span-6">
                     <Select label={idx === 0 ? t('product') : undefined} value={l.product_id} onChange={(e) => updateFormItem(idx, 'product_id', e.target.value)}>
                       <option value="">{t('product')}</option>
-                      {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      {formProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </Select>
                   </div>
                   <div className="col-span-3">
@@ -400,7 +415,7 @@ export function StockCountsPage() {
                   <div className="col-span-6">
                     <Select label={idx === 0 ? t('product') : undefined} value={l.product_id} onChange={(e) => updateEditLine(idx, 'product_id', e.target.value)}>
                       <option value="">{t('product')}</option>
-                      {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      {editProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </Select>
                   </div>
                   <div className="col-span-3">
