@@ -267,11 +267,16 @@ BEGIN
       RETURN v_result;
     END IF;
 
-    SELECT round(COALESCE(sum(amount - refunded_amount), 0), 2)
-      INTO v_remaining_total
+    -- Lock the tender rows before computing their remaining refundable balance.
+    PERFORM 1
     FROM public.sale_payments
     WHERE sale_id = p_sale_id
     FOR UPDATE;
+
+    SELECT round(COALESCE(sum(amount - refunded_amount), 0), 2)
+      INTO v_remaining_total
+    FROM public.sale_payments
+    WHERE sale_id = p_sale_id;
 
     IF v_refund_total > v_remaining_total THEN
       RAISE EXCEPTION 'SPLIT_REFUND_EXCEEDS_REMAINING_TENDERS: refund %, remaining %', v_refund_total, v_remaining_total;
