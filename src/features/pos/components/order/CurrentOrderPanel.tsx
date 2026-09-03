@@ -16,11 +16,9 @@ import {
   UtensilsCrossed,
   X,
 } from 'lucide-react';
-import * as api from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
-import { useToast } from '@/components/Toast';
 import { formatCurrency } from '@/lib/format';
-import type { CartItem, Customer, DiningTable, OrderItem, OrderType, RpcResult } from '@/lib/types';
+import type { CartItem, Customer, DiningTable, OrderItem, OrderType } from '@/lib/types';
 import type { KitchenSendItem } from '../../types';
 import { computeSentState } from '../../utils/sentState';
 import { cartLineKey, orderItemLineKey } from '../../utils/cart';
@@ -121,10 +119,9 @@ export function CurrentOrderPanel({
   onVoidItem,
 }: CurrentOrderPanelProps) {
   const { t, lang } = useLanguage();
-  const { show } = useToast();
   const isAr = lang === 'ar';
   const [showDiscount, setShowDiscount] = useState(false);
-  const [transferItem, setTransferItem] = useState<CartItem | null>(null);
+  const [splitItem, setSplitItem] = useState<CartItem | null>(null);
 
   const sentState = computeSentState(cart, orderItems, sentOrderItemIds, sessionSent);
   const newCount = cart.filter((item) => (sentState[cartLineKey(item)]?.newQty || 0) > 0).length;
@@ -133,40 +130,16 @@ export function CurrentOrderPanel({
   const stage = deriveCartStage(cart, sentState, false);
   const empty = cart.length === 0;
   const currentCustomer = customerId ? customerById[customerId] : null;
+  const splitLineKey = splitItem ? cartLineKey(splitItem) : null;
+  const splitOrderItemMatches = splitLineKey ? orderItems.filter((row) => orderItemLineKey(row) === splitLineKey) : [];
+  const splitOrderItemId = splitOrderItemMatches.length === 1 ? splitOrderItemMatches[0].id : null;
 
-  const moveSelectedItem = async (targetTableId: string): Promise<boolean> => {
-    if (!activeOrderId || !activeTable || !transferItem) return false;
-    const lineKey = cartLineKey(transferItem);
-    const matches = orderItems.filter((row) => orderItemLineKey(row) === lineKey);
-    if (matches.length !== 1) {
-      show(isAr ? 'تعذر تحديد سطر الصنف بدقة. حدّث الطلب وحاول مرة أخرى.' : 'Could not identify the exact order line. Refresh and try again.', 'error');
-      return false;
-    }
-
-    const { data, error } = await api.pos.transferOrderItemToTable({
-      p_order_id: activeOrderId,
-      p_order_item_id: matches[0].id,
-      p_target_table_id: targetTableId,
-    });
-    if (error) {
-      show(error.message, 'error');
-      return false;
-    }
-    const result = data as (RpcResult & { source_order_empty?: boolean }) | null;
-    if (!result?.success) {
-      show(
-        result?.error === 'ITEM_ALREADY_SENT'
-          ? (isAr ? 'لا يمكن نقل صنف تم إرساله للمطبخ.' : 'A line already sent to kitchen cannot be moved.')
-          : result?.detail || result?.error || t('error'),
-        'error',
-      );
-      return false;
-    }
-
-    onRemove(lineKey);
-    show(isAr ? `تم نقل ${transferItem.product.name} إلى الطاولة الأخرى` : `${transferItem.product.name} moved to the other table`, 'success');
-    setTransferItem(null);
-    return true;
+  const applyCompletedSplit = (quantity: number) => {
+    if (!splitItem) return;
+    const lineKey = cartLineKey(splitItem);
+    if (quantity >= splitItem.quantity) onRemove(lineKey);
+    else onUpdateQty(lineKey, -quantity);
+    setSplitItem(null);
   };
 
   return (
@@ -253,6 +226,8 @@ export function CurrentOrderPanel({
             {cart.map((item) => {
               const lineKey = cartLineKey(item);
               const sent = sentState[lineKey] || { sentQty: 0, newQty: item.quantity, sent: false, partial: false };
+              const matches = orderItems.filter((row) => orderItemLineKey(row) === lineKey);
+              const canSplit = !!activeOrderId && sent.sentQty === 0 && matches.length === 1;
               return (
                 <div key={lineKey} data-testid={`pos-cart-line-${item.product.id}`} className="rounded-2xl border border-ui-border bg-ui-page-alt p-2.5 transition hover:border-ui-border-strong">
                   <div className="flex items-center gap-2">
@@ -273,8 +248,18 @@ export function CurrentOrderPanel({
                     <button data-testid={`pos-cart-qty-increase-${item.product.id}`} aria-label={isAr ? `زيادة كمية ${item.product.name}` : `Increase quantity ${item.product.name}`} onClick={() => onUpdateQty(lineKey, 1)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-ui-primary text-ui-primary-fg"><Plus className="h-3.5 w-3.5" /></button>
 
                     <div className="ms-auto flex items-center gap-1">
-                      {activeOrderId && activeTable && sent.sentQty === 0 && (
-                        <button type="button" data-testid={`pos-transfer-item-${item.product.id}`} onClick={() => setTransferItem(item)} aria-label={isAr ? `نقل ${item.product.name} إلى طاولة أخرى` : `Move ${item.product.name} to another table`} title={isAr ? 'نقل الصنف إلى طاولة أخرى' : 'Move item to another table'} className="flex h-7 w-7 items-center justify-center rounded-lg border border-ui-border bg-ui-surface text-ui-muted transition hover:border-ui-primary hover:text-ui-accent"><ArrowRightLeft className="h-3.5 w-3.5" /></button>
+                      {canSplit && (
+                        <button
+                          type="button"
+                          data-testid={`pos-split-item-${item.product.id}`}
+                          onClick={() => setSplitItem(item)}
+                          aria-label={isAr ? `فصل ${item.product.name} إلى طلب آخر` : `Split ${item.product.name} to another order`}
+                          title={isAr ? 'Split — فصل الصنف إلى طلب سريع أو طاولة' : 'Split item to quick order or table'}
+                          className="flex h-7 items-center justify-center gap-1 rounded-lg border border-ui-border bg-ui-surface px-2 text-[9px] font-black text-ui-muted transition hover:border-ui-primary hover:text-ui-accent"
+                        >
+                          <ArrowRightLeft className="h-3.5 w-3.5" />
+                          <span>Split</span>
+                        </button>
                       )}
                       {canDeleteItem && (
                         <button type="button" onClick={() => sent.sentQty > 0 && onVoidItem ? onVoidItem(item, sent.sentQty) : onRemove(lineKey)} aria-label={isAr ? `حذف ${item.product.name}` : `Remove ${item.product.name}`} className="flex h-7 w-7 items-center justify-center rounded-lg border border-ui-border bg-ui-surface text-ui-subtle transition hover:border-ui-danger hover:text-ui-danger"><X className="h-3.5 w-3.5" /></button>
@@ -314,7 +299,15 @@ export function CurrentOrderPanel({
         )}
       </div>
 
-      <TransferItemModal open={!!transferItem} onClose={() => setTransferItem(null)} item={transferItem} sourceTable={activeTable} onConfirm={moveSelectedItem} />
+      <TransferItemModal
+        open={!!splitItem}
+        onClose={() => setSplitItem(null)}
+        item={splitItem}
+        orderId={activeOrderId}
+        orderItemId={splitOrderItemId}
+        sourceTable={activeTable}
+        onCompleted={applyCompletedSplit}
+      />
     </div>
   );
 }
