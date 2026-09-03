@@ -27,11 +27,17 @@ describe('navigation regressions', () => {
     expect(source).not.toContain('/pos/active');
   });
 
-  it('keeps the POS bottom navigation opening the active orders drawer', () => {
-    const source = read('src/features/pos/components/bottom/PosBottomNav.tsx');
-    expect(source).toContain("'الطلبات النشطة' : 'Active orders'");
-    expect(source).toContain("onOpenOrders('all')");
-    expect(source).not.toContain('onSelect(type)');
+  it('keeps POS entry tables-first with direct quick-order and active-order actions', () => {
+    const landing = read('src/features/pos/components/start/OrderStartWizard.tsx');
+    const bottom = read('src/features/pos/components/bottom/PosBottomNav.tsx');
+    expect(landing).toContain('data-testid="pos-landing-actions"');
+    expect(landing).toContain('data-testid="pos-start-quick"');
+    expect(landing).toContain('data-testid="pos-start-delivery"');
+    expect(landing).toContain('data-testid="pos-start-drive-thru"');
+    expect(landing).toContain('data-testid="pos-start-active-orders"');
+    expect(landing).toContain('<TablePickerStep');
+    expect(bottom).toContain('return null');
+    expect(bottom).not.toContain('fixed inset-x-0 bottom-0');
   });
 
   it('uses one shared shell and declarative navigation configuration', () => {
