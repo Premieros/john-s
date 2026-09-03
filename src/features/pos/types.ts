@@ -32,6 +32,10 @@ export interface KitchenSendItem {
 export interface KitchenSendResult {
   success: boolean;
   order_id?: string;
+  order_number?: string | null;
+  table_name?: string | null;
+  order_type?: string | null;
+  guest_count?: number | null;
   sent?: KitchenSendItem[];
   items_sent_count?: number;
   all_sent?: boolean;
