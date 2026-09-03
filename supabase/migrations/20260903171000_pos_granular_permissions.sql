@@ -63,18 +63,37 @@ SET permissions = public._append_role_permission(
   'pos.split_order')
 WHERE role = 'branch_manager';
 
--- Cashier baseline: sell, hold, kitchen send/view/print, payment. Privileged
--- void/cancel/refund/transfer/split remain opt-in through the role editor.
+-- Cashier baseline preserves the existing manager-approval workflows:
+-- split/transfer/sent-item void may be initiated, but their authoritative RPCs
+-- still require manager approval. Direct manager authority stays absent.
 UPDATE public.roles
 SET permissions = public._append_role_permission(
   public._append_role_permission(
     public._append_role_permission(
       public._append_role_permission(
-        public._append_role_permission(COALESCE(permissions, '[]'::jsonb), 'pos.hold'),
-        'pos.send_kitchen'),
-      'pos.kds_view'),
-    'pos.print_kitchen'),
-  'pos.pay')
+        public._append_role_permission(
+          public._append_role_permission(
+            public._append_role_permission(
+              public._append_role_permission(COALESCE(permissions, '[]'::jsonb), 'pos.hold'),
+              'pos.send_kitchen'),
+            'pos.kds_view'),
+          'pos.print_kitchen'),
+        'pos.pay'),
+      'pos.void'),
+    'pos.transfer_order'),
+  'pos.split_order')
+WHERE role = 'cashier';
+
+-- Production had legacy direct-authority permissions on cashier. Remove them so
+-- discount / price override / receipt reprint fall back to their manager gates.
+UPDATE public.roles
+SET permissions = COALESCE(permissions, '[]'::jsonb)
+  - 'pos.discount'
+  - 'pos.change_price'
+  - 'pos.reprint'
+  - 'pos.cancel_order'
+  - 'pos.refund'
+  - 'pos.change_branch'
 WHERE role = 'cashier';
 
 -- Kitchen staff need KDS visibility without receiving POS selling rights.
@@ -92,7 +111,6 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_uid uuid := auth.uid();
-  v_result record;
 BEGIN
   -- Internal DB/service operations do not carry an end-user auth.uid().
   -- Authenticated application calls must pass the permission gates below.
