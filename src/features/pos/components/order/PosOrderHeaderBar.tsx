@@ -30,6 +30,7 @@ interface PosOrderHeaderBarProps {
   kitchenSending: boolean;
   completing: boolean;
   hasUnsentItems: boolean;
+  customerName?: string | null;
   onOpenTransferModal?: () => void;
   onOpenCustomer: () => void;
   onHoldOrder: () => void;
@@ -51,6 +52,7 @@ export function PosOrderHeaderBar({
   kitchenSending,
   completing,
   hasUnsentItems,
+  customerName,
   onOpenTransferModal,
   onOpenCustomer,
   onHoldOrder,
@@ -107,7 +109,7 @@ export function PosOrderHeaderBar({
           className="flex items-center gap-1 rounded-xl border border-ui-border bg-ui-surface px-2.5 py-1.5 font-black text-ui-text hover:border-ui-primary hover:text-ui-primary hover:bg-ui-primary-soft transition active:scale-95 shadow-ui-xs"
         >
           <UserPlus className="h-3.5 w-3.5 text-ui-primary" />
-          <span className="hidden sm:inline">{isAr ? 'إضافة عميل' : 'Customer'}</span>
+          <span className="max-w-[140px] truncate">{customerName || (isAr ? 'إضافة عميل' : 'Customer')}</span>
         </button>
 
         {activeTable && orderId && onOpenTransferModal && (
