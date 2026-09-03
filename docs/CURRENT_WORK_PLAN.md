@@ -11,8 +11,8 @@
 - Repository: `Premieros/john-s`
 - Branch: `main`
 - Supabase Production: `azzdesuowpdcoflmyezn`
-- آخر HEAD وظيفي قبل إعادة تنظيم هذا السجل: `b7d132aac3ba453f02815af1989936b20bb519a7`
-- Verify الجاري لهذا الـHEAD: run `33736650009` / #391
+- آخر HEAD وظيفي مُتحقق بالكامل: `c10f19df05691749481ec2ee6ca13a2b1fb206d4`
+- Verify: run `33753268374` / #415 ✅
   - lint ✅
   - typecheck ✅
   - test suites typecheck ✅
@@ -21,84 +21,105 @@
   - Fresh DB / canonical migrations ✅
   - schema verification ✅
   - integration + security/RLS ✅
-  - browser-smoke: كان قيد التنفيذ عند آخر تحقق من السجل
-- Deploy لنفس الـHEAD: run `33736649955` / #393 ✅
+  - Browser Smoke ✅
+- Deploy لنفس الـHEAD: run `33753268339` / #417 ✅
 
-> لا تعتبر أي migration تشغيلية جديدة جاهزة لـProduction لمجرد نجاح Deploy للواجهة. migrations الخاصة بالعمل النشط أدناه لا تُطبق على Production إلا بعد Verify كامل أخضر بما فيه browser-smoke.
+آخر ما أُغلق في POS:
+- Tables-first landing يعمل على الهاتف/التابلت/الديسكتوب ويعرض مباشرة: Quick Order / Delivery / Drive Thru / Active Orders.
+- زر New Order يرجع إلى منطقة الطاولات بدل Landing مكرر.
+- Bottom POS Navigation القديم محذوف بالكامل مع spacing/import/component remnants المرتبطة به.
+- Top Action Bar أصبح authoritative للإجراءات العامة العاملة: Customer / Merge-Transfer / Print / Hold / Kitchen / Pay.
+- لوحة السلة لم تعد تكرر Kitchen / Print / Hold / Pay / Customer؛ أبقِ Discount وسلوك Split/Void السياقيين للصنف المحدد.
+- زر مسح الطلب الكامل الملتبس أزيل من Top Action Bar ومن رأس السلة؛ Void يظل مرتبطًا بالصنف المحدد.
+- Browser Smoke بعد هذا التنظيم أخضر.
+- manager approval للعمليات الهيكلية أصبح مغطى باختبار single-use صريح: Pending → approve → execute → consumed؛ إعادة نفس العملية لا تعيد استخدام الموافقة بل تنشئ طلب موافقة جديدًا ولا تنفذ mutation ثانية.
+- لا يوجد أي تغيير جديد في Inventory/KDS/RLS بسبب تعديلات Top Action Bar أو اختبار single-use.
+- **لم تُضف أو تُطبق أي Production migration تشغيلية جديدة في مرحلة UI/test الأخيرة.**
+
+> لا تعتبر أي migration تشغيلية جديدة جاهزة لـProduction لمجرد نجاح Deploy للواجهة. أي migration جديدة مستقبلًا لا تُطبق على Production إلا بعد Verify كامل أخضر بما فيه Browser Smoke.
 
 ---
 
 ## 2) العمل النشط الآن — الأولوية الحالية
 
-### A. أمان الدخول ومنع تسريب كاش مستخدم سابق
+### A. أمان الدخول ومنع تسريب كاش مستخدم سابق — مغلق بالاختبارات الحالية ✅
 
-Regression مثبت من الحساب `sayed3la2@gmail.com`:
-- الحساب موجود في Supabase Auth لكنه لا يملك صفًا مطابقًا في `public.users`.
-- اختبار RLS مباشر على Production لنفس UID أعاد: 0 منتجات، 0 وصفات، 0 حسابات، 0 فروع.
-- سبب ظهور بيانات للمستخدم كان Client-side وليس RLS: fallback profile / local auth behavior + POS offline cache من جلسة/فرع سابق.
+Regression السابق من الحساب `sayed3la2@gmail.com` كان Client-side وليس RLS:
+- Auth session وحده لا يكفي للدخول؛ يجب وجود Profile نشط فعلي في `public.users`.
+- fallback user/local super-admin behavior أُلغي.
+- لا يتم الثقة في profile محلي قديم بدل profile الخادم.
+- POS offline cache مفصول حسب المستخدم/الفرع ولا يُحمّل catalog بدون branch/user context صحيح.
+- regression coverage موجودة ضمن البوابات الحالية.
 
-الإصلاح الجاري/المطبق في الكود:
-- وجود Auth session وحده لا يكفي للدخول؛ يجب وجود Profile نشط فعلي في `public.users`.
-- إلغاء fallback user/local super-admin behavior.
-- عدم الثقة في profile محلي قديم بدل profile الخادم.
-- فصل POS offline cache حسب المستخدم/الفرع ومنع تحميل catalog بدون branch context صحيح.
-- إضافة regression tests تمنع رجوع هذا المسار.
+**لا تُضعف RLS بسبب هذا العيب؛ RLS في Production كان يمنع القراءة كما يجب. لا تعِد فتح هذا البند بدون Regression مثبت.**
 
-**لا تُضعف RLS بسبب هذا العيب؛ RLS في Production كان يمنع القراءة كما يجب.**
+### B. إعادة تدفق شاشة البيع POS — مغلق في baseline الحالي ✅
 
-### B. إعادة تدفق شاشة البيع POS
-
-المطلوب الثابت:
+العقد المطبق:
 1. دخول `/pos` يبدأ من **منطقة الطاولات**، وليس من شاشة منتجات مزدحمة.
-2. Header منطقة البداية يحتوي إجراءات واضحة مثل:
+2. Header منطقة البداية يعرض مباشرة:
    - طلب سريع
    - Delivery
    - Drive Thru / Car
    - Active Orders
 3. الضغط على طاولة فارغة يبدأ طلب الطاولة ثم يفتح المنتجات.
 4. الطاولة المشغولة تستأنف طلبها الحالي.
-5. بعد فتح الطلب تظهر شاشة المنتجات + السلة، ومعها **Top Action Bar واضح**.
-6. لا يوجد Bottom Navigation قديم؛ المكوّن القديم retired ولا يجب إعادته. أزل أي padding/spacing متبقٍ سببه الشريط القديم.
-7. لا تكرر نفس البيانات في الطاولات/الطلبات/Kitchen panel.
+5. بعد فتح الطلب تظهر شاشة المنتجات + السلة + **Top Action Bar واضح**.
+6. Bottom Navigation القديم retired ومحذوف ولا يجب إعادته.
+7. لا تكرر نفس الإجراءات العامة داخل السلة.
 
-Top Action Bar المطلوب عند وجود طلب:
+Top Action Bar الحالي:
 - Kitchen / إرسال للمطبخ
 - Print
-- Split (فصل أصناف — التعريف في القسم 3)
-- Void عند تحديد صنف في السلة
 - Merge / Transfer
 - Add Customer
-- Hold عند الحاجة
+- Hold
 - Pay
+
+إجراءات السلة السياقية:
+- Discount
+- Split للصنف/الكمية المحددة
+- Void/Remove للصنف المحدد
 
 **ممنوع إضافة زر شكلي بدون backend فعلي.**
 
-### C. Split / Merge / Transfer بموافقة المدير
+### C. Split / Merge / Transfer بموافقة المدير — العقد مغلق ومثبت ✅
 
-Backend-first. للكاشير: يبدأ العملية، لكن التنفيذ يظل Pending حتى موافقة المدير. المدير/المصرح له يوافق ثم تُستهلك الموافقة مرة واحدة.
+Backend-first. للكاشير:
+- يبدأ العملية فتظل Pending.
+- المدير/المصرح له يوافق.
+- التنفيذ يحدث بعد الموافقة فقط.
+- الموافقة تُستهلك مرة واحدة.
+- replay لنفس العملية بعد `consumed` يحتاج approval request جديدًا ولا ينفذ mutation ثانية.
 
-قواعد غير قابلة للتغيير:
+قواعد مثبتة ولا تُغيّر:
 - لا خصم مخزون بسبب Split/Merge/Transfer.
 - لا إعادة إرسال KDS بسبب هذه العمليات.
 - لا تزوير أو إعادة كتابة تاريخ kitchen sends.
 - Branch isolation server-side.
 - العمليات الذرية عبر RPCs وليس تحديثات client مباشرة.
+- السطر المرسل للمطبخ لا يُعاد re-parent عبر Split بطريقة تكسر traceability.
 
-### D. Split Payment داخل الدفع فقط
+### D. Split Payment داخل الدفع فقط — **العمل التالي المفتوح**
 
+قبل أي تعديل: افحص التنفيذ الحالي فقط ولا تعِد بناء Checkout كاملًا.
+
+العقد المطلوب:
 - Split Payment ليس Split الطلب.
 - يظهر فقط داخل Checkout/Payment.
-- مثال: جزء Cash + جزء Card/Visa.
-- يجب أن يساوي مجموع وسائل الدفع إجمالي الفاتورة.
-- البيع/المخزون يمر من المسار المركزي مرة واحدة فقط.
+- يدعم توزيع الإجمالي بين طرق مسموحة مثل Cash + Card/Visa.
+- مجموع الأجزاء يجب أن يساوي إجمالي الفاتورة بالضبط.
+- كل جزء يُسجل في مساره المالي الصحيح.
+- حقيقة البيع وخصم المخزون تمر من المسار المركزي مرة واحدة فقط.
 - لا تقسيم دفع Offline قبل وجود عقد آمن وصريح لذلك.
+- لا تضف migration أو RPC جديدًا إذا كان backend الحالي يغطي العقد بالفعل؛ أثبت النقص أولًا.
 
-### E. قبل تطبيق العمل النشط على Production
+### E. قبل تطبيق أي عمل تشغيلي جديد على Production
 
 بالترتيب:
 1. Verify كامل أخضر بما فيه Browser Smoke.
 2. مراجعة عدم وجود regression في KDS/inventory/refund/accounting.
-3. تطبيق migrations الجديدة فقط بعد الخطوتين أعلاه.
+3. تطبيق migrations الجديدة فقط إذا كان العمل الجديد أضاف migrations فعلية ومطلوبة.
 4. تحقق Production محدود وآمن.
 5. تحديث هذا السجل بالـHEAD وrun/migration النهائيين.
 
@@ -119,6 +140,7 @@ Backend-first. للكاشير: يبدأ العملية، لكن التنفيذ �
 - ينشئ طلب الموافقة.
 - لا تتغير الطلبات فعليًا قبل موافقة المدير.
 - بعد approve تُنفذ العملية وتُستهلك الموافقة مرة واحدة.
+- consumed approval لا يمكن استخدامها مرة ثانية؛ replay يحتاج request جديدًا.
 
 KDS/Inventory:
 - Split لا يخصم مخزونًا.
@@ -257,6 +279,10 @@ Production migration:
 
 ## 7) لا تُعد فتح هذه الأعمال بدون Regression مثبت
 
+- Auth profile/cache hardening.
+- Tables-first POS landing + direct Quick/Delivery/Drive Thru/Active Orders.
+- authoritative POS Top Action Bar + retired Bottom Navigation.
+- Split/Merge/Transfer manager approval + single-use approval replay protection.
 - KDS exact sends + legacy compatibility.
 - Product Modifiers authoritative pricing/inventory effects.
 - exact sale-item inventory snapshots / partial refund.
@@ -273,7 +299,7 @@ Production migration:
 - product image storage.
 - branch selector stale-cache fix.
 
-> الاستثناء الحالي: POS UI / Split / Merge / Transfer / Split Payment / auth-cache hardening هي أعمال نشطة ومفتوحة كما هو موضح في القسم 2.
+> الاستثناء الحالي المفتوح في POS هو **Split Payment داخل Checkout** فقط، إلى جانب أي Regression جديد مثبت مستقبلًا.
 
 ---
 
@@ -289,35 +315,41 @@ Production migration:
 - لا تعِد Bottom POS navigation القديم.
 - لا تضع Split Payment في شريط Split الخاص بالأصناف.
 - لا تنفذ cashier Split/Merge/Transfer قبل manager approval.
+- لا تسمح بإعادة استخدام approval status `consumed` لتنفيذ mutation ثانية.
 - لا تعِد Hard Delete إلى soft delete.
 
 ---
 
 ## 9) تعريف النجاح للمرحلة الحالية
 
-تُغلق مرحلة POS الحالية فقط عندما يتحقق الآتي معًا:
+المتحقق بالفعل ✅:
 - Auth profile/cache regression مغلق ومغطى باختبار.
-- `/pos` يبدأ بالطاولات + quick order types في header.
+- `/pos` يبدأ بالطاولات + quick order actions في header.
 - اختيار طاولة/طلب يفتح products workspace.
-- Top Action Bar واضح ويحتوي فقط أزرارًا عاملة.
-- Split item/quantity يعمل بموافقة المدير.
+- Top Action Bar واضح ويحتوي فقط إجراءات عامة عاملة بلا تكرار داخل السلة.
+- Split item/quantity يعمل بموافقة المدير ضمن العقد الحالي.
 - Merge وTransfer يعملان بموافقة المدير.
-- Split Payment يعمل داخل checkout فقط.
-- لا inventory double deduction.
-- لا KDS resend/trace corruption.
+- approvals single-use ومغطاة باختبار replay صريح.
+- لا inventory deduction بسبب Split/Merge/Transfer.
+- لا KDS resend/trace corruption بسبب Split/Merge/Transfer.
 - lint/typecheck/unit/build ✅
 - Fresh DB/schema/integration/security/RLS ✅
 - Browser Smoke ✅
-- migrations الجديدة مطبقة على Production بعد البوابات السابقة فقط.
-- Source of Truth محدث بالـHEAD/Verify/Deploy/Production migration النهائية.
+
+المتبقي لإغلاق مرحلة POS كلها:
+- Split Payment يعمل داخل Checkout فقط وفق العقد في 3.4.
+- إذا تطلب Split Payment migration جديدة: Verify كامل أخضر ثم تطبيقها على Production.
+- Production sanity check محدود وآمن عند وجود تغيير تشغيلي فعلي يحتاجه.
+- تحديث هذا السجل بالـHEAD/Verify/Production migration النهائية لذلك البند.
 
 ---
 
 ## 10) Next exact step
 
-1. إغلاق Browser Smoke للـHEAD الوظيفي الحالي أو إصلاح regression إن ظهر.
-2. إكمال Top POS Actions وربط Print / Customer / Split / Void / Merge-Transfer دون تكرار.
-3. إزالة آخر spacing/import/component remnants المرتبطة بالـBottom Nav القديم.
-4. التأكد أن approval flow للكاشير Pending حتى approve ثم execute مرة واحدة.
-5. بعد Verify كامل فقط: تطبيق migrations التشغيلية الجديدة على Production.
-6. Production sanity check محدود وآمن ثم تحديث هذا الملف.
+1. افحص **فقط** التنفيذ الحالي لـSplit Payment داخل Checkout/Payment والاختبارات/RPC المرتبطة به؛ لا تفحص المشروع كاملًا.
+2. حدد gap مثبتة بين التنفيذ الحالي والعقد في 3.4.
+3. إن كان موجودًا ومكتملًا: أضف/صحح الاختبار الضروري فقط ولا تعِد بناءه.
+4. إن كان ناقصًا: أكمل أقل تعديل ممكن مع الحفاظ على `_process_sale_core` / `process_sale` كنقطة البيع وخصم المخزون مرة واحدة.
+5. شغّل Verify كامل بما فيه Fresh DB + integration/security/RLS + Browser Smoke.
+6. لا تطبق Production migration إلا إذا أُضيفت migration فعلية ومطلوبة ونجحت كل البوابات.
+7. بعد ذلك فقط: Production sanity محدود وآمن وتحديث هذا الملف.
