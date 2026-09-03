@@ -156,7 +156,7 @@ BEGIN
         'bonus_quantity', oi.bonus_quantity,
         'total', oi.total,
         'notes', oi.notes,
-        'modifiers', COALESCE(oi.modifiers, '[]'::jsonb)
+        'modifiers', COALESCE(oi.modifiers_snapshot, '[]'::jsonb)
       ) ORDER BY oi.created_at), '[]'::jsonb)
       INTO v_sent_items
       FROM _kns_delta k
