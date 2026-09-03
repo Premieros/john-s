@@ -21,6 +21,7 @@ import { formatClockTime, timeAgo } from '../../utils/timeAgo';
 import { deriveCartStage } from '../../utils/orderStage';
 import { ORDER_TYPES } from '../../utils/orderTypes';
 import { orderTypeLabel } from '../../utils/format';
+import { usePosPermissions } from '../../hooks/usePosPermissions';
 import { OrderTypePill } from './OrderTypePill';
 import { OrderStageBadge } from './OrderStageBadge';
 import { TransferItemModal } from '../tables/TransferItemModal';
@@ -104,6 +105,7 @@ export function CurrentOrderPanel({
 }: CurrentOrderPanelProps) {
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
+  const perms = usePosPermissions();
   const [showDiscount, setShowDiscount] = useState(false);
   const [splitItem, setSplitItem] = useState<CartItem | null>(null);
   const [selectedLineKey, setSelectedLineKey] = useState<string | null>(null);
@@ -121,7 +123,7 @@ export function CurrentOrderPanel({
   const selectedMatches = selectedItem
     ? orderItems.filter((row) => orderItemLineKey(row) === cartLineKey(selectedItem))
     : [];
-  const selectedCanSplit = !!activeOrderId && !!selectedItem && (selectedSent?.sentQty || 0) === 0 && selectedMatches.length === 1;
+  const selectedCanSplit = perms.canSplitOrder && !!activeOrderId && !!selectedItem && (selectedSent?.sentQty || 0) === 0 && selectedMatches.length === 1;
 
   const splitLineKey = splitItem ? cartLineKey(splitItem) : null;
   const splitOrderItemMatches = splitLineKey ? orderItems.filter((row) => orderItemLineKey(row) === splitLineKey) : [];
@@ -137,7 +139,7 @@ export function CurrentOrderPanel({
   };
 
   const handleSelectedVoid = () => {
-    if (!selectedItem) return;
+    if (!selectedItem || !canDeleteItem) return;
     const lineKey = cartLineKey(selectedItem);
     const sentQty = selectedSent?.sentQty || 0;
     if (sentQty > 0 && onVoidItem) onVoidItem(selectedItem, sentQty);
@@ -173,7 +175,8 @@ export function CurrentOrderPanel({
                   data-testid={`pos-switch-type-${type}`}
                   aria-pressed={type === orderType}
                   onClick={() => onSwitchOrderType(type)}
-                  className={`rounded-lg px-2.5 py-1 text-[10px] font-black transition ${type === orderType ? 'bg-ui-primary text-ui-primary-fg shadow-ui-sm' : 'text-ui-muted hover:text-ui-text'}`}
+                  disabled={!perms.canEditOrder}
+                  className={`rounded-lg px-2.5 py-1 text-[10px] font-black transition disabled:cursor-not-allowed disabled:opacity-40 ${type === orderType ? 'bg-ui-primary text-ui-primary-fg shadow-ui-sm' : 'text-ui-muted hover:text-ui-text'}`}
                 >
                   {orderTypeLabel(t, type)}
                 </button>
@@ -182,7 +185,7 @@ export function CurrentOrderPanel({
           )}
 
           {orderType === 'dine_in' && (
-            <button type="button" onClick={onOpenTableModal} className="flex items-center gap-1 rounded-lg bg-ui-page-alt px-2 py-1 text-[10px] font-black text-ui-muted transition hover:text-ui-text">
+            <button type="button" disabled={!perms.canEditOrder} onClick={onOpenTableModal} className="flex items-center gap-1 rounded-lg bg-ui-page-alt px-2 py-1 text-[10px] font-black text-ui-muted transition hover:text-ui-text disabled:cursor-not-allowed disabled:opacity-40">
               <UtensilsCrossed className="h-3 w-3 text-ui-success" />
               <span className="max-w-[100px] truncate">{activeTable?.name || (isAr ? 'اختر طاولة' : 'Select table')}</span>
             </button>
@@ -191,7 +194,7 @@ export function CurrentOrderPanel({
           {orderType === 'dine_in' && (
             <label className="flex items-center gap-1 text-[10px] font-bold text-ui-muted">
               {isAr ? 'أفراد' : 'Guests'}
-              <input type="number" min={1} value={guestCount || ''} onChange={(event) => onGuestCountChange(parseInt(event.target.value) || null)} className="w-12 rounded-lg border border-ui-border bg-ui-surface-raised px-1.5 py-1 text-center text-xs font-black text-ui-text outline-none focus:border-ui-primary" />
+              <input type="number" min={1} disabled={!perms.canEditOrder} value={guestCount || ''} onChange={(event) => onGuestCountChange(parseInt(event.target.value) || null)} className="w-12 rounded-lg border border-ui-border bg-ui-surface-raised px-1.5 py-1 text-center text-xs font-black text-ui-text outline-none focus:border-ui-primary disabled:cursor-not-allowed disabled:opacity-40" />
             </label>
           )}
 
@@ -222,15 +225,17 @@ export function CurrentOrderPanel({
               <p className="text-[9px] font-bold text-ui-subtle">{isAr ? 'الصنف المحدد' : 'Selected item'}</p>
               <p className="truncate text-xs font-black text-ui-text">{selectedItem.product.name} × {selectedItem.quantity}</p>
             </div>
-            <button
-              type="button"
-              data-testid={`pos-selected-split-${selectedItem.product.id}`}
-              disabled={!selectedCanSplit}
-              onClick={() => setSplitItem(selectedItem)}
-              className="flex h-9 items-center gap-1 rounded-lg border border-ui-primary/30 bg-ui-surface px-2.5 text-[10px] font-black text-ui-accent disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <ArrowRightLeft className="h-3.5 w-3.5" /> Split
-            </button>
+            {perms.canSplitOrder && (
+              <button
+                type="button"
+                data-testid={`pos-selected-split-${selectedItem.product.id}`}
+                disabled={!selectedCanSplit}
+                onClick={() => setSplitItem(selectedItem)}
+                className="flex h-9 items-center gap-1 rounded-lg border border-ui-primary/30 bg-ui-surface px-2.5 text-[10px] font-black text-ui-accent disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5" /> Split
+              </button>
+            )}
             {canDeleteItem && (
               <button
                 type="button"
@@ -273,6 +278,7 @@ export function CurrentOrderPanel({
               const lineKey = cartLineKey(item);
               const sent = sentState[lineKey] || { sentQty: 0, newQty: item.quantity, sent: false, partial: false };
               const selected = selectedLineKey === lineKey;
+              const sentLineLocked = sent.sentQty > 0 && item.quantity <= sent.sentQty && !canDeleteItem;
               return (
                 <div
                   key={lineKey}
@@ -296,16 +302,24 @@ export function CurrentOrderPanel({
                       {item.modifiers?.length ? <p className="mt-0.5 truncate ps-5 text-[9px] font-bold text-ui-subtle">{item.modifiers.map((modifier) => modifier.name).join(' · ')}</p> : null}
                       {item.item_note ? <p className="mt-0.5 truncate ps-5 text-[9px] font-bold text-ui-subtle">📝 {item.item_note}</p> : null}
                     </button>
-                    <button type="button" onClick={() => onConfigureItem?.(item)} className="shrink-0 rounded-lg px-1.5 py-1 text-[9px] font-bold text-ui-subtle hover:bg-ui-surface hover:text-ui-text">
-                      {isAr ? 'تعديل' : 'Edit'}
-                    </button>
+                    {perms.canEditOrder && (
+                      <button type="button" onClick={() => onConfigureItem?.(item)} className="shrink-0 rounded-lg px-1.5 py-1 text-[9px] font-bold text-ui-subtle hover:bg-ui-surface hover:text-ui-text">
+                        {isAr ? 'تعديل' : 'Edit'}
+                      </button>
+                    )}
                     <span className="shrink-0 text-xs font-black text-ui-accent">{formatCurrency(item.quantity * item.unit_price - (item.discount_amount || 0), currency, lang)}</span>
                   </div>
 
                   <div className="mt-2 flex items-center gap-1.5 border-t border-ui-border/70 pt-2">
-                    <button data-testid={`pos-cart-qty-decrease-${item.product.id}`} aria-label={isAr ? `تقليل كمية ${item.product.name}` : `Decrease quantity ${item.product.name}`} onClick={() => sent.sentQty > 0 && item.quantity <= sent.sentQty && onVoidItem ? onVoidItem(item, sent.sentQty) : onUpdateQty(lineKey, -1)} className="flex h-7 w-7 items-center justify-center rounded-lg border border-ui-border bg-ui-surface text-ui-text"><Minus className="h-3.5 w-3.5" /></button>
+                    <button
+                      data-testid={`pos-cart-qty-decrease-${item.product.id}`}
+                      aria-label={isAr ? `تقليل كمية ${item.product.name}` : `Decrease quantity ${item.product.name}`}
+                      disabled={!perms.canEditOrder || sentLineLocked}
+                      onClick={() => sent.sentQty > 0 && item.quantity <= sent.sentQty && onVoidItem ? onVoidItem(item, sent.sentQty) : onUpdateQty(lineKey, -1)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-ui-border bg-ui-surface text-ui-text disabled:cursor-not-allowed disabled:opacity-40"
+                    ><Minus className="h-3.5 w-3.5" /></button>
                     <span data-testid={`pos-cart-qty-${item.product.id}`} className="w-7 text-center text-xs font-black text-ui-text">{item.quantity}</span>
-                    <button data-testid={`pos-cart-qty-increase-${item.product.id}`} aria-label={isAr ? `زيادة كمية ${item.product.name}` : `Increase quantity ${item.product.name}`} onClick={() => onUpdateQty(lineKey, 1)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-ui-primary text-ui-primary-fg"><Plus className="h-3.5 w-3.5" /></button>
+                    <button data-testid={`pos-cart-qty-increase-${item.product.id}`} aria-label={isAr ? `زيادة كمية ${item.product.name}` : `Increase quantity ${item.product.name}`} disabled={!perms.canEditOrder} onClick={() => onUpdateQty(lineKey, 1)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-ui-primary text-ui-primary-fg disabled:cursor-not-allowed disabled:opacity-40"><Plus className="h-3.5 w-3.5" /></button>
                     <span className="ms-auto text-[9px] font-bold text-ui-subtle">
                       {sent.sentQty > 0 ? (isAr ? `مرسل ${sent.sentQty}` : `Sent ${sent.sentQty}`) : (isAr ? 'غير مرسل' : 'Unsent')}
                     </span>
@@ -325,15 +339,17 @@ export function CurrentOrderPanel({
         </div>
       </div>
 
-      <TransferItemModal
-        open={!!splitItem}
-        onClose={() => setSplitItem(null)}
-        item={splitItem}
-        orderId={activeOrderId}
-        orderItemId={splitOrderItemId}
-        sourceTable={activeTable}
-        onCompleted={applyCompletedSplit}
-      />
+      {perms.canSplitOrder && (
+        <TransferItemModal
+          open={!!splitItem}
+          onClose={() => setSplitItem(null)}
+          item={splitItem}
+          orderId={activeOrderId}
+          orderItemId={splitOrderItemId}
+          sourceTable={activeTable}
+          onCompleted={applyCompletedSplit}
+        />
+      )}
     </div>
   );
 }
