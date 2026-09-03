@@ -14,6 +14,8 @@ export type Permission =
   | 'dashboard.view'
   | 'pos.sell'
   | 'pos.discount' | 'pos.change_price' | 'pos.reprint'
+  | 'pos.hold' | 'pos.send_kitchen' | 'pos.kds_view' | 'pos.print_kitchen' | 'pos.pay'
+  | 'pos.void' | 'pos.cancel_order' | 'pos.refund' | 'pos.transfer_order' | 'pos.split_order' | 'pos.change_branch'
   | 'sales.print' | 'sales.export'
   | 'purchases.print'
   | 'products.print' | 'products.export' | 'products.import'
@@ -53,6 +55,8 @@ export const ALL_PERMISSIONS: Permission[] = [
   'dashboard.view',
   'pos.sell',
   'pos.discount', 'pos.change_price', 'pos.reprint',
+  'pos.hold', 'pos.send_kitchen', 'pos.kds_view', 'pos.print_kitchen', 'pos.pay',
+  'pos.void', 'pos.cancel_order', 'pos.refund', 'pos.transfer_order', 'pos.split_order', 'pos.change_branch',
   'sales.print', 'sales.export',
   'purchases.print',
   'products.print', 'products.export', 'products.import',
@@ -95,6 +99,17 @@ export const PERMISSION_LABELS: Record<Permission, { ar: string; en: string }> =
   'pos.discount': { ar: 'منح خصومات من نقطة البيع', en: 'Give POS Discounts' },
   'pos.change_price': { ar: 'تغيير سعر البيع من نقطة البيع', en: 'Change Sale Price in POS' },
   'pos.reprint': { ar: 'إعادة طباعة فاتورة', en: 'Reprint Receipt' },
+  'pos.hold': { ar: 'تعليق واستئناف الطلب', en: 'Hold & Resume Orders' },
+  'pos.send_kitchen': { ar: 'إرسال الطلب للمطبخ', en: 'Send Orders to Kitchen' },
+  'pos.kds_view': { ar: 'عرض شاشة وطلبات المطبخ', en: 'View Kitchen / KDS' },
+  'pos.print_kitchen': { ar: 'طباعة تذكرة المطبخ', en: 'Print Kitchen Ticket' },
+  'pos.pay': { ar: 'تحصيل وإغلاق الطلب', en: 'Take Payment & Close Order' },
+  'pos.void': { ar: 'حذف/إلغاء صنف من الطلب', en: 'Void / Remove Order Item' },
+  'pos.cancel_order': { ar: 'إلغاء الطلب بالكامل', en: 'Cancel Order' },
+  'pos.refund': { ar: 'بدء مرتجع من نقطة البيع', en: 'Initiate POS Refund' },
+  'pos.transfer_order': { ar: 'نقل/دمج الطلب أو الطاولة', en: 'Transfer / Merge Order' },
+  'pos.split_order': { ar: 'فصل صنف/كمية من الطلب', en: 'Split Order Item / Quantity' },
+  'pos.change_branch': { ar: 'تغيير الفرع من نقطة البيع', en: 'Change POS Branch' },
   'sales.print': { ar: 'طباعة فواتير المبيعات', en: 'Print Sales Invoices' },
   'sales.export': { ar: 'تصدير فواتير المبيعات', en: 'Export Sales Invoices' },
   'purchases.print': { ar: 'طباعة فواتير المشتريات', en: 'Print Purchase Invoices' },
@@ -179,6 +194,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     en: 'POS',
     permissions: [
       'pos.sell', 'pos.discount', 'pos.change_price', 'pos.reprint',
+      'pos.hold', 'pos.send_kitchen', 'pos.kds_view', 'pos.print_kitchen', 'pos.pay',
+      'pos.void', 'pos.cancel_order', 'pos.refund', 'pos.transfer_order', 'pos.split_order', 'pos.change_branch',
       'floor_plan.view', 'floor_plan.manage',
     ],
   },
@@ -295,7 +312,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   super_admin: [...ALL_PERMISSIONS],
   owner: [...ALL_PERMISSIONS],
   branch_manager: [
-    'dashboard.view', 'pos.sell', 'pos.discount', 'pos.change_price', 'pos.reprint',
+    'dashboard.view',
+    'pos.sell', 'pos.discount', 'pos.change_price', 'pos.reprint',
+    'pos.hold', 'pos.send_kitchen', 'pos.kds_view', 'pos.print_kitchen', 'pos.pay',
+    'pos.void', 'pos.cancel_order', 'pos.refund', 'pos.transfer_order', 'pos.split_order',
     'floor_plan.view', 'floor_plan.manage',
     'products.view', 'products.manage', 'products.print', 'products.export', 'products.import',
     'categories.view', 'categories.manage',
@@ -315,7 +335,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'settings.manage',
   ],
   cashier: [
-    'dashboard.view', 'pos.sell', 'pos.reprint', 'floor_plan.view',
+    'dashboard.view',
+    'pos.sell', 'pos.hold', 'pos.send_kitchen', 'pos.kds_view', 'pos.print_kitchen', 'pos.pay',
+    'floor_plan.view',
     'products.view', 'products.print',
     'customers.view', 'customers.manage', 'customers.print',
     'inventory.view',
