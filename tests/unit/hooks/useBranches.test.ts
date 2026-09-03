@@ -26,8 +26,8 @@ const mockSupabase = vi.hoisted(() => ({
 
 vi.mock('@/api', () => ({ supabase: mockSupabase }));
 
-// Reset the module registry before every test so the hook's module-level
-// cache is recreated and each test observes a fresh fetch lifecycle.
+// Reset the module registry before every test so each test observes a fresh
+// hook lifecycle and cannot inherit module state from a previous test.
 beforeEach(() => {
   mockState.data = [];
   mockState.error = null;
@@ -51,16 +51,17 @@ describe('useBranches', () => {
     expect(mockState.calls).toBe(1);
   });
 
-  it('serves subsequent hook instances from the module-level cache without refetching', async () => {
+  it('refetches for subsequent hook instances instead of reusing session-stale branches', async () => {
     mockState.data = [{ id: 'b1', name: 'Main', is_active: true }];
     const useBranches = await loadUseBranches();
     const first = renderHook(() => useBranches());
-    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    await waitFor(() => expect(first.result.current.branches[0]?.id).toBe('b1'));
     expect(mockState.calls).toBe(1);
 
+    mockState.data = [{ id: 'b2', name: 'Branch 2', is_active: true }];
     const second = renderHook(() => useBranches());
-    await waitFor(() => expect(second.result.current.branches).toHaveLength(1));
-    expect(mockState.calls).toBe(1);
+    await waitFor(() => expect(second.result.current.branches[0]?.id).toBe('b2'));
+    expect(mockState.calls).toBe(2);
   });
 
   it('refresh re-fetches and updates the cached list', async () => {
