@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Users, Clock, ChefHat, Sparkles, Utensils, ArrowRightLeft, ShoppingBag } from 'lucide-react';
+import { Users, Clock, ArrowRightLeft } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { formatCurrency } from '@/lib/format';
 import type { DiningTable, Order, OrderItem } from '@/lib/types';
@@ -18,216 +18,47 @@ interface TableCardProps {
   onTransfer?: (order: Order, table: DiningTable) => void;
 }
 
-export function TableCard({
-  table,
-  orders,
-  itemsByOrder,
-  kitchenSendsByOrder,
-  currency,
-  isSelected,
-  onSelect,
-  onTransfer,
-}: TableCardProps) {
+export function TableCard({ table, orders, itemsByOrder, kitchenSendsByOrder, currency, isSelected, onSelect, onTransfer }: TableCardProps) {
   const { lang } = useLanguage();
   const isAr = lang === 'ar';
-
   const activeOrder = orders[0] || null;
 
-  // Compute status and operational indicators
-  const { label, badgeClass, cardBgClass, elapsedMinutes, hasUnsent, hasSent } = useMemo(() => {
-    if (!activeOrder || table.status === 'vacant') {
-      return {
-        status: 'vacant' as TableOperationalStatus,
-        label: isAr ? 'متاحة' : 'Available',
-        badgeClass: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:bg-emerald-500/20 dark:text-emerald-400',
-        cardBgClass: 'bg-ui-surface hover:border-emerald-500/50 hover:bg-emerald-500/5',
-        elapsedMinutes: 0,
-        hasUnsent: false,
-        hasSent: false,
-      };
-    }
-
+  const statusInfo = useMemo(() => {
+    if (!activeOrder || table.status === 'vacant') return { status: 'vacant' as TableOperationalStatus, label: isAr ? 'متاحة' : 'Available', tone: 'text-ui-success bg-ui-success-soft border-ui-success/20', elapsed: 0 };
     const orderItems = itemsByOrder[activeOrder.id] || [];
-    const kitchenSends = kitchenSendsByOrder[activeOrder.id] || [];
-    const sentItemIds = new Set(kitchenSends.map((s) => s.order_item_id));
-    const sentItemsCount = orderItems.filter((i) => sentItemIds.has(i.id)).length;
-    const unsentItemsCount = orderItems.length - sentItemsCount;
+    const sends = kitchenSendsByOrder[activeOrder.id] || [];
+    const sentIds = new Set(sends.map((s) => s.order_item_id));
+    const sent = orderItems.filter((item) => sentIds.has(item.id)).length;
+    const unsent = orderItems.length - sent;
+    const elapsed = Math.max(1, Math.round((Date.now() - new Date(activeOrder.created_at).getTime()) / 60000));
+    if (activeOrder.status === 'held') return { status: 'needs_action' as TableOperationalStatus, label: isAr ? 'معلقة' : 'Held', tone: 'text-ui-danger bg-ui-danger-soft border-ui-danger/20', elapsed };
+    if (sent > 0 && unsent > 0) return { status: 'new_additions' as TableOperationalStatus, label: isAr ? 'إضافة جديدة' : 'New items', tone: 'text-ui-warning bg-ui-warning-soft border-ui-warning/20', elapsed };
+    if (sent > 0) return { status: 'sent' as TableOperationalStatus, label: isAr ? 'بالمطبخ' : 'Kitchen', tone: 'text-ui-info bg-ui-info-soft border-ui-info/20', elapsed };
+    return { status: 'open' as TableOperationalStatus, label: isAr ? 'مشغولة' : 'Occupied', tone: 'text-ui-warning bg-ui-warning-soft border-ui-warning/20', elapsed };
+  }, [activeOrder, table.status, itemsByOrder, kitchenSendsByOrder, isAr]);
 
-    const createdAt = new Date(activeOrder.created_at).getTime();
-    const now = Date.now();
-    const elapsed = Math.max(1, Math.round((now - createdAt) / (1000 * 60)));
-
-    if (activeOrder.status === 'held') {
-      return {
-        status: 'needs_action' as TableOperationalStatus,
-        label: isAr ? 'معلق / يحتاج إجراء' : 'Held / Action',
-        badgeClass: 'bg-rose-500/10 text-rose-600 border-rose-500/20 dark:bg-rose-500/20 dark:text-rose-400',
-        cardBgClass: 'bg-ui-surface border-rose-500/30 hover:border-rose-500',
-        elapsedMinutes: elapsed,
-        hasUnsent: unsentItemsCount > 0,
-        hasSent: sentItemsCount > 0,
-      };
-    }
-
-    if (sentItemsCount > 0 && unsentItemsCount > 0) {
-      return {
-        status: 'new_additions' as TableOperationalStatus,
-        label: isAr ? 'تعديلات جديدة' : 'New Additions',
-        badgeClass: 'bg-amber-500/15 text-amber-600 border-amber-500/30 dark:bg-amber-500/25 dark:text-amber-400',
-        cardBgClass: 'bg-ui-surface border-amber-500/40 hover:border-amber-500',
-        elapsedMinutes: elapsed,
-        hasUnsent: true,
-        hasSent: true,
-      };
-    }
-
-    if (sentItemsCount > 0 && unsentItemsCount === 0) {
-      return {
-        status: 'sent' as TableOperationalStatus,
-        label: isAr ? 'تم الإرسال للمطبخ' : 'Sent to Kitchen',
-        badgeClass: 'bg-sky-500/10 text-sky-600 border-sky-500/20 dark:bg-sky-500/20 dark:text-sky-400',
-        cardBgClass: 'bg-ui-surface border-sky-500/30 hover:border-sky-500',
-        elapsedMinutes: elapsed,
-        hasUnsent: false,
-        hasSent: true,
-      };
-    }
-
-    return {
-      status: 'open' as TableOperationalStatus,
-      label: isAr ? 'طلب مفتوح' : 'Open Order',
-      badgeClass: 'bg-amber-500/10 text-amber-600 border-amber-500/20 dark:bg-amber-500/20 dark:text-amber-400',
-      cardBgClass: 'bg-ui-surface border-amber-500/30 hover:border-amber-500',
-      elapsedMinutes: elapsed,
-      hasUnsent: true,
-      hasSent: false,
-    };
-  }, [activeOrder, table.status, kitchenSendsByOrder, itemsByOrder, isAr]);
-
-  const orderItems = activeOrder ? itemsByOrder[activeOrder.id] || [] : [];
-  const itemsTotalCount = orderItems.reduce((s, it) => s + (Number(it.quantity) || 0), 0);
+  const itemCount = activeOrder ? (itemsByOrder[activeOrder.id] || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) : 0;
 
   return (
-    <div
-      onClick={() => onSelect(table)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onSelect(table)}
-      className={`group relative flex flex-col justify-between rounded-2xl border p-3 text-start transition-all cursor-pointer select-none ${cardBgClass} ${
-        isSelected
-          ? 'ring-2 ring-ui-primary ring-offset-2 border-ui-primary shadow-ui-md'
-          : 'border-ui-border shadow-ui-xs hover:shadow-ui-sm'
-      }`}
-    >
-      {/* Top row: Table name, capacity & Status badge */}
-      <div className="flex items-start justify-between gap-1.5">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-black text-ui-text group-hover:text-ui-primary transition-colors truncate">
-              {table.name}
-            </span>
-            <span className="flex items-center gap-0.5 text-[10px] font-bold text-ui-muted bg-ui-page px-1.5 py-0.5 rounded-md border border-ui-border shrink-0">
-              <Users className="h-2.5 w-2.5" />
-              {table.capacity || 2}
-            </span>
-          </div>
-          {activeOrder && (
-            <p className="text-[11px] font-bold text-ui-subtle mt-0.5 truncate">
-              #{activeOrder.order_number}
-            </p>
-          )}
-        </div>
-
-        {/* Status Badge */}
-        <span
-          className={`shrink-0 rounded-lg border px-2 py-0.5 text-[10px] font-black tracking-tight flex items-center gap-1 ${badgeClass}`}
-        >
-          <span
-            className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-              status === 'vacant'
-                ? 'bg-emerald-500'
-                : status === 'sent'
-                ? 'bg-sky-500'
-                : status === 'new_additions'
-                ? 'bg-amber-500 animate-pulse'
-                : status === 'needs_action'
-                ? 'bg-rose-500'
-                : 'bg-amber-500'
-            }`}
-          />
-          {label}
-        </span>
+    <div onClick={() => onSelect(table)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onSelect(table)} className={`group relative min-h-[108px] cursor-pointer select-none rounded-xl border p-2.5 text-start transition ${isSelected ? 'border-ui-primary bg-ui-primary/5 ring-2 ring-ui-primary shadow-ui-sm' : 'border-ui-border bg-ui-surface hover:border-ui-primary hover:shadow-ui-sm'}`}>
+      <div className="flex items-center justify-between gap-1">
+        <span className="truncate text-sm font-black text-ui-text">{table.name}</span>
+        <span className="flex shrink-0 items-center gap-0.5 rounded-md bg-ui-page-alt px-1.5 py-0.5 text-[9px] font-bold text-ui-muted"><Users className="h-2.5 w-2.5" />{table.capacity || 4}</span>
       </div>
-
-      {/* Middle & Bottom details if there's an active order */}
+      <div className="mt-2 flex items-center justify-between gap-1">
+        <span className={`truncate rounded-md border px-1.5 py-0.5 text-[9px] font-black ${statusInfo.tone}`}>{statusInfo.label}</span>
+        {activeOrder && <span className="truncate text-[9px] font-bold text-ui-subtle">#{activeOrder.order_number}</span>}
+      </div>
       {activeOrder ? (
-        <div className="mt-2.5 pt-2 border-t border-ui-border/70 space-y-1.5">
-          {/* Items & Total amount */}
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-ui-muted flex items-center gap-1">
-              <ShoppingBag className="h-3 w-3 text-ui-subtle" />
-              {itemsTotalCount} {isAr ? 'صنف' : 'items'}
-            </span>
-            <span className="font-black text-ui-text text-xs tabular-nums">
-              {formatCurrency(activeOrder.total, currency, lang)}
-            </span>
+        <div className="mt-2 border-t border-ui-border/70 pt-1.5">
+          <div className="flex items-center justify-between gap-1 text-[9px]">
+            <span className="font-bold text-ui-muted">{itemCount} {isAr ? 'صنف' : 'items'}</span>
+            <span className="font-black text-ui-text">{formatCurrency(activeOrder.total, currency, lang)}</span>
           </div>
-
-          {/* Duration & Kitchen/Unsent Indicators */}
-          <div className="flex items-center justify-between text-[10px] text-ui-subtle">
-            <span className="flex items-center gap-1">
-              <Clock className="h-3 w-3 text-ui-subtle shrink-0" />
-              {isAr ? `${elapsedMinutes} دقيقة` : `${elapsedMinutes}m ago`}
-            </span>
-
-            <div className="flex items-center gap-1 shrink-0">
-              {hasSent && (
-                <span
-                  title={isAr ? 'تم الإرسال للمطبخ' : 'Sent to kitchen'}
-                  className="flex items-center gap-0.5 rounded-md bg-sky-500/10 text-sky-600 px-1 py-0.5 text-[9px] font-bold"
-                >
-                  <ChefHat className="h-2.5 w-2.5" />
-                  {isAr ? 'المطبخ' : 'KDS'}
-                </span>
-              )}
-              {hasUnsent && status === 'new_additions' && (
-                <span
-                  title={isAr ? 'توجد أصناف جديدة لم تُرسل بعد' : 'Unsent additions'}
-                  className="flex items-center gap-0.5 rounded-md bg-amber-500/15 text-amber-700 px-1 py-0.5 text-[9px] font-bold"
-                >
-                  <Sparkles className="h-2.5 w-2.5 text-amber-600 animate-spin" />
-                  {isAr ? 'جديد' : 'New'}
-                </span>
-              )}
-            </div>
-          </div>
+          <div className="mt-1 flex items-center gap-1 text-[9px] text-ui-subtle"><Clock className="h-2.5 w-2.5" />{statusInfo.elapsed} {isAr ? 'د' : 'm'}</div>
         </div>
-      ) : (
-        <div className="mt-2.5 pt-2 border-t border-ui-border/50 flex items-center justify-between text-[11px] text-ui-subtle">
-          <span className="flex items-center gap-1 text-emerald-600 font-semibold">
-            <Utensils className="h-3 w-3" />
-            {isAr ? 'جاهزة للاستقبال' : 'Ready for guests'}
-          </span>
-          <span className="text-[10px] font-bold text-ui-primary opacity-0 group-hover:opacity-100 transition-opacity">
-            {isAr ? 'فتح طلب +' : '+ Open'}
-          </span>
-        </div>
-      )}
-
-      {/* Quick transfer button on hover if table has an active order */}
-      {activeOrder && onTransfer && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onTransfer(activeOrder, table);
-          }}
-          title={isAr ? 'نقل الطلب إلى طاولة أخرى' : 'Transfer order to another table'}
-          className="absolute top-2 end-2 hidden group-hover:flex items-center justify-center h-6 w-6 rounded-lg bg-ui-page hover:bg-ui-page-alt border border-ui-border text-ui-muted hover:text-ui-primary transition-colors shadow-ui-xs"
-        >
-          <ArrowRightLeft className="h-3 w-3" />
-        </button>
-      )}
+      ) : <p className="mt-3 text-[9px] font-bold text-ui-subtle">{isAr ? 'اضغط لفتح طلب' : 'Tap to open order'}</p>}
+      {activeOrder && onTransfer && <button type="button" onClick={(e) => { e.stopPropagation(); onTransfer(activeOrder, table); }} title={isAr ? 'نقل الطلب' : 'Transfer order'} className="absolute bottom-2 end-2 flex h-6 w-6 items-center justify-center rounded-md border border-ui-border bg-ui-page text-ui-muted opacity-0 transition hover:text-ui-primary group-hover:opacity-100"><ArrowRightLeft className="h-3 w-3" /></button>}
     </div>
   );
 }
