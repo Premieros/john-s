@@ -1,18 +1,13 @@
 import { useMemo, useState } from 'react';
 import {
   ArrowRightLeft,
-  Banknote,
   Check,
-  ChefHat,
   Clock,
   Minus,
-  Pause,
   Percent,
   Plus,
-  Printer,
   ShoppingCart,
   Trash2,
-  User,
   UtensilsCrossed,
   X,
 } from 'lucide-react';
@@ -85,16 +80,11 @@ export function CurrentOrderPanel({
   discountType,
   discountAmount,
   total,
-  completing,
-  orderLoading,
-  kitchenSending,
   orderType,
   activeOrderNumber,
   activeOrderId,
   activeTable,
   guestCount,
-  customerId,
-  customerById,
   orderNotes,
   activeOrderCreatedAt,
   orderItems,
@@ -109,12 +99,7 @@ export function CurrentOrderPanel({
   onUpdateQty,
   onRemove,
   onClear,
-  onHold,
-  onSendKitchen,
-  onPrint,
-  onPay,
   onConfigureItem,
-  onOpenCustomerModal,
   onOpenTableModal,
   onVoidItem,
 }: CurrentOrderPanelProps) {
@@ -125,12 +110,9 @@ export function CurrentOrderPanel({
   const [selectedLineKey, setSelectedLineKey] = useState<string | null>(null);
 
   const sentState = computeSentState(cart, orderItems, sentOrderItemIds, sessionSent);
-  const newCount = cart.filter((item) => (sentState[cartLineKey(item)]?.newQty || 0) > 0).length;
-  const allSent = cart.length > 0 && newCount === 0;
   const ago = activeOrderCreatedAt ? timeAgo(activeOrderCreatedAt) : null;
   const stage = deriveCartStage(cart, sentState, false);
   const empty = cart.length === 0;
-  const currentCustomer = customerId ? customerById[customerId] : null;
 
   const selectedItem = useMemo(
     () => (selectedLineKey ? cart.find((item) => cartLineKey(item) === selectedLineKey) || null : null),
@@ -212,16 +194,23 @@ export function CurrentOrderPanel({
             </button>
           )}
 
-          <button type="button" onClick={onOpenCustomerModal} className="flex items-center gap-1 rounded-lg bg-ui-page-alt px-2 py-1 text-[10px] font-black text-ui-muted transition hover:text-ui-text">
-            <User className="h-3 w-3 text-ui-accent" />
-            <span className="max-w-[100px] truncate">{currentCustomer?.name || (isAr ? 'إضافة عميل' : 'Add customer')}</span>
-          </button>
-
           {orderType === 'dine_in' && (
             <label className="flex items-center gap-1 text-[10px] font-bold text-ui-muted">
               {isAr ? 'أفراد' : 'Guests'}
               <input type="number" min={1} value={guestCount || ''} onChange={(event) => onGuestCountChange(parseInt(event.target.value) || null)} className="w-12 rounded-lg border border-ui-border bg-ui-surface-raised px-1.5 py-1 text-center text-xs font-black text-ui-text outline-none focus:border-ui-primary" />
             </label>
+          )}
+
+          {canDiscount && (
+            <button
+              data-testid="pos-action-discount"
+              type="button"
+              onClick={() => setShowDiscount((value) => !value)}
+              className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-black transition ${showDiscount ? 'border-ui-primary bg-ui-primary text-ui-primary-fg' : 'border-ui-border bg-ui-page-alt text-ui-text'}`}
+            >
+              <Percent className="h-3 w-3" />
+              <span>{isAr ? 'خصم' : 'Discount'}</span>
+            </button>
           )}
 
           {activeOrderCreatedAt && (
@@ -231,26 +220,6 @@ export function CurrentOrderPanel({
               {ago && <span className="hidden 2xl:inline">· {ago.n != null ? `${ago.n} ${t(ago.key)}` : t(ago.key)}</span>}
             </span>
           )}
-        </div>
-
-        <div className="mt-2 grid grid-cols-5 gap-1.5">
-          <button data-testid="pos-action-send-kitchen" type="button" onClick={onSendKitchen} disabled={empty || kitchenSending || allSent} className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl bg-amber-500 text-white shadow-ui-sm disabled:bg-ui-page-alt disabled:text-ui-subtle disabled:shadow-none">
-            <ChefHat className="h-4 w-4" /><span className="text-[9px] font-black">{isAr ? 'المطبخ' : 'Kitchen'}</span>
-          </button>
-          <button data-testid="pos-action-print" type="button" onClick={onPrint} disabled={empty} className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl border border-ui-border bg-ui-page-alt text-ui-text disabled:opacity-40">
-            <Printer className="h-4 w-4" /><span className="text-[9px] font-black">{isAr ? 'طباعة' : 'Print'}</span>
-          </button>
-          <button data-testid="pos-action-hold" type="button" onClick={onHold} disabled={empty || orderLoading} className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl border border-ui-border bg-ui-page-alt text-ui-text disabled:opacity-40">
-            <Pause className="h-4 w-4" /><span className="text-[9px] font-black">{isAr ? 'تعليق' : 'Hold'}</span>
-          </button>
-          {canDiscount ? (
-            <button data-testid="pos-action-discount" type="button" onClick={() => setShowDiscount((value) => !value)} className={`flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl border font-black ${showDiscount ? 'border-ui-primary bg-ui-primary text-ui-primary-fg' : 'border-ui-border bg-ui-page-alt text-ui-text'}`}>
-              <Percent className="h-4 w-4" /><span className="text-[9px]">{isAr ? 'خصم' : 'Discount'}</span>
-            </button>
-          ) : <div />}
-          <button data-testid="pos-action-pay" type="button" onClick={onPay} disabled={empty || completing} className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl bg-ui-success text-ui-primary-fg shadow-ui-sm disabled:opacity-40">
-            <Banknote className="h-4 w-4" /><span className="text-[9px] font-black">{isAr ? 'دفع' : 'Pay'}</span>
-          </button>
         </div>
 
         {selectedItem && (
