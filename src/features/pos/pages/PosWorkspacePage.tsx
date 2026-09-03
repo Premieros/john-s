@@ -153,7 +153,6 @@ export function PosWorkspacePage() {
     setStockMap(map);
   }, []);
 
-  const sellableStock = stockMap;
   const currentBranchName = branches.find((b) => b.id === effectiveBranch)?.name || effectiveBranch;
 
   const pos = usePosOrder({
@@ -167,6 +166,24 @@ export function PosWorkspacePage() {
     products,
     stockMap,
   });
+
+  // What the cashier sees as available should be what remains after the current
+  // cart reservation, while stockMap stays the authoritative physical/sellable
+  // quantity used by validation and checkout.
+  const displayStockMap = useMemo(() => {
+    const remaining = { ...stockMap };
+    for (const item of pos.cart) {
+      remaining[item.product.id] = Math.max(0, (remaining[item.product.id] || 0) - item.quantity);
+    }
+    return remaining;
+  }, [stockMap, pos.cart]);
+  const displaySellableStock = displayStockMap;
+
+  // process_sale performs the real inventory deduction. Refresh immediately
+  // after a successful sale so the next order never sees a stale stock badge.
+  useEffect(() => {
+    if (pos.receiptSaleId && effectiveBranch) void loadStock(effectiveBranch);
+  }, [pos.receiptSaleId, effectiveBranch, loadStock]);
 
   const live = useActiveOrders(effectiveBranch);
 
@@ -802,8 +819,8 @@ export function PosWorkspacePage() {
             <ProductBrowser
               products={products}
               categories={categories}
-              stockMap={stockMap}
-              sellableStock={sellableStock}
+              stockMap={displayStockMap}
+              sellableStock={displaySellableStock}
               recipeMap={recipeMap}
               search={search}
               selectedCategory={selectedCategory}
