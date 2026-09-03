@@ -56,8 +56,13 @@ export function PosTablesSidebar(props: PosTablesSidebarProps) {
 
   useEffect(() => {
     const handleExternalFlowStart = () => setFlowStarted(true);
+    const handleShowLanding = () => setFlowStarted(false);
     window.addEventListener('pos:order-flow-started', handleExternalFlowStart);
-    return () => window.removeEventListener('pos:order-flow-started', handleExternalFlowStart);
+    window.addEventListener('pos:show-tables-landing', handleShowLanding);
+    return () => {
+      window.removeEventListener('pos:order-flow-started', handleExternalFlowStart);
+      window.removeEventListener('pos:show-tables-landing', handleShowLanding);
+    };
   }, []);
 
   const occupiedCount = useMemo(
