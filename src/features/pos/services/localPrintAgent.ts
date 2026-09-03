@@ -27,7 +27,8 @@ function modifierNames(item: KitchenSendItem): string[] {
 export function groupKitchenItemsByStation(items: KitchenSendItem[]): Record<string, KitchenSendItem[]> {
   const groups: Record<string, KitchenSendItem[]> = {};
   for (const item of items) {
-    const station = safeText(item.station_code || 'main') || 'main';
+    const station = safeText(item.station_code);
+    if (!station) continue;
     (groups[station] ||= []).push(item);
   }
   return groups;
@@ -83,10 +84,28 @@ export async function printKitchenStationsLocally(
   ctx: LocalKitchenPrintContext,
 ): Promise<boolean> {
   if (typeof window === 'undefined' || items.length === 0) return false;
+
+  // Never guess a station while frontend and Production migrations are out of
+  // sync. Missing station data keeps the proven browser-print fallback active.
+  if (items.some((item) => !safeText(item.station_code))) return false;
+
   try {
     const health = await fetchWithTimeout(`${PRINT_AGENT_URL}/health`);
     if (!health.ok) return false;
+
     const groups = groupKitchenItemsByStation(items);
+    const stations = Object.keys(groups);
+    if (stations.length === 0) return false;
+
+    // Preflight every station before printing the first ticket. This prevents a
+    // configured kitchen printer from printing and then being duplicated by the
+    // browser fallback merely because the drinks printer was not configured.
+    const configResponse = await fetchWithTimeout(`${PRINT_AGENT_URL}/config`);
+    if (!configResponse.ok) return false;
+    const config = await configResponse.json() as { routes?: Record<string, string> };
+    const routes = config.routes || {};
+    if (stations.some((station) => !routes[station])) return false;
+
     for (const [station, stationItems] of Object.entries(groups)) {
       const response = await fetchWithTimeout(`${PRINT_AGENT_URL}/print`, {
         method: 'POST',
@@ -113,12 +132,12 @@ export async function printKitchenStationsLocally(
  */
 export function suppressNextKitchenBrowserPopup(): void {
   if (typeof window === 'undefined') return;
-  const original = window.open.bind(window);
+  const original = window.open;
   let restored = false;
   const restore = () => {
     if (restored) return;
     restored = true;
-    window.open = original as typeof window.open;
+    window.open = original;
   };
   window.open = (() => {
     restore();
