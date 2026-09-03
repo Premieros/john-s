@@ -73,12 +73,13 @@ function NoAccessPage() {
 }
 
 function resolveLandingRoute(can: (permission: Permission) => boolean, role?: string | null): string | null {
-  // POS is intentionally the first landing page for cashiers and for any role
-  // explicitly granted selling access.
-  if (role === 'cashier' || can('pos.sell')) return can('pos.sell') ? APP_ROUTES.pos : null;
+  // Keep the dashboard as the default whenever the user is allowed to see it.
+  // Only users without dashboard access fall through to their first permitted workspace.
+  if (can('dashboard.view')) return APP_ROUTES.dashboard;
+  if (role === 'cashier' && can('pos.sell')) return APP_ROUTES.pos;
 
   const candidates: Array<[Permission, string]> = [
-    ['dashboard.view', APP_ROUTES.dashboard],
+    ['pos.sell', APP_ROUTES.pos],
     ['pos.kds_view', APP_ROUTES.kitchenDisplay],
     ['floor_plan.view', APP_ROUTES.floorPlan],
     ['products.view', APP_ROUTES.products],
@@ -157,7 +158,7 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.login} element={<PublicRoute><LoginPage /></PublicRoute>} />
         <Route path={APP_ROUTES.register} element={<Navigate to={APP_ROUTES.login} replace />} />
         <Route path={APP_ROUTES.subscription} element={<DefaultRoute />} />
-        <Route path={APP_ROUTES.subscriptions} element={<ProtectedRoute superAdminOnly><SuperAdminConsolePage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.subscriptions} element={<Navigate to={APP_ROUTES.superAdmin} replace />} />
         <Route path={APP_ROUTES.dashboard} element={<ProtectedRoute permission="dashboard.view"><DashboardPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.operationsCenter} element={<ProtectedRoute permission="dashboard.view"><OperationsCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryCenter} element={<ProtectedRoute permission="inventory.view"><InventoryCenterPage /></ProtectedRoute>} />
