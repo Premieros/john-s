@@ -54,7 +54,17 @@ export function ProductBrowser({ products, categories, stockMap, sellableStock, 
   const [imageOverrides, setImageOverrides] = useState<Record<string, string>>({});
 
   const branchId = useMemo(() => products.find((p) => p.branch_id)?.branch_id || '', [products]);
-  const filteredProducts = useMemo(() => products.filter((p) => (!selectedCategory || p.category_id === selectedCategory) && (!search || [p.name, p.name_en, p.barcode, p.sku].some((v) => v?.toLowerCase().includes(search.toLowerCase())))), [products, search, selectedCategory]);
+  const filteredProducts = useMemo(() => products
+    .filter((p) => (!selectedCategory || p.category_id === selectedCategory) && (!search || [p.name, p.name_en, p.barcode, p.sku].some((v) => v?.toLowerCase().includes(search.toLowerCase()))))
+    .sort((a, b) => {
+      const aManufactured = a.product_type === 'manufactured';
+      const bManufactured = b.product_type === 'manufactured';
+      const aStock = aManufactured ? sellableStock[a.id] || 0 : stockMap[a.id] || 0;
+      const bStock = bManufactured ? sellableStock[b.id] || 0 : stockMap[b.id] || 0;
+      const aAvailable = aStock > 0 && !(aManufactured && !recipeMap[a.id]?.length);
+      const bAvailable = bStock > 0 && !(bManufactured && !recipeMap[b.id]?.length);
+      return Number(bAvailable) - Number(aAvailable);
+    }), [products, search, selectedCategory, sellableStock, stockMap, recipeMap]);
   const counts = useMemo(() => products.reduce<Record<string, number>>((a, p) => { const k = p.category_id || '_none'; a[k] = (a[k] || 0) + 1; return a; }, {}), [products]);
   const categoryById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, isAr ? c.name : c.name_en || c.name])), [categories, isAr]);
 
