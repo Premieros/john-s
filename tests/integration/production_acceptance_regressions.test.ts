@@ -6,7 +6,7 @@ import type pg from 'pg';
 const dbUrl = getDbUrl();
 
 async function asUser(client: pg.Client, userId: string, sql: string, params: unknown[] = []) {
-  const sp = `sp_${randomUUID().replaceAll('-', '')}`;
+  const sp = `sp_${randomUUID().split('-').join('')}`;
   await client.query(`SAVEPOINT ${sp}`);
   try {
     await client.query('SET LOCAL ROLE authenticated');
