@@ -9,6 +9,10 @@ const mockState = vi.hoisted(() => ({
   calls: 0,
 }));
 
+const mockAuth = vi.hoisted(() => ({
+  userId: 'user-1' as string | null,
+}));
+
 const mockSupabase = vi.hoisted(() => ({
   from: () => ({
     select: () => ({
@@ -25,13 +29,17 @@ const mockSupabase = vi.hoisted(() => ({
 }));
 
 vi.mock('@/api', () => ({ supabase: mockSupabase }));
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({ user: mockAuth.userId ? { id: mockAuth.userId } : null }),
+}));
 
 // Reset the module registry before every test so each test observes a fresh
-// hook lifecycle and cannot inherit module state from a previous test.
+// per-user branch cache and cannot inherit module state from a previous test.
 beforeEach(() => {
   mockState.data = [];
   mockState.error = null;
   mockState.calls = 0;
+  mockAuth.userId = 'user-1';
   vi.resetModules();
 });
 
@@ -51,7 +59,7 @@ describe('useBranches', () => {
     expect(mockState.calls).toBe(1);
   });
 
-  it('refetches for subsequent hook instances instead of reusing session-stale branches', async () => {
+  it('reuses cache for the same user but refetches for a different user', async () => {
     mockState.data = [{ id: 'b1', name: 'Main', is_active: true }];
     const useBranches = await loadUseBranches();
     const first = renderHook(() => useBranches());
@@ -59,12 +67,17 @@ describe('useBranches', () => {
     expect(mockState.calls).toBe(1);
 
     mockState.data = [{ id: 'b2', name: 'Branch 2', is_active: true }];
-    const second = renderHook(() => useBranches());
-    await waitFor(() => expect(second.result.current.branches[0]?.id).toBe('b2'));
+    const sameUser = renderHook(() => useBranches());
+    expect(sameUser.result.current.branches[0]?.id).toBe('b1');
+    expect(mockState.calls).toBe(1);
+
+    mockAuth.userId = 'user-2';
+    const differentUser = renderHook(() => useBranches());
+    await waitFor(() => expect(differentUser.result.current.branches[0]?.id).toBe('b2'));
     expect(mockState.calls).toBe(2);
   });
 
-  it('refresh re-fetches and updates the cached list', async () => {
+  it('refresh re-fetches and updates the current user cache', async () => {
     mockState.data = [{ id: 'b1', name: 'Main', is_active: true }];
     const useBranches = await loadUseBranches();
     const { result } = renderHook(() => useBranches());
