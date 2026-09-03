@@ -687,7 +687,8 @@ export function PosWorkspacePage() {
         onOpenShiftModal={() => setShiftModalOpen(true)}
         onNewOrder={() => {
           pos.resetWorkspace();
-          setStartStep('type');
+          window.dispatchEvent(new Event('pos:show-tables-landing'));
+          setStartStep(null);
           setPreselectedTableId(null);
           setPanel(null);
           setMobileOrderOpen(false);
@@ -716,8 +717,8 @@ export function PosWorkspacePage() {
 
       {/* Main Split-Screen Workspace */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Left Side: Dedicated Tables & Open Orders Sidebar (Desktop/Tablet) */}
-        <div className="hidden md:flex shrink-0 h-full">
+        {/* Tables-first landing stays available on phones, tablets, and desktop. */}
+        <div className="flex shrink-0 h-full">
           <PosTablesSidebar
             tables={tables}
             ordersByTable={ordersByTable}
@@ -734,8 +735,26 @@ export function PosWorkspacePage() {
               setTransferSourceTable(tb);
               setTransferModalOpen(true);
             }}
-            onSelectTakeaway={() => void pos.switchOrderType('takeaway')}
-            onSelectDelivery={() => void pos.switchOrderType('delivery')}
+            onStartQuick={() => handleStartOrder({ orderType: 'takeaway' })}
+            onStartDelivery={() => {
+              setStartStep('delivery');
+              setPreselectedTableId(null);
+              setPanel(null);
+              setMobileOrderOpen(false);
+            }}
+            onStartDriveThru={() => {
+              setStartStep('car');
+              setPreselectedTableId(null);
+              setPanel(null);
+              setMobileOrderOpen(false);
+            }}
+            onOpenActiveOrders={() => {
+              setStartStep(null);
+              setPreselectedTableId(null);
+              setOrdersCategory('all');
+              setPanel('orders');
+              setMobileOrderOpen(false);
+            }}
             activeOrderType={pos.orderType}
           />
         </div>
@@ -780,6 +799,7 @@ export function PosWorkspacePage() {
             onClear={pos.clearCart}
             onNewOrder={() => {
               pos.resetWorkspace();
+              window.dispatchEvent(new Event('pos:show-tables-landing'));
               if (orderIdParam) navigate('/pos');
             }}
           />
@@ -898,12 +918,13 @@ export function PosWorkspacePage() {
           preselectedTableId={preselectedTableId}
           currency={pos.effCurrency}
           onStepChange={setStartStep}
-          onBack={() => setStartStep('type')}
+          onBack={() => setStartStep(null)}
           onStart={handleStartOrder}
           onResume={handleWizardResume}
           onActiveOrders={() => {
             setStartStep(null);
             setPreselectedTableId(null);
+            setOrdersCategory('all');
             setPanel('orders');
           }}
         />
