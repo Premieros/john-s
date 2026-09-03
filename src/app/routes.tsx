@@ -1,6 +1,7 @@
 import { Suspense, lazy, type ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useRoles } from '../context/RolesContext';
 import { Layout } from '../components/Layout';
 import { useCan, isAdminRole, type Permission } from '../lib/permissions';
 import { APP_ROUTES } from '@/core/navigation/routes';
@@ -60,24 +61,93 @@ function PageLoader() {
   return <div className="min-h-screen flex items-center justify-center bg-ui-page"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-ui-primary" /></div>;
 }
 
+function NoAccessPage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-ui-page p-6">
+      <div className="max-w-md rounded-2xl border border-ui-border bg-ui-surface p-6 text-center shadow-ui-sm">
+        <h1 className="text-lg font-bold text-ui-text">لا توجد شاشة متاحة لهذا المستخدم</h1>
+        <p className="mt-2 text-sm text-ui-muted">يرجى مراجعة صلاحيات الدور وتعيين شاشة واحدة على الأقل.</p>
+      </div>
+    </div>
+  );
+}
+
+function resolveLandingRoute(can: (permission: Permission) => boolean, role?: string | null): string | null {
+  // POS is intentionally the first landing page for cashiers and for any role
+  // explicitly granted selling access.
+  if (role === 'cashier' || can('pos.sell')) return can('pos.sell') ? APP_ROUTES.pos : null;
+
+  const candidates: Array<[Permission, string]> = [
+    ['dashboard.view', APP_ROUTES.dashboard],
+    ['pos.kds_view', APP_ROUTES.kitchenDisplay],
+    ['floor_plan.view', APP_ROUTES.floorPlan],
+    ['products.view', APP_ROUTES.products],
+    ['categories.view', APP_ROUTES.categories],
+    ['components.view', APP_ROUTES.components],
+    ['raw_materials.view', APP_ROUTES.rawMaterials],
+    ['recipes.view', APP_ROUTES.recipes],
+    ['inventory.view', APP_ROUTES.inventory],
+    ['warehouses.view', APP_ROUTES.warehouses],
+    ['inventory.transfers', APP_ROUTES.transfers],
+    ['inventory.ledger.view', APP_ROUTES.inventoryLedger],
+    ['purchases.view', APP_ROUTES.purchases],
+    ['customers.view', APP_ROUTES.customers],
+    ['suppliers.view', APP_ROUTES.suppliers],
+    ['expenses.view', APP_ROUTES.expenses],
+    ['sales.view', APP_ROUTES.sales],
+    ['shifts.view', APP_ROUTES.shifts],
+    ['reports.view', APP_ROUTES.reports],
+    ['reports.financial', APP_ROUTES.financialReports],
+    ['accounts.view', APP_ROUTES.accounts],
+    ['users.view', APP_ROUTES.users],
+    ['audit.view', APP_ROUTES.auditLog],
+    ['branches.manage', APP_ROUTES.branches],
+    ['settings.manage', APP_ROUTES.settings],
+  ];
+
+  for (const [permission, route] of candidates) {
+    if (can(permission)) return route;
+  }
+  return null;
+}
+
 function ProtectedRoute({ children, permission, fullscreen, superAdminOnly = false, ownerOnly = false }: { children: ReactNode; permission?: Permission; fullscreen?: boolean; superAdminOnly?: boolean; ownerOnly?: boolean }) {
   const { session, loading, user } = useAuth();
+  const { loading: rolesLoading } = useRoles();
   const can = useCan();
-  if (loading) return <PageLoader />;
+  if (loading || rolesLoading) return <PageLoader />;
   if (!session) return <Navigate to={APP_ROUTES.login} replace />;
   if (!user) return <PageLoader />;
-  if (superAdminOnly && user.role !== 'super_admin') return <Navigate to={APP_ROUTES.dashboard} replace />;
-  if (ownerOnly && !isAdminRole(user.role)) return <Navigate to={APP_ROUTES.dashboard} replace />;
-  if (permission && !can(permission)) return <Navigate to={APP_ROUTES.dashboard} replace />;
+
+  const landingRoute = resolveLandingRoute(can, user.role);
+  if (superAdminOnly && user.role !== 'super_admin') return landingRoute ? <Navigate to={landingRoute} replace /> : <NoAccessPage />;
+  if (ownerOnly && !isAdminRole(user.role)) return landingRoute ? <Navigate to={landingRoute} replace /> : <NoAccessPage />;
+  if (permission && !can(permission)) return landingRoute ? <Navigate to={landingRoute} replace /> : <NoAccessPage />;
   if (fullscreen) return <>{children}</>;
   return <Layout>{children}</Layout>;
 }
 
 function PublicRoute({ children }: { children: ReactNode }) {
-  const { session, loading } = useAuth();
-  if (loading) return null;
-  if (session) return <Navigate to={APP_ROUTES.dashboard} replace />;
+  const { session, loading, user } = useAuth();
+  const { loading: rolesLoading } = useRoles();
+  const can = useCan();
+  if (loading || rolesLoading) return <PageLoader />;
+  if (session && user) {
+    const landingRoute = resolveLandingRoute(can, user.role);
+    return landingRoute ? <Navigate to={landingRoute} replace /> : <NoAccessPage />;
+  }
   return <>{children}</>;
+}
+
+function DefaultRoute() {
+  const { session, loading, user } = useAuth();
+  const { loading: rolesLoading } = useRoles();
+  const can = useCan();
+  if (loading || rolesLoading) return <PageLoader />;
+  if (!session) return <Navigate to={APP_ROUTES.login} replace />;
+  if (!user) return <PageLoader />;
+  const landingRoute = resolveLandingRoute(can, user.role);
+  return landingRoute ? <Navigate to={landingRoute} replace /> : <NoAccessPage />;
 }
 
 export function AppRoutes() {
@@ -86,8 +156,8 @@ export function AppRoutes() {
       <Routes>
         <Route path={APP_ROUTES.login} element={<PublicRoute><LoginPage /></PublicRoute>} />
         <Route path={APP_ROUTES.register} element={<Navigate to={APP_ROUTES.login} replace />} />
-        <Route path={APP_ROUTES.subscription} element={<Navigate to={APP_ROUTES.dashboard} replace />} />
-        <Route path={APP_ROUTES.subscriptions} element={<Navigate to={APP_ROUTES.superAdmin} replace />} />
+        <Route path={APP_ROUTES.subscription} element={<DefaultRoute />} />
+        <Route path={APP_ROUTES.subscriptions} element={<ProtectedRoute superAdminOnly><SuperAdminConsolePage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.dashboard} element={<ProtectedRoute permission="dashboard.view"><DashboardPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.operationsCenter} element={<ProtectedRoute permission="dashboard.view"><OperationsCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryCenter} element={<ProtectedRoute permission="inventory.view"><InventoryCenterPage /></ProtectedRoute>} />
@@ -146,7 +216,7 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.basicSettings} element={<ProtectedRoute permission="settings.manage"><Navigate to={APP_ROUTES.settings} replace /></ProtectedRoute>} />
         <Route path={APP_ROUTES.systemHealth} element={<ProtectedRoute permission="settings.manage"><SystemHealthPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.importExport} element={<ProtectedRoute permission="settings.manage"><ImportExportCenterPage /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to={APP_ROUTES.dashboard} replace />} />
+        <Route path="*" element={<DefaultRoute />} />
       </Routes>
     </Suspense>
   );
