@@ -175,6 +175,7 @@ export function KitchenDisplayPage() {
                         <span className="shrink-0 text-ui-muted font-bold text-base">×{it.quantity}</span>
                       </div>
                       {mods && <div data-testid="kds-item-modifiers" className="mt-1 break-words text-[11px] font-semibold text-ui-primary sm:text-xs">{mods}</div>}
+                      {it.notes && <div data-testid="kds-item-note" className="mt-1 break-words text-[11px] font-bold text-ui-danger sm:text-xs">{ar ? 'ملاحظة' : 'Note'}: {it.notes}</div>}
                     </li>
                   );
                 })}
