@@ -3,6 +3,14 @@ import { supabase } from '@/api';
 import type { Branch } from '@/lib/types';
 
 let cache: Branch[] | null = null;
+const BRANCHES_CHANGED_EVENT = 'premier:branches-changed';
+
+export function notifyBranchesChanged(): void {
+  cache = null;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(BRANCHES_CHANGED_EVENT));
+  }
+}
 
 export function useBranches() {
   const [branches, setBranches] = useState<Branch[]>(cache ?? []);
@@ -10,19 +18,13 @@ export function useBranches() {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('branches')
-      .select('*')
-      .eq('is_active', true)
-      .order('name');
-
+    const { data, error } = await supabase.from('branches').select('*').order('name');
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
-
-    cache = ((data as Branch[]) || []).filter((branch) => branch.is_active !== false);
+    cache = (data as Branch[]) || [];
     setBranches(cache);
     setError(null);
     setLoading(false);
@@ -30,26 +32,19 @@ export function useBranches() {
 
   useEffect(() => {
     if (cache !== null) {
-      setBranches(cache.filter((branch) => branch.is_active !== false));
+      setBranches(cache);
       setLoading(false);
+    } else {
+      void refresh();
     }
 
-    // Always revalidate on mount so a deleted/deactivated branch can never stay
-    // in the selector just because it was present in the in-memory cache.
-    void refresh();
-
-    const channel = supabase
-      .channel('active-branches-selector')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'branches' },
-        () => { void refresh(); },
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
+    if (typeof window === 'undefined') return;
+    const onBranchesChanged = () => {
+      setLoading(true);
+      void refresh();
     };
+    window.addEventListener(BRANCHES_CHANGED_EVENT, onBranchesChanged);
+    return () => window.removeEventListener(BRANCHES_CHANGED_EVENT, onBranchesChanged);
   }, [refresh]);
 
   return { branches, loading, error, refresh };
