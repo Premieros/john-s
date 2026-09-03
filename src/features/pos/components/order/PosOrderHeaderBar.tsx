@@ -157,11 +157,11 @@ export function PosOrderHeaderBar({
             data-testid="pos-action-send-kitchen"
             type="button"
             onClick={onSendKitchen}
-            disabled={kitchenSending || (!hasUnsentItems && hasSent)}
-            className={`flex items-center gap-1 rounded-xl px-2.5 py-1.5 font-black text-xs transition active:scale-95 shadow-ui-xs ${hasUnsentItems || !hasSent ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-amber-500/20' : 'bg-ui-page-alt text-ui-muted cursor-not-allowed'}`}
+            disabled={kitchenSending}
+            className="flex items-center gap-1 rounded-xl bg-amber-500 px-2.5 py-1.5 font-black text-xs text-white transition hover:bg-amber-600 active:scale-95 shadow-ui-xs shadow-amber-500/20 disabled:cursor-wait disabled:opacity-50"
           >
             <ChefHat className="h-3.5 w-3.5" />
-            <span>{kitchenSending ? (isAr ? 'جارٍ الإرسال...' : 'Sending...') : hasSent && hasUnsentItems ? (isAr ? 'إرسال الجديد' : 'Send New') : (isAr ? 'إرسال للمطبخ' : 'Kitchen')}</span>
+            <span>{kitchenSending ? (isAr ? 'جارٍ الإرسال...' : 'Sending...') : hasSent ? (isAr ? 'إرسال الجديد' : 'Send New') : (isAr ? 'إرسال للمطبخ' : 'Kitchen')}</span>
           </button>
         )}
 
