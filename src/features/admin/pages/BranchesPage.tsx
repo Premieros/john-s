@@ -53,6 +53,7 @@ export function BranchesPage() {
           p_name_en: form.name_en || null,
           p_address: form.address || null,
           p_phone: form.phone || null,
+          p_is_active: form.is_active,
         });
         if (error || !data?.success) { show(error?.message || data?.error || 'Error', 'error'); return; }
         await logAudit('update', 'branches', editing.id);
