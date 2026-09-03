@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bike, Search, ShoppingBag, Utensils } from 'lucide-react';
+import { Bike, Car, ListOrdered, Search, ShoppingBag, Utensils } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import type { DiningTable, Order, OrderItem } from '@/lib/types';
 import type { OrderKitchenSend } from '../../types';
@@ -19,6 +19,10 @@ interface PosTablesSidebarProps {
   onToggleCollapse: () => void;
   onSelectTable: (table: DiningTable) => void;
   onTransferOrder?: (order: Order, table: DiningTable) => void;
+  onStartQuick?: () => void;
+  onStartDelivery?: () => void;
+  onStartDriveThru?: () => void;
+  onOpenActiveOrders?: () => void;
   onSelectTakeaway?: () => void;
   onSelectDelivery?: () => void;
   activeOrderType?: string;
@@ -37,6 +41,10 @@ export function PosTablesSidebar(props: PosTablesSidebarProps) {
     onToggleCollapse,
     onSelectTable,
     onTransferOrder,
+    onStartQuick,
+    onStartDelivery,
+    onStartDriveThru,
+    onOpenActiveOrders,
     onSelectTakeaway,
     onSelectDelivery,
   } = props;
@@ -71,8 +79,8 @@ export function PosTablesSidebar(props: PosTablesSidebarProps) {
   }, [tables, ordersByTable, searchQuery, filter]);
 
   // The POS is tables-first. Once a real table/order is selected, or the
-  // operator explicitly starts a non-table flow, the landing disappears and
-  // gives the entire selling area back to products + cart.
+  // operator explicitly starts a quick non-table order, the landing disappears
+  // and gives the entire selling area back to products + cart.
   if (activeTableId || activeOrderId || flowStarted) return null;
 
   if (collapsed) {
@@ -90,13 +98,18 @@ export function PosTablesSidebar(props: PosTablesSidebarProps) {
     { id: 'occupied', ar: 'مشغولة', en: 'Occupied', count: occupiedCount },
   ];
 
-  const startTakeaway = () => {
-    if (!onSelectTakeaway) return;
-    onSelectTakeaway();
+  const startQuick = () => {
+    const action = onStartQuick || onSelectTakeaway;
+    if (!action) return;
+    action();
     setFlowStarted(true);
   };
 
   const startDelivery = () => {
+    if (onStartDelivery) {
+      onStartDelivery();
+      return;
+    }
     if (!onSelectDelivery) return;
     onSelectDelivery();
     setFlowStarted(true);
@@ -111,27 +124,49 @@ export function PosTablesSidebar(props: PosTablesSidebarProps) {
             <p className="mt-0.5 text-[11px] font-bold text-ui-subtle">{isAr ? 'اختر طاولة أو ابدأ نوع طلب من الاختصارات' : 'Choose a table or start an order from the shortcuts'}</p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {onSelectTakeaway && (
+          <div data-testid="pos-tables-landing-actions" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {(onStartQuick || onSelectTakeaway) && (
               <button
                 type="button"
                 data-testid="pos-start-quick-order"
-                onClick={startTakeaway}
-                className="flex h-11 items-center gap-2 rounded-xl bg-ui-primary px-4 text-xs font-black text-ui-primary-fg shadow-ui-sm transition hover:bg-ui-primary-hover active:scale-[0.98]"
+                onClick={startQuick}
+                className="flex h-11 items-center justify-center gap-2 rounded-xl bg-ui-primary px-3 text-xs font-black text-ui-primary-fg shadow-ui-sm transition hover:bg-ui-primary-hover active:scale-[0.98]"
               >
                 <ShoppingBag className="h-4 w-4" />
                 {isAr ? 'طلب سريع' : 'Quick order'}
               </button>
             )}
-            {onSelectDelivery && (
+            {(onStartDelivery || onSelectDelivery) && (
               <button
                 type="button"
                 data-testid="pos-tables-start-delivery"
                 onClick={startDelivery}
-                className="flex h-11 items-center gap-2 rounded-xl border border-ui-border bg-ui-page px-4 text-xs font-black text-ui-text transition hover:border-ui-primary hover:text-ui-primary active:scale-[0.98]"
+                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-ui-border bg-ui-page px-3 text-xs font-black text-ui-text transition hover:border-ui-primary hover:text-ui-primary active:scale-[0.98]"
               >
                 <Bike className="h-4 w-4" />
                 {isAr ? 'دليفري' : 'Delivery'}
+              </button>
+            )}
+            {onStartDriveThru && (
+              <button
+                type="button"
+                data-testid="pos-tables-start-drive-thru"
+                onClick={onStartDriveThru}
+                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-ui-border bg-ui-page px-3 text-xs font-black text-ui-text transition hover:border-ui-primary hover:text-ui-primary active:scale-[0.98]"
+              >
+                <Car className="h-4 w-4" />
+                {isAr ? 'درايف ثرو' : 'Drive thru'}
+              </button>
+            )}
+            {onOpenActiveOrders && (
+              <button
+                type="button"
+                data-testid="pos-tables-active-orders"
+                onClick={onOpenActiveOrders}
+                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-ui-border bg-ui-page px-3 text-xs font-black text-ui-text transition hover:border-ui-primary hover:text-ui-primary active:scale-[0.98]"
+              >
+                <ListOrdered className="h-4 w-4" />
+                {isAr ? 'الطلبات النشطة' : 'Active orders'}
               </button>
             )}
           </div>
