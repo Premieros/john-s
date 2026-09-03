@@ -1,6 +1,7 @@
 // Domain API surface. Each domain owns its RPC wrappers; the barrel keeps
 // `import * as api from '@/api'` stable while letting domains evolve independently.
 export { pos } from './domains/pos';
+export type { SplitTenderInput } from './domains/pos';
 export { floorPlan } from './domains/floorPlan';
 export { trade } from './domains/trade';
 export { procurement } from './domains/procurement';
