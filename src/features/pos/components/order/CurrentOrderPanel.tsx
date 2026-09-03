@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ArrowRightLeft,
   Banknote,
@@ -122,6 +122,7 @@ export function CurrentOrderPanel({
   const isAr = lang === 'ar';
   const [showDiscount, setShowDiscount] = useState(false);
   const [splitItem, setSplitItem] = useState<CartItem | null>(null);
+  const [selectedLineKey, setSelectedLineKey] = useState<string | null>(null);
 
   const sentState = computeSentState(cart, orderItems, sentOrderItemIds, sessionSent);
   const newCount = cart.filter((item) => (sentState[cartLineKey(item)]?.newQty || 0) > 0).length;
@@ -130,6 +131,17 @@ export function CurrentOrderPanel({
   const stage = deriveCartStage(cart, sentState, false);
   const empty = cart.length === 0;
   const currentCustomer = customerId ? customerById[customerId] : null;
+
+  const selectedItem = useMemo(
+    () => (selectedLineKey ? cart.find((item) => cartLineKey(item) === selectedLineKey) || null : null),
+    [cart, selectedLineKey],
+  );
+  const selectedSent = selectedItem ? sentState[cartLineKey(selectedItem)] : null;
+  const selectedMatches = selectedItem
+    ? orderItems.filter((row) => orderItemLineKey(row) === cartLineKey(selectedItem))
+    : [];
+  const selectedCanSplit = !!activeOrderId && !!selectedItem && (selectedSent?.sentQty || 0) === 0 && selectedMatches.length === 1;
+
   const splitLineKey = splitItem ? cartLineKey(splitItem) : null;
   const splitOrderItemMatches = splitLineKey ? orderItems.filter((row) => orderItemLineKey(row) === splitLineKey) : [];
   const splitOrderItemId = splitOrderItemMatches.length === 1 ? splitOrderItemMatches[0].id : null;
@@ -140,6 +152,16 @@ export function CurrentOrderPanel({
     if (quantity >= splitItem.quantity) onRemove(lineKey);
     else onUpdateQty(lineKey, -quantity);
     setSplitItem(null);
+    setSelectedLineKey(null);
+  };
+
+  const handleSelectedVoid = () => {
+    if (!selectedItem) return;
+    const lineKey = cartLineKey(selectedItem);
+    const sentQty = selectedSent?.sentQty || 0;
+    if (sentQty > 0 && onVoidItem) onVoidItem(selectedItem, sentQty);
+    else onRemove(lineKey);
+    setSelectedLineKey(null);
   };
 
   return (
@@ -192,7 +214,7 @@ export function CurrentOrderPanel({
 
           <button type="button" onClick={onOpenCustomerModal} className="flex items-center gap-1 rounded-lg bg-ui-page-alt px-2 py-1 text-[10px] font-black text-ui-muted transition hover:text-ui-text">
             <User className="h-3 w-3 text-ui-accent" />
-            <span className="max-w-[100px] truncate">{currentCustomer?.name || (isAr ? 'عميل عام' : 'General')}</span>
+            <span className="max-w-[100px] truncate">{currentCustomer?.name || (isAr ? 'إضافة عميل' : 'Add customer')}</span>
           </button>
 
           {orderType === 'dine_in' && (
@@ -211,6 +233,67 @@ export function CurrentOrderPanel({
           )}
         </div>
 
+        <div className="mt-2 grid grid-cols-5 gap-1.5">
+          <button data-testid="pos-action-send-kitchen" type="button" onClick={onSendKitchen} disabled={empty || kitchenSending || allSent} className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl bg-amber-500 text-white shadow-ui-sm disabled:bg-ui-page-alt disabled:text-ui-subtle disabled:shadow-none">
+            <ChefHat className="h-4 w-4" /><span className="text-[9px] font-black">{isAr ? 'المطبخ' : 'Kitchen'}</span>
+          </button>
+          <button data-testid="pos-action-print" type="button" onClick={onPrint} disabled={empty} className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl border border-ui-border bg-ui-page-alt text-ui-text disabled:opacity-40">
+            <Printer className="h-4 w-4" /><span className="text-[9px] font-black">{isAr ? 'طباعة' : 'Print'}</span>
+          </button>
+          <button data-testid="pos-action-hold" type="button" onClick={onHold} disabled={empty || orderLoading} className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl border border-ui-border bg-ui-page-alt text-ui-text disabled:opacity-40">
+            <Pause className="h-4 w-4" /><span className="text-[9px] font-black">{isAr ? 'تعليق' : 'Hold'}</span>
+          </button>
+          {canDiscount ? (
+            <button data-testid="pos-action-discount" type="button" onClick={() => setShowDiscount((value) => !value)} className={`flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl border font-black ${showDiscount ? 'border-ui-primary bg-ui-primary text-ui-primary-fg' : 'border-ui-border bg-ui-page-alt text-ui-text'}`}>
+              <Percent className="h-4 w-4" /><span className="text-[9px]">{isAr ? 'خصم' : 'Discount'}</span>
+            </button>
+          ) : <div />}
+          <button data-testid="pos-action-pay" type="button" onClick={onPay} disabled={empty || completing} className="flex h-11 flex-col items-center justify-center gap-0.5 rounded-xl bg-ui-success text-ui-primary-fg shadow-ui-sm disabled:opacity-40">
+            <Banknote className="h-4 w-4" /><span className="text-[9px] font-black">{isAr ? 'دفع' : 'Pay'}</span>
+          </button>
+        </div>
+
+        {selectedItem && (
+          <div className="mt-2 flex items-center gap-2 rounded-xl border border-ui-primary/30 bg-ui-primary-soft p-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-bold text-ui-subtle">{isAr ? 'الصنف المحدد' : 'Selected item'}</p>
+              <p className="truncate text-xs font-black text-ui-text">{selectedItem.product.name} × {selectedItem.quantity}</p>
+            </div>
+            <button
+              type="button"
+              data-testid={`pos-selected-split-${selectedItem.product.id}`}
+              disabled={!selectedCanSplit}
+              onClick={() => setSplitItem(selectedItem)}
+              className="flex h-9 items-center gap-1 rounded-lg border border-ui-primary/30 bg-ui-surface px-2.5 text-[10px] font-black text-ui-accent disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" /> Split
+            </button>
+            {canDeleteItem && (
+              <button
+                type="button"
+                data-testid={`pos-selected-void-${selectedItem.product.id}`}
+                onClick={handleSelectedVoid}
+                className="flex h-9 items-center gap-1 rounded-lg border border-ui-danger/30 bg-ui-surface px-2.5 text-[10px] font-black text-ui-danger"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> {selectedSent?.sentQty ? 'Void' : (isAr ? 'حذف' : 'Remove')}
+              </button>
+            )}
+            <button type="button" onClick={() => setSelectedLineKey(null)} className="flex h-9 w-9 items-center justify-center rounded-lg text-ui-subtle hover:bg-ui-surface">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {showDiscount && (
+          <div data-testid="pos-discount-editor" className="mt-2 rounded-xl border border-ui-border bg-ui-page-alt p-2">
+            <div className="flex gap-2">
+              <button data-testid="pos-discount-percent" type="button" onClick={() => onDiscountTypeChange('percent')} className={`flex-1 rounded-lg p-2 text-xs font-black ${discountType === 'percent' ? 'bg-ui-primary text-ui-primary-fg' : 'bg-ui-surface text-ui-muted'}`}>%</button>
+              <button data-testid="pos-discount-amount" type="button" onClick={() => onDiscountTypeChange('amount')} className={`flex-1 rounded-lg p-2 text-xs font-black ${discountType === 'amount' ? 'bg-ui-primary text-ui-primary-fg' : 'bg-ui-surface text-ui-muted'}`}>{currency}</button>
+              <input data-testid="pos-discount-input" aria-label={isAr ? 'قيمة الخصم' : 'Discount value'} type="number" min={0} value={discountAmount || ''} onChange={(event) => onDiscountAmountChange(parseFloat(event.target.value) || 0)} className="w-24 rounded-lg border border-ui-border bg-ui-surface p-2 text-center text-xs font-black text-ui-text" />
+            </div>
+          </div>
+        )}
+
         {orderNotes && <p className="mt-2 truncate rounded-lg bg-ui-page-alt px-2 py-1 text-[10px] font-bold text-ui-subtle">{orderNotes}</p>}
       </div>
 
@@ -226,18 +309,32 @@ export function CurrentOrderPanel({
             {cart.map((item) => {
               const lineKey = cartLineKey(item);
               const sent = sentState[lineKey] || { sentQty: 0, newQty: item.quantity, sent: false, partial: false };
-              const matches = orderItems.filter((row) => orderItemLineKey(row) === lineKey);
-              const canSplit = !!activeOrderId && sent.sentQty === 0 && matches.length === 1;
+              const selected = selectedLineKey === lineKey;
               return (
-                <div key={lineKey} data-testid={`pos-cart-line-${item.product.id}`} className="rounded-2xl border border-ui-border bg-ui-page-alt p-2.5 transition hover:border-ui-border-strong">
+                <div
+                  key={lineKey}
+                  data-testid={`pos-cart-line-${item.product.id}`}
+                  className={`rounded-2xl border p-2.5 transition ${selected ? 'border-ui-primary bg-ui-primary-soft shadow-ui-sm' : 'border-ui-border bg-ui-page-alt hover:border-ui-border-strong'}`}
+                >
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => onConfigureItem?.(item)} className="min-w-0 flex-1 text-start">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLineKey(selected ? null : lineKey)}
+                      aria-pressed={selected}
+                      className="min-w-0 flex-1 text-start"
+                    >
                       <div className="flex items-center gap-1.5">
+                        <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-ui-primary bg-ui-primary text-ui-primary-fg' : 'border-ui-border bg-ui-surface'}`}>
+                          {selected && <Check className="h-3 w-3" />}
+                        </span>
                         <p className="truncate text-xs font-black text-ui-text">{item.product.name}</p>
                         {sent.sent && <Check className="h-3 w-3 shrink-0 text-ui-success" />}
                       </div>
-                      {item.modifiers?.length ? <p className="mt-0.5 truncate text-[9px] font-bold text-ui-subtle">{item.modifiers.map((modifier) => modifier.name).join(' · ')}</p> : null}
-                      {item.item_note ? <p className="mt-0.5 truncate text-[9px] font-bold text-ui-subtle">📝 {item.item_note}</p> : null}
+                      {item.modifiers?.length ? <p className="mt-0.5 truncate ps-5 text-[9px] font-bold text-ui-subtle">{item.modifiers.map((modifier) => modifier.name).join(' · ')}</p> : null}
+                      {item.item_note ? <p className="mt-0.5 truncate ps-5 text-[9px] font-bold text-ui-subtle">📝 {item.item_note}</p> : null}
+                    </button>
+                    <button type="button" onClick={() => onConfigureItem?.(item)} className="shrink-0 rounded-lg px-1.5 py-1 text-[9px] font-bold text-ui-subtle hover:bg-ui-surface hover:text-ui-text">
+                      {isAr ? 'تعديل' : 'Edit'}
                     </button>
                     <span className="shrink-0 text-xs font-black text-ui-accent">{formatCurrency(item.quantity * item.unit_price - (item.discount_amount || 0), currency, lang)}</span>
                   </div>
@@ -246,25 +343,9 @@ export function CurrentOrderPanel({
                     <button data-testid={`pos-cart-qty-decrease-${item.product.id}`} aria-label={isAr ? `تقليل كمية ${item.product.name}` : `Decrease quantity ${item.product.name}`} onClick={() => sent.sentQty > 0 && item.quantity <= sent.sentQty && onVoidItem ? onVoidItem(item, sent.sentQty) : onUpdateQty(lineKey, -1)} className="flex h-7 w-7 items-center justify-center rounded-lg border border-ui-border bg-ui-surface text-ui-text"><Minus className="h-3.5 w-3.5" /></button>
                     <span data-testid={`pos-cart-qty-${item.product.id}`} className="w-7 text-center text-xs font-black text-ui-text">{item.quantity}</span>
                     <button data-testid={`pos-cart-qty-increase-${item.product.id}`} aria-label={isAr ? `زيادة كمية ${item.product.name}` : `Increase quantity ${item.product.name}`} onClick={() => onUpdateQty(lineKey, 1)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-ui-primary text-ui-primary-fg"><Plus className="h-3.5 w-3.5" /></button>
-
-                    <div className="ms-auto flex items-center gap-1">
-                      {canSplit && (
-                        <button
-                          type="button"
-                          data-testid={`pos-split-item-${item.product.id}`}
-                          onClick={() => setSplitItem(item)}
-                          aria-label={isAr ? `فصل ${item.product.name} إلى طلب آخر` : `Split ${item.product.name} to another order`}
-                          title={isAr ? 'Split — فصل الصنف إلى طلب سريع أو طاولة' : 'Split item to quick order or table'}
-                          className="flex h-7 items-center justify-center gap-1 rounded-lg border border-ui-border bg-ui-surface px-2 text-[9px] font-black text-ui-muted transition hover:border-ui-primary hover:text-ui-accent"
-                        >
-                          <ArrowRightLeft className="h-3.5 w-3.5" />
-                          <span>Split</span>
-                        </button>
-                      )}
-                      {canDeleteItem && (
-                        <button type="button" onClick={() => sent.sentQty > 0 && onVoidItem ? onVoidItem(item, sent.sentQty) : onRemove(lineKey)} aria-label={isAr ? `حذف ${item.product.name}` : `Remove ${item.product.name}`} className="flex h-7 w-7 items-center justify-center rounded-lg border border-ui-border bg-ui-surface text-ui-subtle transition hover:border-ui-danger hover:text-ui-danger"><X className="h-3.5 w-3.5" /></button>
-                      )}
-                    </div>
+                    <span className="ms-auto text-[9px] font-bold text-ui-subtle">
+                      {sent.sentQty > 0 ? (isAr ? `مرسل ${sent.sentQty}` : `Sent ${sent.sentQty}`) : (isAr ? 'غير مرسل' : 'Unsent')}
+                    </span>
                   </div>
                 </div>
               );
@@ -273,30 +354,12 @@ export function CurrentOrderPanel({
         )}
       </div>
 
-      <div className="shrink-0 space-y-2 border-t border-ui-border p-3">
+      <div className="shrink-0 border-t border-ui-border p-3">
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-xl bg-ui-page-alt p-2"><p className="text-[9px] font-bold text-ui-subtle">{t('subtotal')}</p><p className="mt-0.5 truncate text-xs font-black text-ui-text">{formatCurrency(subtotal, currency, lang)}</p></div>
           <div className="rounded-xl bg-ui-page-alt p-2"><p className="text-[9px] font-bold text-ui-subtle">{t('discount')}</p><p data-testid="pos-discount-value" className="mt-0.5 truncate text-xs font-black text-ui-text">{formatCurrency(discountValue, currency, lang)}</p></div>
           <div className="rounded-xl bg-ui-primary-soft p-2"><p className="text-[9px] font-bold text-ui-subtle">{t('total')}</p><p data-testid="pos-total-value" className="mt-0.5 truncate text-sm font-black text-ui-accent">{formatCurrency(total, currency, lang)}</p></div>
         </div>
-
-        <div className="grid grid-cols-5 gap-1.5">
-          {canDiscount && <button data-testid="pos-action-discount" aria-label={isAr ? 'الخصم (F6)' : 'Discount (F6)'} title={isAr ? 'الخصم (F6)' : 'Discount (F6)'} onClick={() => setShowDiscount((value) => !value)} className={`flex h-10 items-center justify-center rounded-xl ${showDiscount ? 'bg-ui-primary text-ui-primary-fg' : 'bg-ui-page-alt text-ui-text'}`}><Percent className="h-4 w-4" /></button>}
-          <button data-testid="pos-action-hold" aria-label={isAr ? 'تعليق الطلب (F4)' : 'Hold order (F4)'} title={isAr ? 'تعليق الطلب (F4)' : 'Hold order (F4)'} onClick={onHold} disabled={empty || orderLoading} className="flex h-10 items-center justify-center rounded-xl bg-ui-page-alt text-ui-text disabled:opacity-40"><Pause className="h-4 w-4" /></button>
-          <button data-testid="pos-action-send-kitchen" aria-label={isAr ? 'إرسال للمطبخ' : 'Send to kitchen'} title={isAr ? 'إرسال للمطبخ' : 'Send to kitchen'} onClick={onSendKitchen} disabled={empty || kitchenSending || allSent} className="flex h-10 items-center justify-center rounded-xl bg-ui-page-alt text-ui-text disabled:opacity-40"><ChefHat className="h-4 w-4" /></button>
-          <button data-testid="pos-action-print" aria-label={isAr ? 'طباعة (F9)' : 'Print (F9)'} title={isAr ? 'طباعة (F9)' : 'Print (F9)'} onClick={onPrint} disabled={empty} className="flex h-10 items-center justify-center rounded-xl bg-ui-page-alt text-ui-text disabled:opacity-40"><Printer className="h-4 w-4" /></button>
-          <button data-testid="pos-action-pay" aria-label={isAr ? 'الدفع (F8)' : 'Pay (F8)'} onClick={onPay} disabled={empty || completing} className="flex h-10 items-center justify-center gap-1 rounded-xl bg-ui-success px-2 text-[10px] font-black text-ui-primary-fg shadow-ui-sm disabled:opacity-40"><Banknote className="h-4 w-4" /><span className="hidden xl:inline">{isAr ? 'دفع' : 'Pay'}</span></button>
-        </div>
-
-        {showDiscount && (
-          <div data-testid="pos-discount-editor" className="rounded-xl border border-ui-border bg-ui-page-alt p-2">
-            <div className="flex gap-2">
-              <button data-testid="pos-discount-percent" type="button" onClick={() => onDiscountTypeChange('percent')} className={`flex-1 rounded-lg p-2 text-xs font-black ${discountType === 'percent' ? 'bg-ui-primary text-ui-primary-fg' : 'bg-ui-surface text-ui-muted'}`}>%</button>
-              <button data-testid="pos-discount-amount" type="button" onClick={() => onDiscountTypeChange('amount')} className={`flex-1 rounded-lg p-2 text-xs font-black ${discountType === 'amount' ? 'bg-ui-primary text-ui-primary-fg' : 'bg-ui-surface text-ui-muted'}`}>{currency}</button>
-              <input data-testid="pos-discount-input" aria-label={isAr ? 'قيمة الخصم' : 'Discount value'} type="number" min={0} value={discountAmount || ''} onChange={(event) => onDiscountAmountChange(parseFloat(event.target.value) || 0)} className="w-24 rounded-lg border border-ui-border bg-ui-surface p-2 text-center text-xs font-black text-ui-text" />
-            </div>
-          </div>
-        )}
       </div>
 
       <TransferItemModal
