@@ -14,6 +14,8 @@ import { Modal } from '@/components/Modal';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { logAudit } from '@/lib/audit';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
+import { notifyBranchesChanged } from '@/hooks/useBranches';
+import { getActiveBranchId, setActiveBranchId } from '@/lib/activeBranch';
 import type { Branch } from '@/lib/types';
 
 export function BranchesPage() {
@@ -70,6 +72,7 @@ export function BranchesPage() {
         if (error || !data?.success) { show(error?.message || data?.error || 'Error', 'error'); return; }
         await logAudit('create', 'branches');
       }
+      notifyBranchesChanged();
       show(t('saveSuccess'), 'success');
       setModalOpen(false);
       reloadBranches();
@@ -80,13 +83,16 @@ export function BranchesPage() {
 
   const remove = async () => {
     if (!deleteId) return;
-    const { data, error } = await branchesApi.remove({ p_branch_id: deleteId });
+    const removedId = deleteId;
+    const { data, error } = await branchesApi.remove({ p_branch_id: removedId });
     if (error || !data?.success) {
       const code = data?.error;
       if (code === 'CANNOT_DELETE_CURRENT_BRANCH') show(isAr ? 'لا يمكن حذف الفرع المرتبط بحسابك الحالي. انقل حساب المالك إلى فرع آخر أولًا.' : 'You cannot delete your current branch. Move the owner account to another branch first.', 'error');
       else if (code === 'PERMISSION_DENIED') show(isAr ? 'الحذف النهائي متاح للمالك أو مدير النظام فقط.' : 'Permanent deletion is limited to Owner or Super Admin.', 'error');
       else show(error?.message || code || 'Error', 'error');
     } else {
+      if (getActiveBranchId() === removedId) setActiveBranchId(null);
+      notifyBranchesChanged();
       show(t('deleteSuccess'), 'success');
     }
     setDeleteId(null);
