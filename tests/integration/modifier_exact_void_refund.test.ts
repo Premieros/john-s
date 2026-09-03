@@ -86,13 +86,17 @@ describe('modifier exact-line lifecycle contracts', () => {
     expect(def).toContain("v_effect.target_type = 'product'");
   });
 
-  it('canonical process_refund passes the concrete sale item id to the line-aware helper', async () => {
+  it('canonical process_refund delegates to the preserved exact-line core', async () => {
     if (!canRun) return;
     const result = await client.query(`
-      SELECT pg_get_functiondef('public.process_refund(uuid,jsonb,text)'::regprocedure) AS def
+      SELECT
+        pg_get_functiondef('public.process_refund(uuid,jsonb,text)'::regprocedure) AS wrapper_def,
+        pg_get_functiondef('public._process_refund_single_core(uuid,jsonb,text)'::regprocedure) AS core_def
     `);
-    const def = String(result.rows[0].def);
-    expect(def).toContain('_restore_refund_hybrid_inventory');
-    expect(def).toContain('v_item.id');
+    const wrapperDef = String(result.rows[0].wrapper_def);
+    const coreDef = String(result.rows[0].core_def);
+    expect(wrapperDef).toContain('_process_refund_single_core');
+    expect(coreDef).toContain('_restore_refund_hybrid_inventory');
+    expect(coreDef).toContain('v_item.id');
   });
 });
