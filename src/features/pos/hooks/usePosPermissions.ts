@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
-import { useAuth } from '@/context/AuthContext';
-import { isAdminRole } from '@/lib/permissions';
+import { useCan } from '@/lib/permissions';
 
 export interface PosPermissions {
   canViewPos: boolean;
@@ -11,44 +10,47 @@ export interface PosPermissions {
   canDiscount: boolean;
   canChangePrice: boolean;
   canHoldOrder: boolean;
+  canSendKitchen: boolean;
+  canViewKitchen: boolean;
+  canPrintKitchen: boolean;
+  canPay: boolean;
   canCancelOrder: boolean;
   canRefund: boolean;
+  canTransferOrder: boolean;
+  canSplitOrder: boolean;
   canCloseShift: boolean;
   canPrint: boolean;
   canChangeBranch: boolean;
+  canManageCustomer: boolean;
 }
 
+/**
+ * POS permissions are resolved from the DB-backed roles.permissions map through
+ * useCan(). Never infer operational access from hard-coded role names here.
+ */
 export function usePosPermissions(): PosPermissions {
-  const { user } = useAuth();
-  const role = user?.role || 'cashier';
-  const isAdmin = isAdminRole(role);
+  const can = useCan();
 
-  return useMemo<PosPermissions>(() => {
-    if (isAdmin) {
-      return {
-        canViewPos: true, canCreateOrder: true, canEditOrder: true, canDeleteItem: true,
-        canApplyDiscount: true, canDiscount: true, canChangePrice: true, canHoldOrder: true,
-        canCancelOrder: true, canRefund: true, canCloseShift: true, canPrint: true, canChangeBranch: true,
-      };
-    }
-
-    const isCashier = role === 'cashier';
-    const isManager = role === 'branch_manager';
-
-    return {
-      canViewPos: isCashier || isManager,
-      canCreateOrder: isCashier || isManager,
-      canEditOrder: isCashier || isManager,
-      canDeleteItem: isManager,
-      canApplyDiscount: isManager,
-      canDiscount: isManager,
-      canChangePrice: isManager,
-      canHoldOrder: isCashier || isManager,
-      canCancelOrder: isManager,
-      canRefund: isManager,
-      canCloseShift: isCashier || isManager,
-      canPrint: true,
-      canChangeBranch: isManager,
-    };
-  }, [isAdmin, role]);
+  return useMemo<PosPermissions>(() => ({
+    canViewPos: can('pos.sell'),
+    canCreateOrder: can('pos.sell'),
+    canEditOrder: can('pos.sell'),
+    canDeleteItem: can('pos.void'),
+    canApplyDiscount: can('pos.discount'),
+    canDiscount: can('pos.discount'),
+    canChangePrice: can('pos.change_price'),
+    canHoldOrder: can('pos.hold'),
+    canSendKitchen: can('pos.send_kitchen'),
+    canViewKitchen: can('pos.kds_view'),
+    canPrintKitchen: can('pos.print_kitchen'),
+    canPay: can('pos.pay'),
+    canCancelOrder: can('pos.cancel_order'),
+    canRefund: can('pos.refund'),
+    canTransferOrder: can('pos.transfer_order'),
+    canSplitOrder: can('pos.split_order'),
+    canCloseShift: can('shifts.close'),
+    canPrint: can('sales.print'),
+    canChangeBranch: can('pos.change_branch'),
+    canManageCustomer: can('customers.manage'),
+  }), [can]);
 }
