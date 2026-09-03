@@ -84,13 +84,13 @@ test.describe('POS action-level', () => {
     await posLink.click();
     await expect(page).toHaveURL(/#\/pos$/);
     await page.getByTestId('pos-action-new-order').click();
-    await expect(page.getByTestId('pos-landing-actions')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('pos-tables-landing-actions')).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId(`pos-table-${TABLE_ID}`)).toBeVisible({ timeout: 10000 });
     await expect(page.locator('body')).not.toHaveText(/Error Loading Data|خطأ في تحميل البيانات/i);
   });
 
   test('starts quick pickup, adds product, changes quantity, and opens payment', async ({ page }) => {
-    await page.getByTestId('pos-start-quick').click();
+    await page.getByTestId('pos-start-quick-order').click();
     await addProduct(page);
     await page.getByTestId(`pos-cart-qty-increase-${PRODUCT_ID}`).click();
     await expect(page.getByTestId(`pos-cart-qty-${PRODUCT_ID}`)).toHaveText('2');
@@ -102,11 +102,11 @@ test.describe('POS action-level', () => {
   test('vacant table starts a dine-in order directly from the landing floor', async ({ page }) => {
     await page.getByTestId(`pos-table-${TABLE_ID}`).click();
     await expect(page.getByText('E2E Burger', { exact: true }).first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByTestId('pos-landing-actions')).toBeHidden();
+    await expect(page.getByTestId('pos-tables-landing-actions')).toBeHidden();
   });
 
   test('drive-thru captures plate and starts the order action', async ({ page }) => {
-    await page.getByTestId('pos-start-drive-thru').click();
+    await page.getByTestId('pos-tables-start-drive-thru').click();
     await page.getByTestId('pos-drive-thru-plate').fill('ABC-1234');
     await page.getByTestId('pos-drive-thru-customer').fill('Drive Customer');
     await page.getByTestId('pos-drive-thru-people').fill('2');
@@ -116,7 +116,7 @@ test.describe('POS action-level', () => {
   });
 
   test('delivery captures phone and address and starts the order action', async ({ page }) => {
-    await page.getByTestId('pos-start-delivery').click();
+    await page.getByTestId('pos-tables-start-delivery').click();
     await page.getByTestId('pos-delivery-phone').fill('01000000000');
     await page.getByTestId('pos-delivery-address').fill('E2E Address');
     await page.getByTestId('pos-delivery-notes').fill('Leave at door');
@@ -126,7 +126,7 @@ test.describe('POS action-level', () => {
   });
 
   test('discount action changes the order total', async ({ page }) => {
-    await page.getByTestId('pos-start-quick').click();
+    await page.getByTestId('pos-start-quick-order').click();
     await addProduct(page);
     await expect(page.getByTestId('pos-total-value')).toContainText('100');
     await page.getByTestId('pos-action-discount').click();
@@ -138,7 +138,7 @@ test.describe('POS action-level', () => {
   });
 
   test('hold action persists the order and changes it to held', async ({ page }) => {
-    await page.getByTestId('pos-start-quick').click();
+    await page.getByTestId('pos-start-quick-order').click();
     await addProduct(page);
     await page.getByTestId('pos-action-hold').click();
     await expect(page.getByTestId('pos-action-hold')).toBeVisible();
@@ -149,7 +149,7 @@ test.describe('POS action-level', () => {
   });
 
   test('send to kitchen sends the selected item and shows the kitchen confirmation', async ({ page }) => {
-    await page.getByTestId('pos-start-quick').click();
+    await page.getByTestId('pos-start-quick-order').click();
     await addProduct(page);
     await page.getByTestId('pos-action-send-kitchen').click();
     await expect(page.getByText(/إرسال للمطبخ \(1\)|Sent to kitchen \(1\)/i)).toBeVisible({ timeout: 10000 });
@@ -158,7 +158,7 @@ test.describe('POS action-level', () => {
   });
 
   test('complete sale executes payment confirmation and process_sale', async ({ page }) => {
-    await page.getByTestId('pos-start-quick').click();
+    await page.getByTestId('pos-start-quick-order').click();
     await addProduct(page);
     await page.getByTestId('pos-action-pay').click();
     await expect(page.getByTestId('pos-payment-method-cash')).toBeVisible({ timeout: 10000 });
@@ -172,17 +172,17 @@ test.describe('POS action-level', () => {
   });
 
   test('landing actions expose tables-first direct flows and back navigation', async ({ page }) => {
-    await expect(page.getByTestId('pos-landing-actions')).toBeVisible();
-    await expect(page.getByTestId('pos-start-quick')).toBeVisible();
-    await expect(page.getByTestId('pos-start-drive-thru')).toBeVisible();
-    await expect(page.getByTestId('pos-start-delivery')).toBeVisible();
-    await expect(page.getByTestId('pos-start-active-orders')).toBeVisible();
+    await expect(page.getByTestId('pos-tables-landing-actions')).toBeVisible();
+    await expect(page.getByTestId('pos-start-quick-order')).toBeVisible();
+    await expect(page.getByTestId('pos-tables-start-drive-thru')).toBeVisible();
+    await expect(page.getByTestId('pos-tables-start-delivery')).toBeVisible();
+    await expect(page.getByTestId('pos-tables-active-orders')).toBeVisible();
     await expect(page.getByTestId(`pos-table-${TABLE_ID}`)).toBeVisible();
-    await page.getByTestId('pos-start-drive-thru').click();
+    await page.getByTestId('pos-tables-start-drive-thru').click();
     await expect(page.getByText(/أدخل رقم اللوحة لبدء الطلب|Enter the plate to start/i)).toBeVisible();
     await expect(page.getByTestId('pos-drive-thru-plate')).toBeVisible();
     await page.getByRole('button', { name: /رجوع|Back/i }).click();
-    await expect(page.getByTestId('pos-landing-actions')).toBeVisible();
+    await expect(page.getByTestId('pos-tables-landing-actions')).toBeVisible();
     await expect(page.getByTestId(`pos-table-${TABLE_ID}`)).toBeVisible();
   });
 });
