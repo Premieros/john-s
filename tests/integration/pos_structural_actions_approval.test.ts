@@ -6,6 +6,19 @@ import { canImpersonate, runAs, runAsPersist, seedRlsFixture, type RlsIds } from
 const dbUrl = getDbUrl();
 const skip = !dbUrl;
 
+type ActionResult = {
+  success?: boolean;
+  error?: string;
+  action?: string;
+  status?: string;
+  request_id?: string;
+  approval_request_id?: string;
+  source_order_id?: string;
+  target_order_id?: string;
+  inventory_changed?: boolean;
+  kds_changed?: boolean;
+};
+
 describe.skipIf(skip)('POS structural actions manager approval', () => {
   let client: pg.Client;
   let ids: RlsIds;
@@ -98,13 +111,14 @@ describe.skipIf(skip)('POS structural actions manager approval', () => {
       [sourceOrder, payload],
     );
     expect(requested.error).toBeUndefined();
-    expect(requested.rows[0].result).toMatchObject({
+    const requestedResult = requested.rows[0].result as ActionResult;
+    expect(requestedResult).toMatchObject({
       success: false,
       error: 'MANAGER_APPROVAL_REQUIRED',
       action: 'split_order',
       status: 'pending',
     });
-    const requestId = String(requested.rows[0].result.request_id);
+    const requestId = String(requestedResult.request_id || '');
     expect(requestId).toBeTruthy();
 
     const stillSource = await client.query<{ quantity: string }>(
@@ -129,7 +143,8 @@ describe.skipIf(skip)('POS structural actions manager approval', () => {
       [sourceOrder, payload],
     );
     expect(executed.error).toBeUndefined();
-    expect(executed.rows[0].result).toMatchObject({
+    const executedResult = executed.rows[0].result as ActionResult;
+    expect(executedResult).toMatchObject({
       success: true,
       action: 'split_order',
       source_order_id: sourceOrder,
@@ -138,7 +153,7 @@ describe.skipIf(skip)('POS structural actions manager approval', () => {
       approval_request_id: requestId,
     });
 
-    const targetOrderId = String(executed.rows[0].result.target_order_id);
+    const targetOrderId = String(executedResult.target_order_id || '');
     expect(targetOrderId).toBeTruthy();
     expect(targetOrderId).not.toBe(sourceOrder);
 
