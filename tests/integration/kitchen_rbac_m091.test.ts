@@ -25,6 +25,20 @@ describe.skipIf(skip)('Kitchen M091/M092 RBAC + branch isolation', () => {
     }
   }
 
+  async function expectDbError(fn: () => Promise<unknown>): Promise<void> {
+    const sp = `sp_${randomUUID().replaceAll('-', '')}`;
+    await client.query(`SAVEPOINT ${sp}`);
+    let threw = false;
+    try {
+      await fn();
+    } catch {
+      threw = true;
+    }
+    await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+    await client.query(`RELEASE SAVEPOINT ${sp}`);
+    expect(threw).toBe(true);
+  }
+
   beforeAll(async () => {
     client = openDb(dbUrl!);
     await client.connect();
@@ -50,34 +64,40 @@ describe.skipIf(skip)('Kitchen M091/M092 RBAC + branch isolation', () => {
     await client.end().catch(() => {});
   });
 
-  it('production_manager can query get_kitchen_queue (branch isolation enforced at app layer)', async () => {
-    const rows = await asUser(productionUser, async () => {
-      const r = await client.query<{ order_id: string }>(
+  it('production_manager can query own-branch KDS and cannot read another branch', async () => {
+    await asUser(productionUser, async () => {
+      const own = await client.query<{ order_id: string }>(
+        `SELECT order_id FROM public.get_kitchen_queue(NULL, $1)`, [branchA],
+      );
+      expect(own.rows.some(r => r.order_id === orderA)).toBe(true);
+
+      const other = await client.query<{ order_id: string }>(
         `SELECT order_id FROM public.get_kitchen_queue(NULL, $1)`, [branchB],
       );
-      return r.rows;
+      expect(other.rowCount).toBe(0);
     });
-    expect(rows.length).toBeGreaterThanOrEqual(0);
   });
 
-  it('production_manager can call route_to_station (branch isolation enforced at app layer)', async () => {
+  it('production_manager can route own-branch orders but not cross-branch orders', async () => {
     await asUser(productionUser, async () => {
-      const r = await client.query(`SELECT public.route_to_station($1, 'grill')`, [orderB]);
-      expect(r.rowCount).toBe(1);
+      await client.query(`SELECT public.route_to_station($1, 'grill')`, [orderA]);
+      const own = await client.query<{ station: string }>(`SELECT station FROM public.orders WHERE id = $1`, [orderA]);
+      expect(own.rows[0].station).toBe('grill');
+
+      await expectDbError(() => client.query(`SELECT public.route_to_station($1, 'grill')`, [orderB]));
     });
   });
 
-  it('cashier can call get_kitchen_queue (RBAC enforced at app layer, not DB)', async () => {
+  it('cashier cannot query KDS without pos.kds_view', async () => {
     await asUser(cashierUser, async () => {
-      const r = await client.query(`SELECT * FROM public.get_kitchen_queue(NULL, NULL)`);
+      const r = await client.query(`SELECT * FROM public.get_kitchen_queue(NULL, $1)`, [branchA]);
       expect(r.rowCount).toBe(0);
     });
   });
 
-  it('cashier can call route_to_station (RBAC enforced at app layer, not DB)', async () => {
+  it('cashier cannot route kitchen stations without pos.kds_view', async () => {
     await asUser(cashierUser, async () => {
-      const r = await client.query(`SELECT public.route_to_station($1, 'grill')`, [orderA]);
-      expect(r.rowCount).toBe(1);
+      await expectDbError(() => client.query(`SELECT public.route_to_station($1, 'grill')`, [orderA]));
     });
   });
 });
