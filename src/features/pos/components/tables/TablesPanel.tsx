@@ -1,35 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Grid3x3, MapPin, X, Users, Banknote, UtensilsCrossed, Plus, Settings2 } from 'lucide-react';
-import { supabase } from '@/api';
+import { useMemo, useState } from 'react';
+import { Banknote, Search, UtensilsCrossed, Users, X } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { formatCurrency } from '@/lib/format';
-import type { DiningArea, DiningTable, Order } from '@/lib/types';
-import { STATUS_STYLES } from '../../utils/orderTypes';
-import { useCan } from '@/lib/permissions';
+import type { DiningTable, Order } from '@/lib/types';
 
-interface TablePos { table: DiningTable; left: number; top: number; width: number; height: number; }
-
-function resolvePositions(tablesInArea: DiningTable[]): TablePos[] {
-  const used = new Set<string>();
-  return tablesInArea.map((tb) => {
-    const l = tb.layout || { x: 0, y: 0, w: 120, h: 80 };
-    let left = l.x || 0;
-    const top = l.y || 0;
-    let guard = 0;
-    while (used.has(`${left},${top}`) && guard < 200) { left += 160; guard += 1; }
-    used.add(`${left},${top}`);
-    return {
-      table: tb,
-      left,
-      top,
-      width: Math.max(70, l.w || 120),
-      height: Math.max(46, l.h || 80),
-    };
-  });
-}
+type TableFilter = 'all' | 'available' | 'occupied';
 
 interface TablesPanelProps {
   open: boolean;
@@ -43,192 +20,145 @@ interface TablesPanelProps {
 }
 
 export function TablesPanel({ open, onClose, tables, ordersByTable, currency, onResume, onPay, onStart }: TablesPanelProps) {
-  const { t, lang } = useLanguage();
+  const { lang } = useLanguage();
   const isAr = lang === 'ar';
-  const navigate = useNavigate();
-  const can = useCan();
-  const canManage = can('floor_plan.manage');
-
-  const [areas, setAreas] = useState<DiningArea[]>([]);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<TableFilter>('all');
   const [selected, setSelected] = useState<DiningTable | null>(null);
   const [guests, setGuests] = useState(2);
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    supabase.from('dining_areas').select('*').order('sort_order').then(({ data }) => {
-      if (!cancelled) setAreas((data as DiningArea[]) || []);
+  const occupiedCount = useMemo(
+    () => tables.filter((table) => (ordersByTable[table.id] || []).length > 0 || table.status === 'occupied').length,
+    [tables, ordersByTable],
+  );
+  const availableCount = Math.max(0, tables.length - occupiedCount);
+
+  const visibleTables = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return tables.filter((table) => {
+      const orders = ordersByTable[table.id] || [];
+      const occupied = orders.length > 0 || table.status === 'occupied';
+      if (filter === 'available' && occupied) return false;
+      if (filter === 'occupied' && !occupied) return false;
+      if (!q) return true;
+      return table.name.toLowerCase().includes(q) || orders.some((order) => order.order_number?.toLowerCase().includes(q));
     });
-    return () => { cancelled = true; };
-  }, [open]);
+  }, [tables, ordersByTable, search, filter]);
 
-  useEffect(() => {
-    if (!selected) return;
-    setGuests(selected.capacity || 2);
-  }, [selected]);
-
-  const occupiedCount = useMemo(() => tables.filter((tb) => tb.status === 'occupied').length, [tables]);
-
-  const renderCanvas = (tablesInArea: DiningTable[]) => {
-    const positions = resolvePositions(tablesInArea);
-    const maxW = positions.reduce((m, p) => Math.max(m, p.left + p.width), 0) + 20;
-    const maxH = positions.reduce((m, p) => Math.max(m, p.top + p.height), 0) + 20;
-    return (
-      <div className="overflow-auto rounded-xl bg-ui-page border border-ui-border">
-        <div className="relative" style={{ width: Math.max(maxW, 900), height: Math.max(maxH, 300) }}>
-          {positions.map(({ table, left, top, width, height }) => {
-            const st = STATUS_STYLES[table.status] || STATUS_STYLES.vacant;
-            const order = (ordersByTable[table.id] || [])[0];
-            return (
-              <button
-                key={table.id}
-                onClick={() => setSelected(table)}
-                className={`absolute rounded-xl border-2 shadow-sm p-2 flex flex-col items-center justify-center transition-all hover:shadow-card-hover hover:-translate-y-0.5 active:scale-[0.98] ${st.card}`}
-                style={{ left, top, width, height }}
-              >
-                <span className="text-sm font-bold text-ui-text truncate max-w-full">{table.name}</span>
-                <span className="flex items-center gap-1 text-[10px] text-ui-muted">
-                  <Users className="w-3 h-3" /> {table.capacity}
-                </span>
-                {order && (
-                  <span className={`mt-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold truncate max-w-full ${st.badge}`}>
-                    {order.order_number} · {formatCurrency(order.total, currency, lang)}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
+  const chooseTable = (table: DiningTable) => {
+    setSelected(table);
+    setGuests(Math.max(1, table.capacity || 2));
   };
 
-  const areaGroups = areas.map((a) => ({ area: a, tables: tables.filter((tb) => tb.area_id === a.id) }));
-  const loose = tables.filter((tb) => !tb.area_id);
+  if (!open) return null;
+
+  const filters: Array<{ id: TableFilter; label: string; count: number }> = [
+    { id: 'all', label: isAr ? 'الكل' : 'All', count: tables.length },
+    { id: 'available', label: isAr ? 'متاحة' : 'Available', count: availableCount },
+    { id: 'occupied', label: isAr ? 'مشغولة' : 'Occupied', count: occupiedCount },
+  ];
 
   return (
     <>
-      {open && <div className="fixed inset-0 top-16 z-40 bg-ui-text/40 backdrop-blur-[1px]" onClick={onClose} />}
-      <aside
-        className={`fixed top-16 bottom-0 z-50 w-[380px] max-w-[92vw] bg-ui-surface border-s border-ui-border shadow-ui-xl transition-transform duration-300 flex flex-col end-0 ${
-          open ? 'translate-x-0' : isAr ? '-translate-x-full' : 'translate-x-full'
-        }`}
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-ui-border flex-shrink-0">
-          <h2 className="text-sm font-bold text-ui-text flex items-center gap-2">
-            <Grid3x3 className="w-4 h-4 text-ui-success" />
-            {t('tables')}
-            <span className="px-2 py-0.5 rounded-full bg-ui-success/10 text-ui-success text-[11px] font-bold">
-              {occupiedCount} / {tables.length}
-            </span>
-          </h2>
-          <div className="flex items-center gap-2">
-            {canManage && (
-              <button
-                onClick={() => navigate('/floor-plan')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-ui-page-alt text-ui-muted text-xs font-bold hover:bg-ui-page-alt transition-all active:scale-95"
-              >
-                <Settings2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{t('manageTables')}</span>
-              </button>
-            )}
-            <button onClick={onClose} className="p-2 rounded-lg text-ui-muted hover:bg-ui-page-alt transition-colors">
-              <X className="w-5 h-5" />
+      <div className="fixed inset-0 top-16 z-40 bg-ui-text/40 backdrop-blur-[1px]" onClick={onClose} />
+      <aside data-testid="pos-tables-drawer" className="fixed bottom-0 end-0 top-16 z-50 flex w-[430px] max-w-[96vw] flex-col border-s border-ui-border bg-ui-surface shadow-ui-xl">
+        <div className="shrink-0 border-b border-ui-border p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-black text-ui-text">{isAr ? 'الطاولات' : 'Tables'}</h2>
+              <p className="mt-0.5 text-[10px] font-bold text-ui-subtle">
+                {isAr ? 'نفس واجهة الطاولات في شاشة البيع' : 'The same table workspace used by POS'}
+              </p>
+            </div>
+            <button type="button" onClick={onClose} aria-label={isAr ? 'إغلاق' : 'Close'} className="rounded-lg border border-ui-border bg-ui-page p-2 text-ui-muted hover:text-ui-text">
+              <X className="h-4 w-4" />
             </button>
+          </div>
+
+          <div className="relative mt-3">
+            <Search className="absolute start-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ui-muted" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={isAr ? 'ابحث برقم الطاولة أو الطلب...' : 'Search table or order...'} className="h-10 w-full rounded-xl border border-ui-border bg-ui-page ps-9 pe-3 text-xs font-bold text-ui-text outline-none focus:border-ui-primary" />
+          </div>
+
+          <div className="mt-2 grid grid-cols-3 gap-1.5" data-testid="pos-table-drawer-filters">
+            {filters.map((item) => (
+              <button key={item.id} type="button" onClick={() => setFilter(item.id)} className={`rounded-lg border px-2 py-2 text-[10px] font-black transition ${filter === item.id ? 'border-ui-primary bg-ui-primary text-ui-primary-fg' : 'border-ui-border bg-ui-page text-ui-muted hover:border-ui-primary'}`}>
+                {item.label} <span className="ms-1 opacity-70">{item.count}</span>
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {areaGroups.length === 0 && loose.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-ui-subtle">
-              <Grid3x3 className="w-16 h-16 mb-4 opacity-30" />
-              <p className="text-lg font-medium">{isAr ? 'لا توجد طاولات بعد' : 'No tables yet'}</p>
-              {canManage && (
-                <Button className="mt-4" onClick={() => navigate('/floor-plan')}>
-                  <Plus className="w-4 h-4" /> {t('manageTables')}
-                </Button>
-              )}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-3">
+          {visibleTables.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {visibleTables.map((table) => {
+                const order = (ordersByTable[table.id] || [])[0];
+                const occupied = !!order || table.status === 'occupied';
+                return (
+                  <button
+                    key={table.id}
+                    type="button"
+                    data-testid={`pos-table-drawer-${table.id}`}
+                    onClick={() => chooseTable(table)}
+                    className={`min-h-24 rounded-2xl border p-3 text-start shadow-ui-sm transition hover:-translate-y-0.5 ${occupied ? 'border-ui-warning/30 bg-ui-warning/5' : 'border-ui-border bg-ui-surface hover:border-ui-primary'}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="truncate text-xs font-black text-ui-text">{table.name}</span>
+                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${occupied ? 'bg-ui-warning' : 'bg-ui-success'}`} />
+                    </div>
+                    <p className="mt-2 flex items-center gap-1 text-[10px] font-bold text-ui-subtle"><Users className="h-3 w-3" /> {table.capacity}</p>
+                    {order ? (
+                      <div className="mt-2 space-y-0.5">
+                        <p className="truncate text-[10px] font-black text-ui-text">#{order.order_number}</p>
+                        <p className="truncate text-[10px] font-black text-ui-accent">{formatCurrency(order.total, currency, lang)}</p>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-[10px] font-black text-ui-success">{isAr ? 'متاحة' : 'Available'}</p>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           ) : (
-            <>
-              {areaGroups.map(({ area, tables: areaTables }) =>
-                areaTables.length === 0 ? null : (
-                  <div key={area.id} className="space-y-2">
-                    <h3 className="text-xs font-black text-ui-muted flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-ui-accent" />
-                      {area.name}
-                      <span className="text-[10px] font-normal text-ui-subtle">({areaTables.length})</span>
-                    </h3>
-                    {renderCanvas(areaTables)}
-                  </div>
-                )
-              )}
-              {loose.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="text-xs font-black text-ui-muted flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-ui-subtle" />
-                    {isAr ? 'طاولات بدون منطقة' : 'Tables without area'}
-                  </h3>
-                  {renderCanvas(loose)}
-                </div>
-              )}
-            </>
+            <div className="py-12 text-center text-xs font-bold text-ui-muted">{isAr ? 'لا توجد طاولات مطابقة' : 'No matching tables'}</div>
           )}
         </div>
       </aside>
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={selected?.name || ''} size="md">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={selected?.name || ''} size="sm">
         {selected && (() => {
-          const st = STATUS_STYLES[selected.status] || STATUS_STYLES.vacant;
           const tableOrders = ordersByTable[selected.id] || [];
-          const area = areas.find((a) => a.id === selected.area_id);
-          return (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <span className={`w-2.5 h-2.5 rounded-full ${st.dot}`} />
-                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${st.badge}`}>{t(st.label)}</span>
-                {area && <span className="text-xs text-ui-subtle">{area.name}</span>}
-                <span className="text-xs text-ui-subtle flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {selected.capacity}</span>
-              </div>
-
-              {tableOrders.length > 0 ? (
-                <div className="space-y-2">
-                  {tableOrders.map((order) => (
-                    <div key={order.id} className="rounded-xl border border-ui-border bg-ui-page-alt p-3 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-bold text-ui-text">{order.order_number}</span>
-                        <span className="text-sm font-bold text-ui-accent">{formatCurrency(order.total, currency, lang)}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => { setSelected(null); onResume(order); }}>
-                          <UtensilsCrossed className="w-3.5 h-3.5" /> {t('resumeOrder')}
-                        </Button>
-                        <Button size="sm" variant="success" onClick={() => { setSelected(null); onPay(order); }}>
-                          <Banknote className="w-3.5 h-3.5" /> {t('payOrder')}
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : selected.status === 'vacant' || selected.status === 'reserved' ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <label className="text-sm font-medium text-ui-muted">{t('guestCount')}:</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={guests || ''}
-                      onChange={(e) => setGuests(parseInt(e.target.value) || 1)}
-                      className="w-24 px-3 py-2 rounded-xl border border-ui-border bg-ui-surface-raised text-sm font-bold text-ui-text focus:ring-2 focus:ring-ui-ring"
-                    />
+          const order = tableOrders[0];
+          if (order) {
+            return (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-ui-border bg-ui-page-alt p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-black text-ui-text">#{order.order_number}</span>
+                    <span className="text-sm font-black text-ui-accent">{formatCurrency(order.total, currency, lang)}</span>
                   </div>
-                  <Button size="lg" className="w-full" onClick={() => { setSelected(null); onStart(selected, Math.max(1, guests)); }}>
-                    <UtensilsCrossed className="w-5 h-5" /> {t('openOrder')}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" onClick={() => { setSelected(null); onClose(); onResume(order); }}>
+                    <UtensilsCrossed className="h-4 w-4" /> {isAr ? 'فتح الطلب' : 'Open order'}
+                  </Button>
+                  <Button variant="success" onClick={() => { setSelected(null); onClose(); onPay(order); }}>
+                    <Banknote className="h-4 w-4" /> {isAr ? 'الدفع' : 'Pay'}
                   </Button>
                 </div>
-              ) : (
-                <p className="text-sm text-ui-muted">{isAr ? 'هذه الطاولة غير متاحة حالياً.' : 'This table is not available right now.'}</p>
-              )}
+              </div>
+            );
+          }
+          return (
+            <div className="space-y-3">
+              <label className="flex items-center justify-between gap-3 text-sm font-bold text-ui-muted">
+                <span>{isAr ? 'عدد الأفراد' : 'Guests'}</span>
+                <input type="number" min={1} value={guests} onChange={(event) => setGuests(Math.max(1, Number(event.target.value) || 1))} className="w-24 rounded-xl border border-ui-border bg-ui-surface px-3 py-2 text-center font-black text-ui-text" />
+              </label>
+              <Button className="w-full" onClick={() => { setSelected(null); onClose(); onStart(selected, guests); }}>
+                <UtensilsCrossed className="h-4 w-4" /> {isAr ? 'فتح طلب على الطاولة' : 'Start table order'}
+              </Button>
             </div>
           );
         })()}
