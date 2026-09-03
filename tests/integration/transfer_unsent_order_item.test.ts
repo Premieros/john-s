@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { getDbUrl, openDb } from './db';
-import { canImpersonate, runAs, seedRlsFixture, type RlsIds } from './rls';
+import { canImpersonate, runAs, runAsPersist, seedRlsFixture, type RlsIds } from './rls';
 
 const dbUrl = getDbUrl();
 const skip = !dbUrl;
@@ -17,6 +17,7 @@ describe.skipIf(skip)('transfer unsent order item between tables', () => {
   let targetOrder = '';
   let movableItem = '';
   let sentItem = '';
+  let crossItem = '';
 
   beforeAll(async () => {
     client = openDb(dbUrl!);
@@ -60,12 +61,14 @@ describe.skipIf(skip)('transfer unsent order item between tables', () => {
       `INSERT INTO public.order_items(order_id, product_id, quantity, unit_price, total, notes)
        VALUES
          ($1::uuid, $2::uuid, 1, 25, 25, 'movable'),
-         ($1::uuid, $2::uuid, 1, 25, 25, 'sent-line')
+         ($1::uuid, $2::uuid, 1, 25, 25, 'sent-line'),
+         ($1::uuid, $2::uuid, 1, 25, 25, 'cross-line')
        RETURNING id, notes`,
       [sourceOrder, productId],
     );
     movableItem = items.rows.find((row) => row.notes === 'movable')!.id;
     sentItem = items.rows.find((row) => row.notes === 'sent-line')!.id;
+    crossItem = items.rows.find((row) => row.notes === 'cross-line')!.id;
 
     await client.query(
       `INSERT INTO public.order_kitchen_sends(branch_id, order_id, order_item_id, sent_quantity)
@@ -91,7 +94,7 @@ describe.skipIf(skip)('transfer unsent order item between tables', () => {
     const beforeSends = await client.query<{ count: string }>('SELECT count(*)::text AS count FROM public.order_kitchen_sends');
     const beforeLedger = await client.query<{ count: string }>('SELECT count(*)::text AS count FROM public.inventory_ledger');
 
-    const result = await runAs(
+    const result = await runAsPersist(
       client,
       ids.users.branch_manager,
       'SELECT public.transfer_order_item_to_table($1::uuid, $2::uuid, $3::uuid) AS result',
@@ -138,10 +141,12 @@ describe.skipIf(skip)('transfer unsent order item between tables', () => {
       client,
       ids.users.branch_manager,
       'SELECT public.transfer_order_item_to_table($1::uuid, $2::uuid, $3::uuid) AS result',
-      [sourceOrder, sentItem, crossBranchTable],
+      [sourceOrder, crossItem, crossBranchTable],
     );
     expect(result.error).toBeUndefined();
-    // The sent-line guard executes first and must still prevent any mutation.
-    expect(result.rows[0].result).toMatchObject({ success: false, error: 'ITEM_ALREADY_SENT' });
+    expect(result.rows[0].result).toMatchObject({ success: false, error: 'TARGET_TABLE_NOT_FOUND' });
+
+    const row = await client.query<{ order_id: string }>('SELECT order_id FROM public.order_items WHERE id = $1::uuid', [crossItem]);
+    expect(row.rows[0].order_id).toBe(sourceOrder);
   });
 });
