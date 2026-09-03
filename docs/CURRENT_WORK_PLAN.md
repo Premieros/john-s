@@ -9,8 +9,8 @@
 - Repository: `Premieros/john-s`
 - Branch: `main`
 - Supabase Production: `azzdesuowpdcoflmyezn`
-- آخر HEAD وظيفي أخضر كامل قبل مراجعة الواجهة الحالية: `d9317a68fa22360ebb9c8243788e0e762ab90eb8`
-- Verify: run `33682897361` / #320 ✅
+- آخر HEAD وظيفي أخضر قبل commit هذا السجل: `a0687ff0aba83486f4f6bbf16feb557a7f35b202`
+- Verify: run `33723080777` / #339 ✅
   - lint ✅
   - typecheck ✅
   - test suites typecheck ✅
@@ -19,9 +19,7 @@
   - Fresh DB / canonical migrations ✅
   - integration + security/RLS ✅
   - browser-smoke ✅
-- Deploy: run `33682897444` / #322 ✅ على نفس HEAD.
-- مراجعة الواجهة بتاريخ 2026-09-03 أثبتت Regression واحدًا فقط في حفظ `branches.is_active` وتم إصلاحه في commit `b3121b3fc6b02273207f3f3d99a13138769a813c`.
-- أضيف contract regression test للواجهات الحديثة في commit `bdfa00ae6e835a2c3503263ddeb3ff5795f4c277`.
+- Deploy: run `33723080770` / #341 ✅ على نفس HEAD.
 
 > يجب اعتماد commit تحديث هذا السجل نفسه كـHEAD النهائي فقط بعد نجاح Verify/Deploy عليه.
 
@@ -39,315 +37,252 @@
 - Sensitive cashier actions تحتاج permission أو manager approval.
 - لا expose لـinternal/security/accounting/inventory helpers للعميل لمجرد إنجاح اختبار.
 - لا Demo/Seed tools في Production UI.
-- لا تغيّر حقيقة المخزون أو المحاسبة بسبب سياسات العرض؛ visibility هي read-side فقط، والعمليات الداخلية تعمل على 100% من الحقيقة.
+- visibility هي read-side فقط؛ stock/accounting/write truth تعمل على 100% من الحقيقة.
 - لا تفتح KDS أو مراحل مغلقة بدون Regression مثبت.
-- حذف الفرع النهائي لا يتحول إلى soft delete أو deactivate؛ حذف الفرع المقصود من شاشة الفروع هو Hard Delete عبر RPC محمي.
+- حذف الفرع من شاشة الفروع هو Hard Delete، وليس soft delete/deactivate.
 
 ---
 
-## 3) KDS / Accounting production baseline — مغلق ✅
+## 3) Production Acceptance — مغلق ✅
 
-Production migrations المسجلة:
-- `20260902154339` — `accounting_kds_station_assignments`
-- `20260902154358` — `kds_queue_legacy_compat`
-- `20260902154420` — `kds_empty_legacy_order_compat`
+تم تنفيذ قبول Production ببيانات حقيقية داخل فروع QA مع مستخدمي Auth حقيقيين، ثم حذف فروع QA وآثارها.
 
-ثوابت تم التحقق منها:
-- modern KDS يعتمد على `order_kitchen_sends.order_item_id` ويعرض المرسل فعليًا فقط.
-- legacy compatibility ضيقة للطلبات القديمة الفارغة فقط.
-- `send_to_kitchen(uuid,uuid)` لا يخصم مخزونًا.
-- branch/station isolation محفوظة.
-- Cash + Bank موجودان لكل فرع في baseline المحاسبي.
+تم التحقق من:
+- شراء → مخزون → طلب → إرسال للمطبخ → بيع/محاسبة/تكلفة ضمن الحدود التي تسمح بها أدوات Production.
+- `send_to_kitchen` لا يخصم المخزون.
+- البيع يخصم FIFO مرة واحدة.
+- KDS يعرض ما تم إرساله فعليًا.
+- branch isolation والصلاحيات الأساسية.
+- Dining Area لمدير الفرع مع `floor_plan.manage`.
+- `payment_status` بعد settlement مغطى باختبار Integration.
+- Hard Delete يزيل بيانات الفرع و`public.users` وAuth users/identities/sessions.
+- لا توجد بيانات QA متبقية بعد التنظيف.
 
----
-
-## 4) UI / POS rollout — مغلق ✅
-
-تم إغلاق ونشر:
-- Mobile DataTable cards + header/branch-menu containment.
-- POS product cards أصغر وكثافة أعلى.
-- إصلاح vertical scroll لمنطقة المنتجات.
-- POS system quick navigation buttons بصلاحياتها الحالية.
-- تكبير مساحة الطاولات والطلبات النشطة.
-- إظهار الطلبات غير المرتبطة بطاولة وهي `open/held` حتى الدفع/الإغلاق.
-- منع أي إضافة للسلة بدون شفت مفتوح: product click / `+` / modifiers / barcode.
-- Reports de-duplication: اختيار التقرير في مكان واحد مرئي، والبيانات تظهر أعلى الصفحة.
-- global fixed Back button في الهيدر مع RTL/LTR.
-- Browser Smoke fixture يحاكي شفتًا مفتوحًا في سيناريوهات البيع الطبيعية؛ شرط التطبيق لم يُضعف.
-
-مراجعة wiring بتاريخ 2026-09-03:
-- POS shift gate موجود ومربوط بـ`getActiveShift` ✅
-- Reports selector/context filters موجودة بدون إعادة ازدحام الواجهة ✅
-- Header back button موجود خارج dashboard ✅
-- branch status editor أصبح يرسل `p_is_active` فعليًا ✅
+Production migrations ذات الصلة:
+- `20260903051805` — `fix_branch_hard_delete_acceptance`
+- `20260903054119` — `production_acceptance_regressions`
+- `20260903054126` — `preserve_financial_visibility_contract`
 
 ---
 
-## 5) Financial Visibility Policy — مغلق ومطبق على Production ✅
+## 4) Product Components + Modifiers — مغلق ✅
 
-### القاعدة
+قواعد مثبتة:
+- `product_components` هو BOM للتكلفة النظرية، وليس مصدر الخصم التشغيلي المباشر.
+- الخصم التشغيلي يتم عبر `product_unit_links` / recipes / modifier inventory effects.
+- Modifier pricing authoritative server-side.
+- Modifier snapshots محفوظة على order/sale items.
+- `send_to_kitchen` يحتفظ بالـsnapshot ولا يخصم المخزون.
+- `process_sale` يطبق base inventory + modifier deltas مرة واحدة.
+- Refund يعيد exact sale-item inventory snapshot نسبيًا.
+- exact sent-item void لا يغير المخزون.
 
-- `owner` فقط يرى **100%** من التاريخ المالي ضمن الفروع المسموح بها.
-- أي role آخر، بما فيه `super_admin` إذا لم يكن Owner:
-  - الفترة الحديثة = 100%.
-  - ما قبلها = deterministic percentage ثابتة.
-- القيم الافتراضية الحالية في Production: **7 أيام / 30%**.
-- لا تظهر للمستخدم المقيد أي إشارة لوجود بيانات مخفية أو نسبة الرؤية.
-- Branch isolation شرط مستقل دائمًا.
-- الحقيقة التشغيلية للمخزون والمحاسبة والخصم والاسترجاع تظل 100%.
+Production QA الأخير للمكونات/الإضافات أثبت:
+- BOM: كمية 2 × تكلفة 10 = تكلفة نظرية 20 ✅
+- Modifier إلزامي يرفض الاختيار الفارغ ✅
+- خيار Double أضاف +30 للسعر server-side ✅
+- KDS استقبل Modifier snapshot ✅
+- stock بقي 50 بعد `send_to_kitchen` ✅
+- إعادة send لنفس الطلب أعادت `items_sent_count=0` ✅
+- خصم Modifier داخل transaction حقيقي خفّض stock من 50 إلى 46 للكمية 2، ثم ROLLBACK أعاده إلى 50 ✅
+- اختبارات `modifier_burger_lifecycle.test.ts` و`modifier_exact_void_refund.test.ts` تغطي البيع والـpartial refund exact-line على Fresh DB ✅
+- فرع QA الخاص بهذا الاختبار حُذف، وbranch/products/orders/modifier groups/options/effects/Auth = 0 ✅
 
-### 5.1 طبقات القراءة المحمية
+---
 
-Repo migrations:
-- `supabase/migrations/20260902180000_financial_visibility_sales.sql`
-- `supabase/migrations/20260902183000_financial_visibility_related_reads.sql`
-- `supabase/migrations/20260902184500_financial_visibility_reporting_invoker.sql`
-- `supabase/migrations/20260902190000_financial_visibility_order_history.sql`
+## 5) Financial Visibility Policy — مغلق ومطبق ✅
 
-محمية read-side على المبيعات وبنودها، المشتريات وبنودها، المصروفات، المدفوعات، القيود، الحركات التاريخية، الطلبات التاريخية وبنودها، وتقارير القراءة المالية.
+- `owner` فقط يرى 100% من التاريخ المالي ضمن نطاقه.
+- غير الـowner: الفترة الحديثة 100%، والتاريخ الأقدم deterministic percentage.
+- Production defaults: **7 أيام / 30%**.
+- لا يظهر للمستخدم المقيد أن هناك بيانات مخفية.
+- `open/held` تظل مرئية تشغيليًا للمستخدم المصرح له.
+- الحقيقة التشغيلية للمخزون والمحاسبة لا تدخل في sampling.
+- Super Admin لديه UI لإدارة الأيام والنسبة في `/super-admin`.
 
-`open/held` تظل **100% مرئية تشغيليًا** للمستخدم المصرح له في الفرع مهما كان عمر الطلب أو نسبة التاريخ؛ POS/KDS/table workflow لا يدخل في sampling.
-
-Production registry:
+Production migrations:
 - `20260902184106` — `financial_visibility_sales`
 - `20260902184129` — `financial_visibility_related_reads`
 - `20260902184138` — `financial_visibility_reporting_invoker`
 - `20260902184150` — `financial_visibility_order_history`
-
-Production verification السابقة:
-- 17 `financial_visibility_%` policies وكلها `RESTRICTIVE` ✅
-- report allowlist لا يحتوي SECURITY DEFINER متبقيًا ✅
-- `anon` لا يملك EXECUTE على report allowlist ✅
+- `20260902194257` — `financial_visibility_admin_controls`
 
 ---
 
-## 6) Super Admin — إدارة Financial Visibility — مغلق ومطبق ✅
+## 6) Kitchen / KDS — مغلق ✅
+
+- modern KDS يعتمد على `order_kitchen_sends.order_item_id`.
+- legacy compatibility للطلبات القديمة الفارغة فقط.
+- Kitchen Stations editor لديه branch selector مستقل.
+- المستخدمون وفئات المنتجات branch-specific.
+- `save_kitchen_station_assignments` يحمي branch/category mismatch.
+- Kitchen panel داخل POS يعرض الآن فقط الطلبات التي لها kitchen sends؛ الطلب المفتوح غير المرسل لا يتكرر داخله.
+
+Production migrations:
+- `20260902154339` — `accounting_kds_station_assignments`
+- `20260902154358` — `kds_queue_legacy_compat`
+- `20260902154420` — `kds_empty_legacy_order_compat`
+- `20260902194308` — `kitchen_station_editor_context`
+
+---
+
+## 7) POS / Tables UI — مغلق ومطبق ✅
+
+### 7.1 50 طاولة افتراضية
 
 Repo migration:
-- `supabase/migrations/20260902222000_financial_visibility_admin_controls.sql`
+- `supabase/migrations/20260903090000_default_50_dining_tables.sql`
 
 Production migration:
-- `20260902194257` — `financial_visibility_admin_controls` ✅
+- `20260903062933` — `default_50_dining_tables` ✅
 
-التنفيذ:
-- private singleton: `private.financial_visibility_settings`.
-- default الحالي: `recent_days = 7`, `historical_percent = 30`.
-- RPCs:
-  - `get_financial_visibility_settings()`
-  - `update_financial_visibility_settings(integer, integer)`
-- القراءة/التعديل عبر RPC مقصوران منطقيًا على active `super_admin`؛ `anon` لا يملك EXECUTE.
-- الأيام 1..365 والنسبة 0..100.
-- `private.sale_read_visible`, `private.financial_row_visible`, `private.order_read_visible` تقرأ القيم من singleton.
-- Owner full history محفوظ.
-- `open/held` operational guard محفوظ ✅
-- لا تغيير في write path أو stock/accounting truth.
+السلوك:
+- كل فرع جديد يحصل تلقائيًا على **50 طاولة**.
+- الأسماء: `طاولة 01` → `طاولة 50`.
+- السعة الافتراضية: 4.
+- status: `vacant`.
+- layout منظم 10 × 5.
+- إذا لم توجد منطقة، تُنشأ `الصالة الرئيسية`.
+- لا يتم حذف الطاولات المخصصة الموجودة.
+- يمكن إضافة طاولة 51 وما بعدها بلا حد.
+- الاختبار `tests/integration/default_dining_tables.test.ts` يثبت 50 baseline + إمكانية إضافة طاولة إضافية.
 
-UI:
-- `src/features/admin/components/FinancialVisibilityAdminControl.tsx`
-- يظهر للـSuper Admin في `/super-admin`.
-- الحفظ حقيقي عبر RPC وليس UI-only.
+Production verification:
+- الفرع الموجود فعليًا: **فرع نادي سموحة** فقط.
+- dining tables = 50.
+- active tables = 50.
+- numbered defaults = 50.
+- first = `طاولة 01`.
+- last = `طاولة 50`.
+- area count = 1.
 
-اختبار:
-- `tests/integration/financial_visibility_admin_controls.test.ts` ✅
+### 7.2 تنظيف منطقة الطاولات
+
+`src/features/pos/components/tables/PosTablesSidebar.tsx`:
+- يعرض الطاولات فقط.
+- أزيل قسم standalone active orders المكرر من نفس المنطقة.
+- يبقى البحث برقم/اسم الطاولة أو رقم الطلب.
+- يعرض إجمالي الطاولات وعدد المشغولة فقط.
+
+### 7.3 تنظيف Kitchen panel
+
+`src/features/pos/components/kitchen/KitchenPanel.tsx`:
+- يعرض فقط orders التي لها `order_kitchen_sends`.
+- أزيلت قائمة open orders غير المرسلة من Kitchen panel لأنها موجودة في Active Orders/POS.
+- modifiers/notes/sent time محفوظة.
 
 ---
 
-## 7) Kitchen Stations — اختيار الفرع وفئات المنتجات — مغلق ومطبق ✅
+## 8) Branch selector / Hard Delete — مغلق ✅
 
-Repo migration:
-- `supabase/migrations/20260902222500_kitchen_station_editor_context.sql`
+Hard Delete:
+- `delete_branch_cascade(uuid)` للـowner/super_admin فقط.
+- لا يمكن حذف فرع الحساب الحالي.
+- بيانات الفرع وحسابات Auth التابعة له تُزال.
 
-Production migration:
-- `20260902194308` — `kitchen_station_editor_context` ✅
+Ghost branch fix:
+- Production لا يحتوي `الفرع الرئيسي` المحذوف؛ الموجود فقط `فرع نادي سموحة`.
+- سبب ظهوره كان module cache في `useBranches`.
+- `notifyBranchesChanged()` يبطل cache بعد create/update/delete.
+- كل mounted branch selectors تعيد fetch فور mutation.
+- إذا كان الفرع المحذوف هو active branch المحلي، يتم مسح `premier_active_branch` إلى All Branches.
+- لا يعتمد الحل على realtime أو stale cached row.
 
-RPC:
-- `get_kitchen_station_editor_context(uuid)`
-
-الحماية:
-- يسمح فقط لـ`super_admin`, `owner`, `branch_manager` مع `user_may_access_branch(p_branch_id)`.
-- cashier مرفوض.
-- cross-branch branch_manager مرفوض.
-- `anon` لا يملك EXECUTE.
-- الحفظ عبر `save_kitchen_station_assignments` مع branch/category mismatch guards.
-
-UI:
-- branch selector مستقل داخل الصفحة.
-- assignment modal يوضح الفرع.
-- المستخدمون وفئات المنتجات مجموعتان منفصلتان.
-- Select all / Clear all.
-- user/category assignments branch-specific.
-
-Production observation بدون بيانات وهمية:
-- فرع **نادي سموحة**: 30 فئة منتجات.
-- **الفرع الرئيسي**: 0 فئات منتجات.
-
-اختبار:
-- `tests/integration/kitchen_station_editor_context.test.ts` ✅
+Production migrations السابقة:
+- `20260902210800` — `branch_hard_delete`
+- `20260903051805` — `fix_branch_hard_delete_acceptance`
 
 ---
 
-## 8) Branch Hard Delete + Costing + Permissions UI — مغلق ومطبق ✅
+## 9) Costing / Reports / Permissions — مغلق ✅
 
-### 8.1 حذف الفرع نهائيًا
+Costing:
+- متوسط Food Cost لا يدخل المنتجات ذات التكلفة الصفرية في المتوسط.
+- `suppliers.is_active` غير موجود ولم يعد مطلوبًا في Costing page.
+- توجد بطاقة **COGS ÷ Net Sales** للحقيقة الإجمالية من المبيعات.
+- `get_order_margin` و`get_costing_sales_summary` SECURITY INVOKER ويحترمان RLS.
 
-Repo migration:
-- `supabase/migrations/20260902234000_branch_hard_delete.sql`
+Reports:
+- selector واحد مرئي بدون تكرار.
+- لا charts في صفحة التقارير الأساسية.
+- filters/context في أعلى الصفحة.
 
-Production migration:
-- `20260902210800` — `branch_hard_delete` ✅
-
-التنفيذ:
-- `delete_branch_cascade(uuid)` بدل `deactivate_branch` لعملية الحذف من شاشة الفروع.
-- الحذف النهائي متاح فقط لـ`owner` و`super_admin`.
-- لا يمكن للمستخدم حذف الفرع المرتبط بحسابه الحالي.
-- Owner لا يحذف فرعًا خارج نطاقه.
-- كل FK عام مباشر `branch_id -> branches(id)` أصبح `ON DELETE CASCADE`.
-- تحقق Production: `non_cascade_branch_fks = []` ✅
-- حمايات الحسابات النظامية والطاولات والـmodifier options تبقى فعالة في الحذف اليدوي، وتسمح فقط بالـcascade الناتج عن حذف الفرع الأب.
-- لم يتم حذف أي فرع Production حقيقي أثناء الاختبار أو التحقق.
-
-UI:
-- `src/features/admin/pages/BranchesPage.tsx` يعرض تحذير حذف نهائي واضح.
-- مراجعة 2026-09-03 أثبتت أن status selector كان ظاهرًا لكن `p_is_active` غير مرسل؛ تم إصلاحه في `b3121b3fc6b02273207f3f3d99a13138769a813c`.
-
-اختبار:
-- `tests/integration/branch_hard_delete.test.ts` ✅ على Fresh DB.
-
-### 8.2 Costing summary
-
-Repo migration:
-- `supabase/migrations/20260902234500_costing_sales_summary_rls.sql`
-
-Production migration:
-- `20260902210812` — `costing_sales_summary_rls` ✅
-
-التنفيذ:
-- `get_order_margin(uuid,date,date)` أصبح `SECURITY INVOKER`.
-- `get_costing_sales_summary(uuid,date,date)` يعيد `sales_count`, `net_sales`, `cogs`, `ratio`.
-- COGS ÷ Net Sales يحترم RLS وسياسة Financial Visibility.
-- `anon` لا يملك EXECUTE.
-
-UI:
-- `src/features/costing/pages/CostingCenterPage.tsx` يعرض **التكلفة الفعلية من المبيعات** كنسبة COGS ÷ صافي المبيعات مع القيمتين.
-
-### 8.3 Permissions UI
-
-- `src/features/admin/pages/RolesTab.tsx` مبسطة إلى اختيار role واحد ثم التحكم بصلاحياته.
-- بحث في جميع الصلاحيات.
-- مجموعات واضحة.
-- Select/Clear group.
-- Select all/Clear all.
-- إنشاء وحذف custom roles.
-- global / branch scope محفوظ.
-- منطق الصلاحيات backend لم يُضعف بسبب إعادة التصميم.
-
-### 8.4 UI regression contract
-
-- `tests/unit/recentUiWiringContract.test.ts`
-- يثبت wiring للآتي:
-  - branch status + permanent delete.
-  - costing sales summary card.
-  - role search/group/all/save controls.
-  - fixed header back button.
-  - compact report selector/context filters.
-  - POS no-cart-without-open-shift gate.
+Permissions UI:
+- اختيار role واحد.
+- search.
+- grouped permissions.
+- select/clear group.
+- select all/clear all.
+- custom global/branch roles.
+- backend permission logic لم يُضعف بسبب التصميم.
 
 ---
 
-## 9) آخر تحقق كامل قبل commit السجل الحالي
+## 10) UI / Navigation baseline — مغلق ✅
 
-HEAD الوظيفي الأخضر:
-- `d9317a68fa22360ebb9c8243788e0e762ab90eb8`
-
-Verify:
-- run `33682897361` / #320 ✅
-- lint ✅
-- typecheck ✅
-- unit ✅
-- build ✅
-- Fresh DB migrations ✅
-- integration/security/RLS ✅
-- browser-smoke ✅
-
-Deploy:
-- run `33682897444` / #322 ✅
-
-Production:
-- `branch_hard_delete` applied ✅
-- `costing_sales_summary_rls` applied ✅
-- all direct branch FKs cascade ✅
-- costing/order-margin functions are SECURITY INVOKER ✅
-- delete RPC unavailable to anon ✅
-- no real Production branch deleted during verification ✅
-
-مراجعة الواجهة اللاحقة أضافت فقط:
-- `b3121b3...` إصلاح حفظ حالة الفرع.
-- `bdfa00ae...` UI wiring regression contract.
-
-يجب أن ينجح Verify/Deploy على commit هذا السجل قبل اعتباره checkpoint النهائي الجديد.
+- Arabic RTL sidebar يمين الشاشة.
+- fixed global Back button بعيدًا عن dashboard.
+- POS product cards compact.
+- product area vertical scroll يعمل.
+- POS system quick navigation موجودة.
+- mobile DataTable cards/header containment.
+- no-cart-without-open-shift gate موجود على product click / + / modifiers / barcode.
+- Browser Smoke يغطي wiring الأساسي.
 
 ---
 
-## 10) أعمال مغلقة — لا تعِد فتحها بدون Regression مثبت
+## 11) أعمال مغلقة — لا تعِد فتحها بدون Regression مثبت
 
-- KDS legacy compatibility + modern exact sends.
-- Kitchen station branch/category assignment editor.
-- Product Modifiers + authoritative pricing/inventory effects.
+- KDS exact sends + legacy compatibility.
+- Kitchen station branch/category assignment.
+- Product Modifiers authoritative pricing/inventory effects.
 - exact sale-item inventory snapshots / partial refund.
-- exact sent-item void + sent-item mutation guards.
+- exact sent-item void / mutation guards.
 - open-order modifier immutability.
-- Burger lifecycle.
-- accounting/treasury bootstrap baseline.
-- manager approval lifecycle.
-- branch isolation baseline.
-- hybrid inventory deduction/refund baseline.
-- responsive modal/table/mobile work.
-- POS layout/scroll/system navigation/tables workspace.
-- Reports UX de-duplication.
-- fixed global Back button.
-- no-cart-without-open-shift enforcement.
-- Financial Visibility Policy + Super Admin controls.
-- Branch hard delete + cascade contract.
-- Costing COGS/Net Sales summary.
-- Simplified comprehensive Roles/Permissions UI.
+- manager approvals.
+- accounting/treasury baseline.
+- branch isolation.
+- hybrid deduction/refund.
+- Financial Visibility + admin controls.
+- Hard Delete.
+- Costing COGS/Net Sales.
+- Reports de-duplication.
+- Roles/Permissions UI.
+- responsive/mobile work.
+- 50 default tables + simplified POS tables/Kitchen panels.
+- branch selector stale-cache fix.
 
 ---
 
-## 11) ما لا يجب فعله مستقبلًا
+## 12) ما لا يجب فعله مستقبلًا
 
 - لا تستخدم React/CSS وحدهما كحماية مالية.
 - لا تغير `process_sale` أو inventory deduction بسبب visibility.
-- لا تحذف أو تعدل totals الأصلية لكي تطابق ما يراه الموظف.
 - لا تستخدم sampling عشوائي متغير.
-- لا تعرض للمستخدم المقيد أن هناك نسبة مخفية أو مبيعات مخفية.
-- لا تمنح Super Admin تلقائيًا full financial history لمجرد دوره التقني.
+- لا تعرض للمستخدم المقيد أن هناك نسبة مخفية.
+- لا تمنح Super Admin full financial history تلقائيًا لمجرد دوره التقني.
 - لا تجعل current stock أو posting logic يعمل على sample.
-- لا تعدل KDS runtime أو send-to-kitchen inventory behavior بسبب editor UI.
-- لا تعِد الحذف النهائي للفرع إلى soft delete أو تترك rows مرتبطة به بـSET NULL/RESTRICT على `branch_id`.
+- لا تعدل KDS inventory behavior بسبب UI.
+- لا تعِد Hard Delete إلى soft delete أو `SET NULL` لبيانات الفرع.
+- لا تجعل Kitchen panel يعرض unsent active orders مرة أخرى؛ مكانها Active Orders/POS.
 
 ---
 
-## 12) تعريف النجاح الحالي
+## 13) تعريف النجاح الحالي
 
-آخر baseline مثبت بالكامل هو `d9317a68fa22360ebb9c8243788e0e762ab90eb8`:
-- lint ✅
-- typecheck ✅
-- unit ✅
-- build ✅
-- Fresh DB / migrations ✅
-- integration/security/RLS ✅
-- browser-smoke ✅
-- Deploy ✅
-- Production migrations applied ✅
-- Production structural verification ✅
+Checkpoint الوظيفي قبل commit السجل:
+- `a0687ff0aba83486f4f6bbf16feb557a7f35b202`
+- Verify `33723080777` / #339 ✅
+- Deploy `33723080770` / #341 ✅
+- Production migration `20260903062933 default_50_dining_tables` ✅
+- Production: Samouha only + 50 active numbered tables ✅
 
-الـcheckpoint الجديد بعد مراجعة الواجهة لا يُغلق نهائيًا إلا بعد نجاح Verify/Deploy على commit هذا السجل الذي يحتوي أيضًا على إصلاح `p_is_active` واختبار UI wiring.
+يجب تشغيل Verify/Deploy على commit هذا السجل واعتماد نتيجته كـHEAD النهائي الجديد.
 
 ---
 
-## 13) ملاحظات تشغيلية
+## 14) ملاحظات تشغيلية
 
-- `npm install` سبق أن أبلغ عن vulnerabilities؛ لا تستخدم `npm audit fix --force` بشكل أعمى.
-- Supabase Leaked Password Protection قد يحتاج Dashboard setting منفصلًا حسب الخطة.
 - أي migration مستقبلية: Fresh DB + integration/RLS + browser-smoke أخضر قبل Production.
-- مراجعة الواجهة هنا هي code/wiring review + automated browser-smoke؛ لا تدّعِ manual authenticated Production visual inspection بدون جلسة فعلية مصرح بها.
+- لا تستخدم `npm audit fix --force` بشكل أعمى.
+- مراجعة الواجهة هي code/wiring + automated browser-smoke ما لم يتم تنفيذ manual authenticated visual session صراحة.
