@@ -1,22 +1,35 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/api';
+import { useAuth } from '@/context/AuthContext';
 import type { Branch } from '@/lib/types';
 
 const BRANCHES_CHANGED_EVENT = 'premier:branches-changed';
+const branchCacheByUser = new Map<string, Branch[]>();
 
 export function notifyBranchesChanged(): void {
+  branchCacheByUser.clear();
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(BRANCHES_CHANGED_EVENT));
   }
 }
 
 export function useBranches() {
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  const cached = userId ? branchCacheByUser.get(userId) : undefined;
+  const [branches, setBranches] = useState<Branch[]>(cached ?? []);
+  const [loading, setLoading] = useState(Boolean(userId) && cached === undefined);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
+    if (!userId) {
+      setBranches([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(branchCacheByUser.get(userId) === undefined);
     const { data, error } = await supabase.from('branches').select('*').order('name');
     if (error) {
       setBranches([]);
@@ -24,21 +37,39 @@ export function useBranches() {
       setLoading(false);
       return;
     }
-    setBranches((data as Branch[]) || []);
+
+    const next = (data as Branch[]) || [];
+    branchCacheByUser.set(userId, next);
+    setBranches(next);
     setError(null);
     setLoading(false);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
-    void refresh();
+    if (!userId) {
+      setBranches([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    const sessionCached = branchCacheByUser.get(userId);
+    if (sessionCached !== undefined) {
+      setBranches(sessionCached);
+      setLoading(false);
+      setError(null);
+    } else {
+      void refresh();
+    }
 
     if (typeof window === 'undefined') return;
     const onBranchesChanged = () => {
+      branchCacheByUser.delete(userId);
       void refresh();
     };
     window.addEventListener(BRANCHES_CHANGED_EVENT, onBranchesChanged);
     return () => window.removeEventListener(BRANCHES_CHANGED_EVENT, onBranchesChanged);
-  }, [refresh]);
+  }, [refresh, userId]);
 
   return { branches, loading, error, refresh };
 }
