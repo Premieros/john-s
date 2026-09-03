@@ -11,8 +11,8 @@
 - Repository: `Premieros/john-s`
 - Branch: `main`
 - Supabase Production: `azzdesuowpdcoflmyezn`
-- آخر HEAD وظيفي مُتحقق بالكامل: `68f74be74121e4c6c266e2f2e43e86d51f30d66d`
-- Verify: run `33754327041` / #417 ✅
+- آخر HEAD وظيفي مُتحقق بالكامل: `5d03994fdc7924d32b1b09e3f0dece7baf10e0f8`
+- Verify: run `33775430230` / #419 ✅
   - lint ✅
   - typecheck ✅
   - test suites typecheck ✅
@@ -22,7 +22,8 @@
   - schema verification ✅
   - integration + security/RLS ✅
   - Browser Smoke ✅
-- Deploy لنفس الـHEAD: run `33754327044` / #419 ✅
+- Deploy لنفس الـHEAD: run `33775430308` / #421 ✅
+  - Production API parity gate ✅
 
 آخر ما أُغلق في POS:
 - Tables-first landing يعمل على الهاتف/التابلت/الديسكتوب ويعرض مباشرة: Quick Order / Delivery / Drive Thru / Active Orders.
@@ -35,7 +36,21 @@
 - manager approval للعمليات الهيكلية أصبح مغطى باختبار single-use صريح: Pending → approve → execute → consumed؛ إعادة نفس العملية لا تعيد استخدام الموافقة بل تنشئ طلب موافقة جديدًا ولا تنفذ mutation ثانية.
 - Split Payment داخل Checkout كان موجودًا وظيفيًا بالفعل؛ أُغلقت فجوة التغطية باختبار integration مستقل يثبت Cash + Card، تسجيل `sale_payments` و`shift_operations`، خصم المخزون مرة واحدة فقط، ورفض mismatch بلا Sale أو خصم مخزون.
 - لا يوجد أي تغيير جديد في Inventory/KDS/RLS بسبب تعديلات Top Action Bar أو اختبارات single-use / Split Payment.
-- **لم تُضف أو تُطبق أي Production migration تشغيلية جديدة في مرحلة UI/test الأخيرة.**
+- تم اكتشاف Production drift أثناء فحص ما قبل تسليم الفرع وإغلاقه بتطبيق migrations التشغيلية الثلاث المفقودة:
+  - `20260903154937 transfer_unsent_order_item`
+  - `20260903154940 split_payment_accounting`
+  - `20260903154945 pos_structural_actions_manager_approval`
+- تم إصلاح Reports الذي كان يطلب العمود غير الموجود `warehouses.name_en`.
+- تم تحديث `supabase/api-contract.json` وإضافة `gen-contract --check` إلى Verify وإعادة Production parity gate إلى Deploy لمنع نشر واجهة أحدث من قاعدة الإنتاج.
+- تم توحيد ضريبة الفرع إلى **14%** حسب قرار المستخدم، وتعيين مخزن الفرع الوحيد كمخزن افتراضي.
+- Production rollback tests نجحت دون ترك بيانات: فتح وردية، بيع نقدي، Cash+Card split payment، إغلاق وردية بفارق صفر، وSplit order؛ وبعد التراجع بقيت المبيعات والورديات التجريبية = صفر.
+
+### تنبيه جاهزية تشغيلية قبل التسليم
+
+- النظام البرمجي وقاعدة Production متطابقان ومتحققان، لكن بيانات افتتاح المخزون ليست جاهزة للبيع الكامل بعد.
+- من أصل 335 منتجًا نشطًا، منتج واحد فقط كان قابلًا للبيع وقت الفحص (`Water`) و334 غير متاحة بسبب غياب أرصدة الوحدات/الخامات/المنتجات الجاهزة.
+- توجد 8 منتجات نشطة بسعر بيع صفري/غير صالح وتحتاج أسعارًا حقيقية قبل الافتتاح.
+- لا تدخل كميات أو تكاليف افتراضية. المطلوب جرد فعلي واعتماد أسعار الافتتاح أثناء التدريب قبل أول بيع حقيقي.
 
 > لا تعتبر أي migration تشغيلية جديدة جاهزة لـProduction لمجرد نجاح Deploy للواجهة. أي migration جديدة مستقبلًا لا تُطبق على Production إلا بعد Verify كامل أخضر بما فيه Browser Smoke.
 
@@ -345,15 +360,16 @@ Production migration:
 - Browser Smoke ✅
 - Deploy لنفس الـHEAD ✅
 
-**مرحلة POS الحالية مغلقة بالكامل ✅.**
+**مرحلة POS البرمجية مغلقة بالكامل ✅، وجاهزية التشغيل التجاري معلقة فقط على إدخال الجرد والأسعار الحقيقية.**
 
-لم تكن هناك migration تشغيلية جديدة في خطوة الإغلاق الأخيرة، لذلك لا يوجد Production migration جديد مطلوب تطبيقه بسبب هذا العمل.
+المigrations التشغيلية المطلوبة لتدفق POS مطبقة على Production، وبوابة Production parity أصبحت جزءًا إلزاميًا من Deploy.
 
 ---
 
 ## 10) Next exact step
 
-1. لا تُعد فحص المشروع كاملًا ولا تفتح أي بند أعلاه تلقائيًا.
-2. اعتبر HEAD `68f74be74121e4c6c266e2f2e43e86d51f30d66d` + Verify `33754327041` / #417 + Deploy `33754327044` / #419 baseline مغلقًا.
-3. العمل التالي يبدأ فقط من ملاحظة/طلب جديد من المستخدم أو Regression مثبت على هذا baseline.
-4. إذا كان الطلب الجديد متعلقًا بقاعدة البيانات، أثبت الحاجة أولًا قبل أي migration جديدة، ثم طبّق نفس بوابات Verify كاملة قبل Production.
+1. اعتبر HEAD `5d03994fdc7924d32b1b09e3f0dece7baf10e0f8` + Verify `33775430230` / #419 + Deploy `33775430308` / #421 baseline البرمجي المغلق.
+2. قبل أول بيع حقيقي: أدخل الجرد الافتتاحي الفعلي بوحداته وتكاليفه في مخزن الفرع.
+3. صحح أسعار المنتجات الثمانية ذات السعر الصفري واعتمد قائمة الأسعار مع المستأجر.
+4. نفّذ أثناء التدريب فاتورة Cash وفاتورة Card وفاتورة Split Payment ثم Refund وإغلاق وردية، وراجع التقرير المطبوع مقابل النقدية الفعلية.
+5. لا تُعد فحص المشروع كاملًا ولا تفتح بندًا مغلقًا بدون Regression مثبت.
