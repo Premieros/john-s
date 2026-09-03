@@ -8,6 +8,19 @@ export interface SplitTenderInput {
   amount: number;
 }
 
+export type PosStructuralAction = 'split_order' | 'merge_order' | 'transfer_order';
+
+export interface PosStructuralActionResult extends RpcResult {
+  action?: PosStructuralAction;
+  request_id?: string;
+  status?: string;
+  source_order_id?: string;
+  target_order_id?: string;
+  target_table_id?: string;
+  inventory_changed?: boolean;
+  kds_changed?: boolean;
+}
+
 export const pos = {
   async getActiveShift(p: { p_branch_id: string }): ApiResult<Shift> {
     try {
@@ -51,6 +64,9 @@ export const pos = {
   nextDocumentNumber(p: { p_type: string }): ApiResult<RpcResult> { return rpc('next_document_number', p); },
   transferOrderItemToTable(p: { p_order_id: string; p_order_item_id: string; p_target_table_id: string }): ApiResult<RpcResult & { target_order_id?: string; target_order_number?: string; source_order_empty?: boolean; inventory_changed?: boolean; kds_changed?: boolean }> {
     return rpc('transfer_order_item_to_table', p);
+  },
+  performOrderAction(p: { p_action_type: PosStructuralAction; p_order_id: string; p_payload: Record<string, unknown>; p_reason: string }): ApiResult<PosStructuralActionResult> {
+    return rpc('perform_pos_order_action', p);
   },
 
   async processSale(p: {
