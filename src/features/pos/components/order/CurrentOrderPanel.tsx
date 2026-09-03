@@ -98,7 +98,6 @@ export function CurrentOrderPanel({
   onDiscountAmountChange,
   onUpdateQty,
   onRemove,
-  onClear,
   onConfigureItem,
   onOpenTableModal,
   onVoidItem,
@@ -160,11 +159,6 @@ export function CurrentOrderPanel({
             </div>
             <p className="text-[10px] font-bold text-ui-subtle">{cart.length} {isAr ? 'صنف' : 'items'}</p>
           </div>
-          {activeOrderId && !empty && canDeleteItem && (
-            <button type="button" onClick={onClear} aria-label={isAr ? 'مسح الطلب' : 'Clear order'} className="rounded-lg p-2 text-ui-subtle transition hover:bg-ui-danger/10 hover:text-ui-danger">
-              <Trash2 className="h-4 w-4" />
-            </button>
-          )}
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
