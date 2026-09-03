@@ -411,6 +411,73 @@ export function usePosOrder(input: UsePosOrderInput) {
     }
   }, [activeOrderId, isAr, show]);
 
+  const transferOrderItemToTable = useCallback(async (lineKey: string, targetTableId: string): Promise<boolean> => {
+    if (!activeOrderId || !activeTable) return false;
+    const item = cart.find((entry) => cartLineKey(entry) === lineKey);
+    if (!item) return false;
+
+    try {
+      const { data: orderRows, error: orderRowsError } = await supabase
+        .from('order_items')
+        .select('id,product_id,modifier_option_ids,notes')
+        .eq('order_id', activeOrderId)
+        .eq('product_id', item.product.id);
+      if (orderRowsError) {
+        show(orderRowsError.message, 'error');
+        return false;
+      }
+
+      const matches = ((orderRows || []) as Pick<OrderItem, 'id' | 'product_id' | 'modifier_option_ids' | 'notes'>[])
+        .filter((row) => orderItemLineKey(row) === lineKey);
+      if (matches.length !== 1) {
+        show(
+          isAr
+            ? 'تعذر تحديد سطر الصنف بدقة. حدّث الطلب وحاول مرة أخرى.'
+            : 'Could not identify the exact order line. Refresh and try again.',
+          'error',
+        );
+        return false;
+      }
+
+      const { data, error } = await api.pos.transferOrderItemToTable({
+        p_order_id: activeOrderId,
+        p_order_item_id: matches[0].id,
+        p_target_table_id: targetTableId,
+      });
+      if (error) {
+        show(error.message, 'error');
+        return false;
+      }
+
+      const result = data as (RpcResult & { source_order_empty?: boolean }) | null;
+      if (!result?.success) {
+        const message = result?.error === 'ITEM_ALREADY_SENT'
+          ? (isAr ? 'لا يمكن نقل صنف تم إرساله للمطبخ.' : 'A line already sent to kitchen cannot be moved.')
+          : result?.detail || result?.error || t('error');
+        show(message, 'error');
+        return false;
+      }
+
+      setCart((prev) => prev.filter((entry) => cartLineKey(entry) !== lineKey));
+      if (result.source_order_empty) {
+        setActiveOrderId(null);
+        setActiveOrderNumber(null);
+        setTableId(null);
+        setActiveTable(null);
+        setGuestCount(null);
+      }
+
+      show(
+        isAr ? `تم نقل ${item.product.name} إلى الطاولة الأخرى` : `${item.product.name} moved to the other table`,
+        'success',
+      );
+      return true;
+    } catch (err) {
+      show(err instanceof Error ? err.message : (isAr ? 'تعذر نقل الصنف' : 'Could not move item'), 'error');
+      return false;
+    }
+  }, [activeOrderId, activeTable, cart, isAr, show, t]);
+
   const voidSentItem = useCallback(async (lineKey: string, voidQuantity: number, reason: string): Promise<boolean> => {
     if (!activeOrderId) return false;
     try {
@@ -782,7 +849,7 @@ export function usePosOrder(input: UsePosOrderInput) {
     addToCart, updateQty, setQty, removeFromCart, clearCart, setItemDiscount, replaceCartLine,
     switchOrderType, holdOrder, sendToKitchen, printKitchenTicket, completeSale, printReceipt,
     detachTable, detachOrder, resetWorkspace,
-    resumeTableOrder, startTableOrder, transferOrderToTable, voidSentItem,
+    resumeTableOrder, startTableOrder, transferOrderToTable, transferOrderItemToTable, voidSentItem,
   };
 }
 
