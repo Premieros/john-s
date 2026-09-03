@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { hasPermission } from '@/lib/permissionDefs';
+import { hasPermission, type Permission } from '@/lib/permissionDefs';
 
 describe('granular POS permissions', () => {
-  it('keeps cashier operational actions but denies privileged mutations by default', () => {
+  it('keeps cashier operational and approval-gated actions while denying direct manager authority', () => {
     expect(hasPermission('cashier', undefined, 'pos.sell')).toBe(true);
     expect(hasPermission('cashier', undefined, 'pos.hold')).toBe(true);
     expect(hasPermission('cashier', undefined, 'pos.send_kitchen')).toBe(true);
@@ -10,10 +10,17 @@ describe('granular POS permissions', () => {
     expect(hasPermission('cashier', undefined, 'pos.print_kitchen')).toBe(true);
     expect(hasPermission('cashier', undefined, 'pos.pay')).toBe(true);
 
-    expect(hasPermission('cashier', undefined, 'pos.void')).toBe(false);
+    // These actions are visible/initiable for the cashier, but the existing
+    // structural/sent-item RPCs still require single-use manager approval.
+    expect(hasPermission('cashier', undefined, 'pos.void')).toBe(true);
+    expect(hasPermission('cashier', undefined, 'pos.transfer_order')).toBe(true);
+    expect(hasPermission('cashier', undefined, 'pos.split_order')).toBe(true);
+
+    // These permissions represent direct authority and stay manager-only by default.
+    expect(hasPermission('cashier', undefined, 'pos.discount')).toBe(false);
+    expect(hasPermission('cashier', undefined, 'pos.change_price')).toBe(false);
+    expect(hasPermission('cashier', undefined, 'pos.reprint')).toBe(false);
     expect(hasPermission('cashier', undefined, 'pos.cancel_order')).toBe(false);
-    expect(hasPermission('cashier', undefined, 'pos.transfer_order')).toBe(false);
-    expect(hasPermission('cashier', undefined, 'pos.split_order')).toBe(false);
     expect(hasPermission('cashier', undefined, 'pos.change_branch')).toBe(false);
   });
 
@@ -26,11 +33,11 @@ describe('granular POS permissions', () => {
   });
 
   it('honors DB-backed role permission overrides', () => {
-    const dbPermissions = {
-      cashier: ['pos.sell', 'pos.pay'] as const,
+    const dbPermissions: Record<string, Permission[]> = {
+      cashier: ['pos.sell', 'pos.pay'],
     };
 
-    expect(hasPermission('cashier', dbPermissions as never, 'pos.pay')).toBe(true);
-    expect(hasPermission('cashier', dbPermissions as never, 'pos.send_kitchen')).toBe(false);
+    expect(hasPermission('cashier', dbPermissions, 'pos.pay')).toBe(true);
+    expect(hasPermission('cashier', dbPermissions, 'pos.send_kitchen')).toBe(false);
   });
 });
