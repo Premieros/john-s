@@ -25,13 +25,29 @@ interface PosTablesSidebarProps {
 }
 
 export function PosTablesSidebar(props: PosTablesSidebarProps) {
-  const { tables, ordersByTable, itemsByOrder, kitchenSendsByOrder, currency, activeTableId, collapsed, onToggleCollapse, onSelectTable, onTransferOrder } = props;
+  const {
+    tables,
+    ordersByTable,
+    itemsByOrder,
+    kitchenSendsByOrder,
+    currency,
+    activeTableId,
+    activeOrderId,
+    collapsed,
+    onToggleCollapse,
+    onSelectTable,
+    onTransferOrder,
+    activeOrderType,
+  } = props;
   const { lang } = useLanguage();
   const isAr = lang === 'ar';
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<TableFilter>('all');
 
-  const occupiedCount = useMemo(() => tables.filter((table) => (ordersByTable[table.id] || []).length > 0 || table.status === 'occupied').length, [tables, ordersByTable]);
+  const occupiedCount = useMemo(
+    () => tables.filter((table) => (ordersByTable[table.id] || []).length > 0 || table.status === 'occupied').length,
+    [tables, ordersByTable],
+  );
   const availableCount = Math.max(0, tables.length - occupiedCount);
 
   const filteredTables = useMemo(() => {
@@ -45,6 +61,12 @@ export function PosTablesSidebar(props: PosTablesSidebarProps) {
       return table.name.toLowerCase().includes(q) || orders.some((order) => order.order_number?.toLowerCase().includes(q));
     });
   }, [tables, ordersByTable, searchQuery, filter]);
+
+  // Once the operator has entered an order workspace, tables stop being a
+  // permanent column. They remain available through the POS tables/transfer
+  // controls, while products + cart get the full selling width.
+  const inOrderWorkspace = Boolean(activeTableId || activeOrderId || (activeOrderType && activeOrderType !== 'dine_in'));
+  if (inOrderWorkspace) return null;
 
   if (collapsed) {
     return (
@@ -78,14 +100,30 @@ export function PosTablesSidebar(props: PosTablesSidebarProps) {
         </div>
 
         <div className="mt-2 grid grid-cols-3 gap-1.5" data-testid="pos-table-filters">
-          {filters.map((item) => <button key={item.id} type="button" onClick={() => setFilter(item.id)} className={`rounded-lg border px-2 py-2 text-[10px] font-black transition ${filter === item.id ? 'border-ui-primary bg-ui-primary text-ui-primary-fg' : 'border-ui-border bg-ui-page text-ui-muted hover:border-ui-primary'}`}>{isAr ? item.ar : item.en} <span className="ms-1 opacity-70">{item.count}</span></button>)}
+          {filters.map((item) => (
+            <button key={item.id} type="button" onClick={() => setFilter(item.id)} className={`rounded-lg border px-2 py-2 text-[10px] font-black transition ${filter === item.id ? 'border-ui-primary bg-ui-primary text-ui-primary-fg' : 'border-ui-border bg-ui-page text-ui-muted hover:border-ui-primary'}`}>
+              {isAr ? item.ar : item.en} <span className="ms-1 opacity-70">{item.count}</span>
+            </button>
+          ))}
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-3">
         {filteredTables.length > 0 ? (
           <div className="grid grid-cols-3 gap-2">
-            {filteredTables.map((table) => <TableCard key={table.id} table={table} orders={ordersByTable[table.id] || []} itemsByOrder={itemsByOrder} kitchenSendsByOrder={kitchenSendsByOrder} currency={currency} isSelected={activeTableId === table.id} onSelect={onSelectTable} onTransfer={onTransferOrder} />)}
+            {filteredTables.map((table) => (
+              <TableCard
+                key={table.id}
+                table={table}
+                orders={ordersByTable[table.id] || []}
+                itemsByOrder={itemsByOrder}
+                kitchenSendsByOrder={kitchenSendsByOrder}
+                currency={currency}
+                isSelected={activeTableId === table.id}
+                onSelect={onSelectTable}
+                onTransfer={onTransferOrder}
+              />
+            ))}
           </div>
         ) : <div className="py-10 text-center text-xs font-bold text-ui-muted">{isAr ? 'لا توجد طاولات مطابقة' : 'No matching tables'}</div>}
       </div>
