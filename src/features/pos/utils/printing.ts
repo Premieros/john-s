@@ -240,33 +240,38 @@ export function buildKitchenTicketHtml(params: {
   s: Settings;
   isAr: boolean;
 }): string {
-  const width = Math.max(50, Math.min(100, params.s.receipt_width_mm || 80));
+  const pageWidthMm = 80;
+  const printableWidthMm = 72.1;
   const { orderNumber, tableName, orderTypeLabel, guestCount, items, isAr } = params;
   const now = new Date().toLocaleString(isAr ? 'ar-SA' : 'en-US');
   const rows = items
-    .map((i) => `<div class="item-name">${escapeHtml(i.name)}${i.unit_name && i.unit_name !== 'piece' ? ` (${escapeHtml(i.unit_name)})` : ''}</div><div class="row item-detail"><span>${isAr ? 'الكمية' : 'Qty'}</span><span>${i.qty}</span></div>`)
+    .map((i) => `<div class="item-row"><div class="item-name"><span class="qty">${i.qty} ×</span> ${escapeHtml(i.name)}${i.unit_name && i.unit_name !== 'piece' ? ` (${escapeHtml(i.unit_name)})` : ''}</div><div class="item-detail">${isAr ? 'الكمية' : 'Qty'}: ${i.qty}</div></div>`)
     .join('');
   return `<!DOCTYPE html>
     <html dir="${isAr ? 'rtl' : 'ltr'}">
     <head><title>${isAr ? 'تذكرة المطبخ' : 'Kitchen Ticket'}</title>
     <style>
+      @page { size: ${pageWidthMm}mm 297mm; margin: 0; }
       * { font-family: 'Courier New', monospace; margin: 0; padding: 0; box-sizing: border-box; }
-      body { width: ${width}mm; padding: 4mm; font-size: 13px; color: #000; }
+      html, body { margin: 0; padding: 0; }
+      body { width: ${printableWidthMm}mm; max-width: ${printableWidthMm}mm; margin: 0 auto; padding: 3mm 2mm; font-size: 13px; color: #000; overflow: hidden; }
       .center { text-align: center; }
       .header { font-size: 15px; font-weight: bold; margin-bottom: 4px; }
-      .divider { border-top: 2px solid #000; margin: 6px 0; }
-      .row { display: flex; justify-content: space-between; margin: 2px 0; }
-      .item-name { font-size: 15px; font-weight: bold; margin-top: 8px; }
-      .item-detail { font-size: 13px; }
+      .divider { border-top: 2px solid #000; margin: 6px 0; width: 100%; }
+      .row { display: block; margin: 2px 0; overflow-wrap: anywhere; }
+      .item-row { margin-top: 8px; page-break-inside: avoid; }
+      .item-name { font-size: 17px; font-weight: bold; line-height: 1.35; overflow-wrap: anywhere; }
+      .qty { display: inline-block; font-size: 18px; font-weight: 900; white-space: nowrap; }
+      .item-detail { margin-top: 2px; font-size: 14px; font-weight: bold; }
     </style></head>
     <body>
       <div class="center header">${escapeHtml(params.s.store_name)}</div>
       <div class="divider"></div>
-      <div class="row"><span>${isAr ? 'التاريخ' : 'Date'}: ${now}</span></div>
-      <div class="row"><span>${isAr ? 'النوع' : 'Type'}: ${escapeHtml(orderTypeLabel)}</span></div>
-      ${orderNumber ? `<div class="row"><span>${isAr ? 'الطلب' : 'Order'}: ${escapeHtml(orderNumber)}</span></div>` : ''}
-      ${tableName ? `<div class="row"><span>${isAr ? 'طاولة' : 'Table'}: ${escapeHtml(tableName)}</span></div>` : ''}
-      ${guestCount ? `<div class="row"><span>${isAr ? 'الضيوف' : 'Guests'}: ${guestCount}</span></div>` : ''}
+      <div class="row">${isAr ? 'التاريخ' : 'Date'}: ${now}</div>
+      <div class="row">${isAr ? 'النوع' : 'Type'}: ${escapeHtml(orderTypeLabel)}</div>
+      ${orderNumber ? `<div class="row">${isAr ? 'الطلب' : 'Order'}: ${escapeHtml(orderNumber)}</div>` : ''}
+      ${tableName ? `<div class="row">${isAr ? 'طاولة' : 'Table'}: ${escapeHtml(tableName)}</div>` : ''}
+      ${guestCount ? `<div class="row">${isAr ? 'الضيوف' : 'Guests'}: ${guestCount}</div>` : ''}
       <div class="divider"></div>
       ${rows}
       <div class="divider"></div>
