@@ -27,15 +27,19 @@ describe('navigation regressions', () => {
     expect(source).not.toContain('/pos/active');
   });
 
-  it('keeps POS entry tables-first with direct quick-order actions and no legacy bottom navigation', () => {
-    const landing = read('src/features/pos/components/start/OrderStartWizard.tsx');
+  it('keeps POS entry tables-first with one real landing header and no legacy bottom navigation', () => {
+    const landing = read('src/features/pos/components/tables/PosTablesSidebar.tsx');
     const workspace = read('src/features/pos/pages/PosWorkspacePage.tsx');
-    expect(landing).toContain('data-testid="pos-landing-actions"');
-    expect(landing).toContain('data-testid="pos-start-quick"');
-    expect(landing).toContain('data-testid="pos-start-delivery"');
-    expect(landing).toContain('data-testid="pos-start-drive-thru"');
-    expect(landing).toContain('data-testid="pos-start-active-orders"');
-    expect(landing).toContain('<TablePickerStep');
+    expect(landing).toContain('data-testid="pos-tables-landing-actions"');
+    expect(landing).toContain('data-testid="pos-start-quick-order"');
+    expect(landing).toContain('data-testid="pos-tables-start-delivery"');
+    expect(landing).toContain('data-testid="pos-tables-start-drive-thru"');
+    expect(landing).toContain('data-testid="pos-tables-active-orders"');
+    expect(workspace).toContain('onStartDelivery={() =>');
+    expect(workspace).toContain("setStartStep('delivery')");
+    expect(workspace).toContain("setStartStep('car')");
+    expect(workspace).toContain("setPanel('orders')");
+    expect(workspace).toContain("new Event('pos:show-tables-landing')");
     expect(workspace).not.toContain('PosBottomNav');
     expect(workspace).not.toContain('pb-[calc(56px+env(safe-area-inset-bottom))]');
     expect(workspace).not.toContain('bottom-[calc(56px+env(safe-area-inset-bottom)+8px)]');
