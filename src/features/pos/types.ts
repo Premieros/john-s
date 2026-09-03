@@ -7,6 +7,8 @@ export interface OrderKitchenSend {
   order_item_id: string;
   sent_at: string;
   sent_by: string | null;
+  /** Cumulative quantity actually sent to the kitchen for this order item. */
+  sent_quantity: number;
 }
 
 export interface KitchenSendItem {
@@ -15,6 +17,7 @@ export interface KitchenSendItem {
   product_id: string | null;
   product_name: string | null;
   unit_name: string | null;
+  /** Delta quantity included in this specific send_to_kitchen call. */
   quantity: number;
   unit_price: number;
   discount_amount: number;
