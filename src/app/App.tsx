@@ -1,12 +1,15 @@
 import { AppProviders } from './providers';
 import { AppRoutes } from './routes';
 import { FinancialVisibilityAdminControl } from '@/features/admin/components/FinancialVisibilityAdminControl';
+import { SessionProfileGuard } from '@/core/security/SessionProfileGuard';
 
 export default function App() {
   return (
     <AppProviders>
-      <AppRoutes />
-      <FinancialVisibilityAdminControl />
+      <SessionProfileGuard>
+        <AppRoutes />
+        <FinancialVisibilityAdminControl />
+      </SessionProfileGuard>
     </AppProviders>
   );
 }
