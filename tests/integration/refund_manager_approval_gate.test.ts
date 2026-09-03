@@ -22,27 +22,26 @@ afterAll(async () => {
 });
 
 describe('refund manager approval gate', () => {
-  it('process_refund contains the approval gate, one-time consumption and original payment-method preservation', async () => {
+  it('canonical refund wrapper delegates to a core that preserves approval and original payment semantics', async () => {
     if (!canRun) return;
     const r = await client.query(`
-      SELECT pg_get_functiondef(p.oid) AS def
-      FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE n.nspname = 'public'
-        AND p.proname = 'process_refund'
-        AND p.oid::regprocedure::text = 'process_refund(uuid,jsonb,text)'
+      SELECT
+        pg_get_functiondef('public.process_refund(uuid,jsonb,text)'::regprocedure) AS wrapper_def,
+        pg_get_functiondef('public._process_refund_single_core(uuid,jsonb,text)'::regprocedure) AS core_def
     `);
     expect(r.rowCount).toBe(1);
-    const def = String(r.rows[0].def || '');
-    expect(def).toContain("action_type = 'refund'");
-    expect(def).toContain("entity_type = 'sale'");
-    expect(def).toContain('requester_id = auth.uid()');
-    expect(def).toContain('APPROVAL_REQUIRED');
-    expect(def).toContain('FOR UPDATE SKIP LOCKED');
-    expect(def).toContain("status = 'consumed'");
-    expect(def).toContain('REFUND_APPROVAL_CONSUME_FAILED');
-    expect(def).toContain('payment_method');
-    expect(def).toContain("COALESCE(v_sale.payment_method, 'cash')");
+    const wrapperDef = String(r.rows[0].wrapper_def || '');
+    const coreDef = String(r.rows[0].core_def || '');
+    expect(wrapperDef).toContain('_process_refund_single_core');
+    expect(coreDef).toContain("action_type = 'refund'");
+    expect(coreDef).toContain("entity_type = 'sale'");
+    expect(coreDef).toContain('requester_id = auth.uid()');
+    expect(coreDef).toContain('APPROVAL_REQUIRED');
+    expect(coreDef).toContain('FOR UPDATE SKIP LOCKED');
+    expect(coreDef).toContain("status = 'consumed'");
+    expect(coreDef).toContain('REFUND_APPROVAL_CONSUME_FAILED');
+    expect(coreDef).toContain('payment_method');
+    expect(coreDef).toContain("COALESCE(v_sale.payment_method, 'cash')");
   });
 
   it('approval_requests schema accepts refund and exposes the canonical requester/entity columns', async () => {
