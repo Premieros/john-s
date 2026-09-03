@@ -10,13 +10,19 @@ export function useBranches() {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const { data, error } = await supabase.from('branches').select('*').order('name');
+    const { data, error } = await supabase
+      .from('branches')
+      .select('*')
+      .eq('is_active', true)
+      .order('name');
+
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
-    cache = (data as Branch[]) || [];
+
+    cache = ((data as Branch[]) || []).filter((branch) => branch.is_active !== false);
     setBranches(cache);
     setError(null);
     setLoading(false);
@@ -24,11 +30,26 @@ export function useBranches() {
 
   useEffect(() => {
     if (cache !== null) {
-      setBranches(cache);
+      setBranches(cache.filter((branch) => branch.is_active !== false));
       setLoading(false);
-      return;
     }
-    refresh();
+
+    // Always revalidate on mount so a deleted/deactivated branch can never stay
+    // in the selector just because it was present in the in-memory cache.
+    void refresh();
+
+    const channel = supabase
+      .channel('active-branches-selector')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'branches' },
+        () => { void refresh(); },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [refresh]);
 
   return { branches, loading, error, refresh };
