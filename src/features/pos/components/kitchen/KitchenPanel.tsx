@@ -79,7 +79,7 @@ export function KitchenPanel({ open, onClose, orders, itemsByOrder, kitchenSends
                   <span className="flex min-w-0 items-center gap-2">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ui-warning" />
                     <span className="truncate font-medium text-ui-text">{name}</span>
-                    <span className="shrink-0 text-[11px] font-bold text-ui-warning">× {Number(item?.quantity ?? 0)}</span>
+                    <span className="shrink-0 text-[11px] font-bold text-ui-warning">× {Number(send.sent_quantity ?? 0)}</span>
                   </span>
                   <span className="shrink-0 text-[11px] tabular-nums text-ui-subtle">{formatClockTime(send.sent_at, lang)}</span>
                 </div>
