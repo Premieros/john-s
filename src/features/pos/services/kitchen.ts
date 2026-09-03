@@ -1,5 +1,6 @@
 import type { KitchenSendItem, KitchenSendResult } from '../types';
 import { rpc } from '@/api/rpc';
+import { printKitchenStationsLocally, suppressNextKitchenBrowserPopup } from './localPrintAgent';
 
 // In-flight locks prevent rapid duplicate clicks. The server remains the
 // authoritative idempotency boundary and send_to_kitchen is state/snapshot only.
@@ -8,8 +9,8 @@ const activeSendLocks = new Set<string>();
 /**
  * The automatic kitchen ticket currently consumes product_name from the
  * authoritative send_to_kitchen snapshot. Preserve the base name but append
- * modifiers and the item note so the paper ticket cannot silently lose cooking
- * instructions that are already present in the KDS snapshot.
+ * modifiers and the item note so the browser fallback cannot silently lose
+ * cooking instructions that are already present in the KDS snapshot.
  */
 function withKitchenInstructions(item: KitchenSendItem): KitchenSendItem {
   const parts: string[] = [];
@@ -30,9 +31,12 @@ function withKitchenInstructions(item: KitchenSendItem): KitchenSendItem {
 /**
  * Send the persisted order to KDS.
  *
- * Hard rule: this client service never deducts, restores, or otherwise mutates
- * inventory. send_to_kitchen records kitchen state/snapshots only. Inventory is
- * consumed exactly once by process_sale.
+ * Hard rules:
+ * - This client service never deducts/restores inventory.
+ * - The server decides station_code and delta quantity.
+ * - If the local Windows print agent successfully prints every station, the
+ *   legacy browser kitchen-print popup is suppressed once. If the agent is not
+ *   installed/configured, the existing browser print remains the fallback.
  */
 export async function sendOrderToKitchen(p: {
   p_order_id: string;
@@ -52,6 +56,10 @@ export async function sendOrderToKitchen(p: {
       error?: string;
       detail?: string;
       order_id?: string;
+      order_number?: string | null;
+      table_name?: string | null;
+      order_type?: string | null;
+      guest_count?: number | null;
       sent?: KitchenSendItem[];
       items_sent_count?: number;
       items_processed?: number;
@@ -78,10 +86,26 @@ export async function sendOrderToKitchen(p: {
       };
     }
 
-    const sentItems = (result.sent || []).map(withKitchenInstructions);
+    const rawSentItems = result.sent || [];
+    if (rawSentItems.length > 0 && typeof window !== 'undefined') {
+      const localPrinted = await printKitchenStationsLocally(rawSentItems, {
+        orderNumber: result.order_number || result.order_id || orderId,
+        tableName: result.table_name || null,
+        orderType: result.order_type || null,
+        guestCount: result.guest_count || null,
+        isAr: document.documentElement.dir === 'rtl' || document.documentElement.lang?.startsWith('ar'),
+      });
+      if (localPrinted) suppressNextKitchenBrowserPopup();
+    }
+
+    const sentItems = rawSentItems.map(withKitchenInstructions);
     return {
       success: true,
       order_id: result.order_id || orderId,
+      order_number: result.order_number || null,
+      table_name: result.table_name || null,
+      order_type: result.order_type || null,
+      guest_count: result.guest_count || null,
       sent: sentItems,
       items_sent_count: result.items_sent_count ?? result.items_processed ?? sentItems.length,
       all_sent: result.all_sent ?? true,
