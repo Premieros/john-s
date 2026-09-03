@@ -271,6 +271,12 @@
       ]
     },
     {
+      "name": "delete_purchase_invoice",
+      "params": [
+        "purchase_id"
+      ]
+    },
+    {
       "name": "delete_user",
       "params": [
         "user_id"
@@ -568,6 +574,14 @@
         "tax_amount",
         "total",
         "warehouse_id"
+      ]
+    },
+    {
+      "name": "process_purchase_return",
+      "params": [
+        "items",
+        "purchase_id",
+        "reason"
       ]
     },
     {
