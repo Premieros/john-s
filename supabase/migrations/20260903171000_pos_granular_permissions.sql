@@ -15,8 +15,6 @@ AS $$
   END;
 $$;
 
--- Owner / super admin remain unrestricted. Branch manager gets operational
--- management inside the branch, but NOT cross-branch switching by default.
 UPDATE public.roles
 SET permissions = public._append_role_permission(
   public._append_role_permission(
@@ -84,8 +82,8 @@ SET permissions = public._append_role_permission(
   'pos.split_order')
 WHERE role = 'cashier';
 
--- Production had legacy direct-authority permissions on cashier. Remove them so
--- discount / price override / receipt reprint fall back to their manager gates.
+-- Remove legacy direct-authority permissions from cashier so discount, price
+-- override and receipt reprint use their manager-approval paths by default.
 UPDATE public.roles
 SET permissions = COALESCE(permissions, '[]'::jsonb)
   - 'pos.discount'
@@ -96,7 +94,7 @@ SET permissions = COALESCE(permissions, '[]'::jsonb)
   - 'pos.change_branch'
 WHERE role = 'cashier';
 
--- Kitchen staff need KDS visibility without receiving POS selling rights.
+-- Kitchen staff need KDS visibility without POS selling rights.
 UPDATE public.roles
 SET permissions = public._append_role_permission(COALESCE(permissions, '[]'::jsonb), 'pos.kds_view')
 WHERE role = 'kitchen';
@@ -112,8 +110,6 @@ AS $$
 DECLARE
   v_uid uuid := auth.uid();
 BEGIN
-  -- Internal DB/service operations do not carry an end-user auth.uid().
-  -- Authenticated application calls must pass the permission gates below.
   IF v_uid IS NULL THEN
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
     RETURN NEW;
@@ -147,6 +143,18 @@ BEGIN
         RAISE EXCEPTION 'PERMISSION_DENIED:pos.cancel_order';
       END IF;
       RETURN OLD;
+    END IF;
+
+    -- Kitchen workers may update ONLY kitchen workflow fields. Comparing the
+    -- remaining row as jsonb prevents smuggling sale/order changes through the
+    -- KDS exception.
+    IF NEW.kitchen_status IS DISTINCT FROM OLD.kitchen_status
+       AND (to_jsonb(NEW) - ARRAY['kitchen_status','kitchen_sent_at','kitchen_ready_at','updated_at']::text[])
+         = (to_jsonb(OLD) - ARRAY['kitchen_status','kitchen_sent_at','kitchen_ready_at','updated_at']::text[]) THEN
+      IF NOT public.can_permission('pos.kds_view') THEN
+        RAISE EXCEPTION 'PERMISSION_DENIED:pos.kds_view';
+      END IF;
+      RETURN NEW;
     END IF;
 
     IF NEW.status IS DISTINCT FROM OLD.status THEN
