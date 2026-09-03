@@ -27,7 +27,6 @@ import { CustomerQuickModal } from '../components/customers/CustomerQuickModal';
 import { TableSelectModal } from '../components/tables/TableSelectModal';
 import { ShiftModal } from '../components/shift/ShiftModal';
 import { PosTopBar, type PosPanelId } from '../components/topbar/PosTopBar';
-import { PosBottomNav } from '../components/bottom/PosBottomNav';
 import { ActiveOrdersDrawer, type ActiveCategory } from '../components/orders/ActiveOrdersDrawer';
 import { TablesPanel } from '../components/tables/TablesPanel';
 import { KitchenPanel } from '../components/kitchen/KitchenPanel';
@@ -397,7 +396,6 @@ export function PosWorkspacePage() {
           const catalogFallback = offlinePosManager.getCatalogCache(effectiveBranch || 'default');
           const fallbackProds = offlineData.products.length > 0 ? offlineData.products : catalogFallback?.products || [];
           const fallbackCats = offlineData.categories.length > 0 ? offlineData.categories : catalogFallback?.categories || [];
-
           if (fallbackProds.length > 0) {
             if (!cancelled) {
               setProducts(fallbackProds);
@@ -663,7 +661,7 @@ export function PosWorkspacePage() {
   );
 
   return (
-    <div className="h-screen flex flex-col bg-ui-page text-ui-text overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))]">
+    <div className="h-screen flex flex-col bg-ui-page text-ui-text overflow-hidden">
       <PosTopBar
         panel={panel}
         onPanel={(p) => {
@@ -815,7 +813,7 @@ export function PosWorkspacePage() {
       {pos.cart.length > 0 && !mobileOrderOpen && !isCheckout && (
         <button
           onClick={() => setMobileOrderOpen(true)}
-          className="lg:hidden fixed bottom-[calc(56px+env(safe-area-inset-bottom)+8px)] start-4 end-4 z-30 flex items-center justify-between gap-2 px-5 py-3.5 rounded-2xl bg-ui-primary text-ui-primary-fg border border-ui-border-strong shadow-ui-lg active:scale-[0.98] transition-all"
+          className="lg:hidden fixed bottom-[calc(env(safe-area-inset-bottom)+8px)] start-4 end-4 z-30 flex items-center justify-between gap-2 px-5 py-3.5 rounded-2xl bg-ui-primary text-ui-primary-fg border border-ui-border-strong shadow-ui-lg active:scale-[0.98] transition-all"
         >
           <span className="flex items-center gap-2 font-bold text-sm">
             <ShoppingCart className="w-5 h-5 text-ui-accent" />
@@ -852,27 +850,6 @@ export function PosWorkspacePage() {
           </div>
         </div>
       )}
-
-      <PosBottomNav
-        disabled={isCheckout}
-        panel={panel}
-        category={ordersCategory}
-        counts={{
-          activeOrders: counts.active,
-          deliveryOrders: counts.delivery,
-          takeawayOrders: counts.takeaway,
-          occupiedTables: tables.filter((tb) => tb.status === 'occupied').length,
-        }}
-        onOpenOrders={(c) => {
-          setStartStep(null);
-          setOrdersCategory(c);
-          setPanel('orders');
-        }}
-        onOpenTables={() => {
-          setStartStep(null);
-          setPanel('tables');
-        }}
-      />
 
       <ActiveOrdersDrawer
         open={panel === 'orders'}
