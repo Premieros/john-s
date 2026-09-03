@@ -46,6 +46,11 @@ interface OfflineContextValue {
 
 const OfflineContext = createContext<OfflineContextValue | null>(null);
 
+function belongsToBranch(value: unknown, branchId?: string): boolean {
+  if (!branchId || !value || typeof value !== 'object') return false;
+  return (value as { branch_id?: string | null }).branch_id === branchId;
+}
+
 export function OfflineProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<SyncStatus>(() => offlineSyncEngine.getStatus());
 
@@ -79,6 +84,7 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
         const stockItems = Object.entries(data.stockMap).map(([productId, quantity]) => ({
           productId,
           quantity,
+          branch_id: data.branchId,
         }));
         await saveOfflineCache('stock_map', stockItems);
       }
@@ -87,19 +93,43 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
   );
 
   const loadCachedPosData = useCallback(async (branchId?: string) => {
-    const [products, categories, customers, tables, branches, stockArr, cachedSettings] = await Promise.all([
+    // Offline business data is never returned without an explicit branch scope.
+    // This prevents an empty/unauthorized online result from falling through to
+    // a catalog cached by a different branch or a previous signed-in account.
+    if (!branchId) {
+      return {
+        products: [],
+        categories: [],
+        customers: [],
+        tables: [],
+        branches: [],
+        settings: null,
+        stockMap: {},
+      };
+    }
+
+    const [allProducts, allCategories, allCustomers, allTables, allBranches, stockArr, cachedSettings] = await Promise.all([
       getOfflineCache<Product>('products'),
       getOfflineCache<Category>('categories'),
       getOfflineCache<Customer>('customers'),
       getOfflineCache<DiningTable>('dining_tables'),
       getOfflineCache<Branch>('branches'),
-      getOfflineCache<{ productId: string; quantity: number }>('stock_map'),
-      branchId ? getOfflineSetting<Settings>('settings_' + branchId) : null,
+      getOfflineCache<{ productId: string; quantity: number; branch_id?: string }>('stock_map'),
+      getOfflineSetting<Settings>('settings_' + branchId),
     ]);
 
+    const products = allProducts.filter((item) => belongsToBranch(item, branchId));
+    const categories = allCategories.filter((item) => belongsToBranch(item, branchId));
+    const customers = allCustomers.filter((item) => belongsToBranch(item, branchId));
+    const tables = allTables.filter((item) => belongsToBranch(item, branchId));
+    const branches = allBranches.filter((item) => item.id === branchId);
+
+    const allowedProductIds = new Set(products.map((product) => product.id));
     const stockMap: Record<string, number> = {};
     for (const item of stockArr) {
-      stockMap[item.productId] = item.quantity;
+      if (item.branch_id === branchId && allowedProductIds.has(item.productId)) {
+        stockMap[item.productId] = item.quantity;
+      }
     }
 
     return {
