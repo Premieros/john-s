@@ -26,7 +26,7 @@ describe.skipIf(skip)('Kitchen M091/M092 RBAC + branch isolation', () => {
   }
 
   async function expectDbError(fn: () => Promise<unknown>): Promise<void> {
-    const sp = `sp_${randomUUID().replaceAll('-', '')}`;
+    const sp = `sp_${randomUUID().replace(/-/g, '')}`;
     await client.query(`SAVEPOINT ${sp}`);
     let threw = false;
     try {
