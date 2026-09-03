@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, Wifi, WifiOff, Timer, Moon, Sun, LogOut, Clock3, MoreHorizontal, ListOrdered, RefreshCw, CalendarCheck, ChefHat, Truck } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
@@ -52,6 +52,8 @@ export function PosTopBar({
   const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const landingOpened = useRef(false);
   const isAr = lang === 'ar';
 
   const [now, setNow] = useState(() => new Date());
@@ -74,6 +76,14 @@ export function PosTopBar({
       refreshPending();
     }
   }, [syncing, refreshPending]);
+
+  useEffect(() => {
+    if (landingOpened.current) return;
+    if (location.pathname === '/pos' || location.pathname.endsWith('/pos')) {
+      landingOpened.current = true;
+      onNewOrder();
+    }
+  }, [location.pathname, onNewOrder]);
 
   useEffect(() => {
     refreshPending();
@@ -129,7 +139,6 @@ export function PosTopBar({
 
   return (
     <header className="sticky top-0 z-50 flex min-h-16 items-center gap-2 border-b border-ui-border bg-ui-surface px-3 shadow-ui-sm md:px-4">
-      {/* Brand & New Order */}
       <div className="flex shrink-0 items-center gap-2">
         <Logo variant="mark" size={34} tone="auto" />
         <div className="hidden leading-tight sm:block">
@@ -142,13 +151,12 @@ export function PosTopBar({
           className="flex min-h-10 items-center gap-1.5 rounded-xl bg-ui-primary px-3 text-xs font-black text-ui-primary-fg shadow-ui-sm transition active:scale-95 hover:bg-ui-primary-hover"
         >
           <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('newOrder')}</span>
+          <span className="hidden sm:inline">{isAr ? 'الطاولات / طلب جديد' : 'Tables / New order'}</span>
         </button>
       </div>
 
       <div className="flex-1" />
 
-      {/* Key operational counters — visible on the POS instead of hidden in menus. */}
       <div data-testid="pos-top-counters" className="hidden items-center gap-1 lg:flex">
         {counterButton('active-orders', 'الطلبات النشطة', 'Active orders', counts.activeOrders, <ListOrdered className="h-3.5 w-3.5" />, 'orders')}
         {counterButton('delivery', 'الدليفري', 'Delivery', counts.deliveryOrders, <Truck className="h-3.5 w-3.5" />, 'orders')}
@@ -156,16 +164,11 @@ export function PosTopBar({
         {counterButton('kds', 'طلبات المطبخ', 'Kitchen queue', counts.kitchenOrders, <ChefHat className="h-3.5 w-3.5" />, 'kitchen')}
       </div>
 
-      {/* Offline Pending Sales Sync Indicator */}
       {pendingCount > 0 && (
         <button
           onClick={triggerSync}
           disabled={syncing || !online}
-          className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-black transition animate-pulse ${
-            online
-              ? 'border-amber-500/40 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20'
-              : 'border-ui-danger/40 bg-ui-danger/10 text-ui-danger'
-          }`}
+          className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-black transition animate-pulse ${online ? 'border-amber-500/40 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20' : 'border-ui-danger/40 bg-ui-danger/10 text-ui-danger'}`}
           title={isAr ? 'فواتير تم حفظها أثناء انقطاع النت في انتظار المزامنة' : 'Queued offline sales pending sync'}
         >
           <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
@@ -176,47 +179,31 @@ export function PosTopBar({
         </button>
       )}
 
-      {/* Online / Offline Status Badge */}
-      <div
-        className={`hidden items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[10px] font-black xl:flex ${
-          online
-            ? 'border-ui-success/30 bg-ui-success/10 text-ui-success'
-            : 'border-ui-danger/30 bg-ui-danger/10 text-ui-danger'
-        }`}
-      >
+      <div className={`hidden items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[10px] font-black xl:flex ${online ? 'border-ui-success/30 bg-ui-success/10 text-ui-success' : 'border-ui-danger/30 bg-ui-danger/10 text-ui-danger'}`}>
         {online ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
         {online ? t('online') : (isAr ? 'أوفلاين (جاهز)' : t('offline'))}
       </div>
 
-      {/* Clock */}
       <div className="hidden items-center gap-1.5 rounded-xl border border-ui-border bg-ui-page-alt px-2.5 py-1.5 text-[10px] font-bold text-ui-muted lg:flex">
         <Clock3 className="h-3 w-3 text-ui-subtle" />
         {now.toLocaleTimeString(isAr ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
       </div>
 
-      {/* Shift / Day Closing Status Button */}
       {isCashier && shiftChecked && (
         <button
           data-testid="pos-shift-button"
           onClick={openShiftManagement}
-          className={`min-h-9 items-center gap-1.5 rounded-xl border px-3 text-[11px] font-black flex transition hover:shadow-ui-sm ${
-            activeShift
-              ? 'border-ui-success/40 bg-ui-success/10 text-ui-success hover:bg-ui-success/20'
-              : 'border-ui-warning/40 bg-ui-warning/10 text-ui-warning hover:bg-ui-warning/20'
-          }`}
-          title={activeShift
-            ? (isAr ? 'إدارة وإغلاق اليوم والوردية' : 'Manage Shift & Day Close')
-            : (isAr ? 'فتح وردية' : 'Open Shift')}
+          className={`min-h-9 items-center gap-1.5 rounded-xl border px-3 text-[11px] font-black flex transition hover:shadow-ui-sm ${activeShift ? 'border-ui-success/40 bg-ui-success/10 text-ui-success hover:bg-ui-success/20' : 'border-ui-warning/40 bg-ui-warning/10 text-ui-warning hover:bg-ui-warning/20'}`}
+          title={activeShift ? (isAr ? 'إدارة وإغلاق اليوم والوردية' : 'Manage Shift & Day Close') : (isAr ? 'فتح وردية' : 'Open Shift')}
         >
           <Timer className="h-3.5 w-3.5" />
           <span>{activeShift ? (isAr ? 'الوردية نشطة (إغلاق اليوم)' : t('open')) : t('noOpenShift')}</span>
         </button>
       )}
 
-      {/* More Actions Menu */}
       <div className="relative">
         <button
-          onClick={() => setMore((v) => !v)}
+          onClick={() => setMore((value) => !value)}
           aria-label={isAr ? 'المزيد' : 'More'}
           className="flex min-h-10 min-w-10 items-center justify-center rounded-xl border border-ui-border bg-ui-surface text-ui-muted hover:bg-ui-page-alt"
         >
@@ -225,35 +212,21 @@ export function PosTopBar({
 
         {more && (
           <div className="absolute end-0 top-12 z-50 w-64 rounded-2xl border border-ui-border bg-ui-surface p-2 shadow-ui-xl">
-            <div className="mb-1 px-3 py-2 text-xs font-black text-ui-subtle">
-              {isAr ? 'إجراءات إضافية' : 'More actions'}
-            </div>
+            <div className="mb-1 px-3 py-2 text-xs font-black text-ui-subtle">{isAr ? 'إجراءات إضافية' : 'More actions'}</div>
             <button
-              onClick={() => {
-                onPanel('orders');
-                setMore(false);
-              }}
+              onClick={() => { onPanel('orders'); setMore(false); }}
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold hover:bg-ui-page-alt"
             >
               <ListOrdered className="h-4 w-4" />
-              {t('activeOrders')}{' '}
-              {counts.activeOrders > 0 && (
-                <span className="ms-auto rounded-full bg-ui-primary px-2 py-0.5 text-[10px] text-ui-primary-fg">
-                  {counts.activeOrders}
-                </span>
-              )}
+              {t('activeOrders')}
+              {counts.activeOrders > 0 && <span className="ms-auto rounded-full bg-ui-primary px-2 py-0.5 text-[10px] text-ui-primary-fg">{counts.activeOrders}</span>}
             </button>
             <button
-              onClick={() => {
-                openShiftManagement();
-                setMore(false);
-              }}
+              onClick={() => { openShiftManagement(); setMore(false); }}
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold hover:bg-ui-page-alt"
             >
               <CalendarCheck className="h-4 w-4 text-ui-accent" />
-              {activeShift
-                ? (isAr ? 'إغلاق اليوم والوردية (Z-Report)' : 'Day & Shift Closing')
-                : (isAr ? 'فتح وردية' : 'Open Shift')}
+              {activeShift ? (isAr ? 'إغلاق اليوم والوردية (Z-Report)' : 'Day & Shift Closing') : (isAr ? 'فتح وردية' : 'Open Shift')}
             </button>
             {canChangeBranch && (
               <>
@@ -261,17 +234,10 @@ export function PosTopBar({
                 <div className="px-3 py-1.5 text-[11px] text-ui-subtle">{isAr ? 'الفرع' : 'Branch'}</div>
                 <select
                   value={branchId}
-                  onChange={(e) => {
-                    onBranchChange(e.target.value);
-                    setMore(false);
-                  }}
+                  onChange={(event) => { onBranchChange(event.target.value); setMore(false); }}
                   className="w-full rounded-xl border border-ui-border bg-ui-page-alt px-3 py-2 text-sm font-bold text-ui-text"
                 >
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {isAr ? b.name : b.name_en || b.name}
-                    </option>
-                  ))}
+                  {branches.map((branch) => <option key={branch.id} value={branch.id}>{isAr ? branch.name : branch.name_en || branch.name}</option>)}
                 </select>
               </>
             )}
@@ -279,7 +245,6 @@ export function PosTopBar({
         )}
       </div>
 
-      {/* User Info */}
       <div className="hidden items-center gap-2 lg:flex">
         <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-ui-primary text-xs font-black text-ui-primary-fg ring-1 ring-ui-border-strong">
           {(user?.full_name || user?.email || '?')[0].toUpperCase()}
@@ -290,30 +255,15 @@ export function PosTopBar({
         </div>
       </div>
 
-      {/* Theme Toggle */}
-      <button
-        onClick={toggleTheme}
-        aria-label={isAr ? 'تغيير المظهر' : 'Toggle theme'}
-        className="flex min-h-10 min-w-10 items-center justify-center rounded-xl text-ui-muted hover:bg-ui-page-alt"
-      >
+      <button onClick={toggleTheme} aria-label={isAr ? 'تغيير المظهر' : 'Toggle theme'} className="flex min-h-10 min-w-10 items-center justify-center rounded-xl text-ui-muted hover:bg-ui-page-alt">
         {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
       </button>
 
-      {/* Exit */}
-      <button
-        onClick={onExit}
-        aria-label={isAr ? 'خروج' : 'Exit'}
-        className="hidden min-h-10 min-w-10 items-center justify-center rounded-xl text-ui-muted hover:bg-ui-page-alt sm:flex"
-      >
+      <button onClick={onExit} aria-label={isAr ? 'خروج' : 'Exit'} className="hidden min-h-10 min-w-10 items-center justify-center rounded-xl text-ui-muted hover:bg-ui-page-alt sm:flex">
         <LogOut className="h-4 w-4 rotate-180" />
       </button>
 
-      {/* Sign Out */}
-      <button
-        onClick={() => void signOut()}
-        aria-label={isAr ? 'تسجيل الخروج' : 'Sign out'}
-        className="flex min-h-10 min-w-10 items-center justify-center rounded-xl text-ui-subtle hover:bg-ui-danger/10 hover:text-ui-danger"
-      >
+      <button onClick={() => void signOut()} aria-label={isAr ? 'تسجيل الخروج' : 'Sign out'} className="flex min-h-10 min-w-10 items-center justify-center rounded-xl text-ui-subtle hover:bg-ui-danger/10 hover:text-ui-danger">
         <LogOut className="h-4 w-4" />
       </button>
     </header>
