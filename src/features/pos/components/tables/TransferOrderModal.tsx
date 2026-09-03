@@ -1,5 +1,7 @@
-import { useState, useMemo } from 'react';
-import { ArrowRightLeft, AlertTriangle, Users } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowRightLeft, AlertTriangle, GitMerge, ShieldCheck, Users } from 'lucide-react';
+import { supabase } from '@/api';
+import * as api from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
@@ -13,7 +15,7 @@ interface TransferOrderModalProps {
   tables: DiningTable[];
   areas?: DiningArea[];
   ordersByTable: Record<string, Order[]>;
-  onConfirmTransfer: (orderId: string, fromTableId: string, toTableId: string) => Promise<boolean>;
+  onConfirmTransfer?: (orderId: string, fromTableId: string, toTableId: string) => Promise<boolean>;
 }
 
 export function TransferOrderModal({
@@ -24,224 +26,243 @@ export function TransferOrderModal({
   tables,
   areas = [],
   ordersByTable,
-  onConfirmTransfer,
 }: TransferOrderModalProps) {
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
 
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [activeAreaFilter, setActiveAreaFilter] = useState<'all' | 'indoor' | 'outdoor'>('all');
+  const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
 
-  // Categorize tables into Indoor and Outdoor
-  const availableTargetTables = useMemo(() => {
-    return tables.filter((tb) => tb.id !== sourceTable?.id);
-  }, [tables, sourceTable]);
+  useEffect(() => {
+    if (!open) return;
+    setSelectedTargetId(null);
+    setReason('');
+    setErrorMsg(null);
+    setPendingRequestId(null);
+    setPendingStatus(null);
+  }, [open, order?.id]);
+
+  const availableTargetTables = useMemo(() => tables.filter((tb) => tb.id !== sourceTable?.id), [tables, sourceTable]);
 
   const filteredTables = useMemo(() => {
     return availableTargetTables.filter((tb) => {
       if (activeAreaFilter === 'all') return true;
       const areaName = areas.find((a) => a.id === tb.area_id)?.name?.toLowerCase() || '';
       const tableName = tb.name.toLowerCase();
-      
       const isOutdoor =
-        areaName.includes('outdoor') ||
-        areaName.includes('خارج') ||
-        areaName.includes('تراس') ||
-        areaName.includes('terrace') ||
-        areaName.includes('patio') ||
-        tableName.includes('outdoor') ||
-        tableName.includes('خارج');
-
-      if (activeAreaFilter === 'outdoor') return isOutdoor;
-      if (activeAreaFilter === 'indoor') return !isOutdoor;
-      return true;
+        areaName.includes('outdoor') || areaName.includes('خارج') || areaName.includes('تراس') ||
+        areaName.includes('terrace') || areaName.includes('patio') ||
+        tableName.includes('outdoor') || tableName.includes('خارج');
+      return activeAreaFilter === 'outdoor' ? isOutdoor : !isOutdoor;
     });
   }, [availableTargetTables, activeAreaFilter, areas]);
 
-  const selectedTargetTable = useMemo(() => {
-    return tables.find((tb) => tb.id === selectedTargetId) || null;
-  }, [tables, selectedTargetId]);
+  const selectedTargetTable = useMemo(() => tables.find((tb) => tb.id === selectedTargetId) || null, [tables, selectedTargetId]);
+  const targetOrder = selectedTargetTable ? (ordersByTable[selectedTargetTable.id]?.[0] || null) : null;
+  const targetHasOrder = !!targetOrder;
+  const actionType = targetHasOrder ? 'merge_order' : 'transfer_order';
 
-  const targetHasOrder = selectedTargetTable ? (ordersByTable[selectedTargetTable.id]?.length || 0) > 0 : false;
-
-  const handleExecuteTransfer = async () => {
-    if (!order || !sourceTable || !selectedTargetId) return;
-
-    if (targetHasOrder) {
-      setErrorMsg(
-        isAr
-          ? 'الطاولة المختارة مشغولة بطلب آخر بالفعل. يرجى اختيار طاولة متاحة فارغة.'
-          : 'Selected table already has an active order. Please choose an available table.'
-      );
+  const perform = async () => {
+    if (!order || !sourceTable || !selectedTargetId || loading) return;
+    if (reason.trim().length < 3) {
+      setErrorMsg(isAr ? 'اكتب سبب العملية للمدير.' : 'Enter a reason for manager approval.');
       return;
     }
 
     setLoading(true);
     setErrorMsg(null);
     try {
-      const ok = await onConfirmTransfer(order.id, sourceTable.id, selectedTargetId);
-      if (ok) {
-        onClose();
-        setSelectedTargetId(null);
-      } else {
-        setErrorMsg(isAr ? 'فشل نقل الطلب، يرجى المحاولة ثانية' : 'Failed to transfer order');
+      const payload = targetHasOrder
+        ? { target_order_id: targetOrder!.id, target_table_id: selectedTargetId }
+        : { target_table_id: selectedTargetId };
+
+      const { data, error } = await api.pos.performOrderAction({
+        p_action_type: actionType,
+        p_order_id: order.id,
+        p_payload: payload,
+        p_reason: reason.trim(),
+      });
+
+      if (error) {
+        setErrorMsg(error.message);
+        return;
       }
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Transfer failed');
+
+      if (data?.success) {
+        setPendingRequestId(null);
+        setPendingStatus(null);
+        setSelectedTargetId(null);
+        onClose();
+        return;
+      }
+
+      if (data?.error === 'MANAGER_APPROVAL_REQUIRED' && data.request_id) {
+        setPendingRequestId(data.request_id);
+        setPendingStatus(data.status || 'pending');
+        return;
+      }
+
+      setErrorMsg(
+        data?.error === 'SOURCE_HAS_SENT_ITEMS'
+          ? (isAr
+            ? 'لا يمكن دمج طلب يحتوي أصنافًا مرسلة للمطبخ حاليًا حتى لا يتغير سجل KDS. استخدم نقل الطاولة للطلب كاملًا أو أكمل الطلب كما هو.'
+            : 'A source order with sent kitchen items cannot currently be merged because the KDS snapshot is immutable. Transfer the whole table order instead or finish it separately.')
+          : data?.detail || data?.error || (isAr ? 'تعذر تنفيذ العملية.' : 'Could not execute the action.'),
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (!open || !pendingRequestId) return;
+    let cancelled = false;
+    const check = async () => {
+      const { data } = await supabase
+        .from('approval_requests')
+        .select('status')
+        .eq('id', pendingRequestId)
+        .maybeSingle();
+      if (cancelled || !data) return;
+      const status = (data as { status: string }).status;
+      setPendingStatus(status);
+      if (status === 'approved') {
+        setPendingRequestId(null);
+        await perform();
+      } else if (status === 'rejected' || status === 'expired') {
+        setPendingRequestId(null);
+        setErrorMsg(status === 'rejected'
+          ? (isAr ? 'رفض المدير العملية.' : 'The manager rejected the action.')
+          : (isAr ? 'انتهت صلاحية طلب الموافقة. أعد المحاولة.' : 'The approval request expired. Try again.'));
+      }
+    };
+    const id = window.setInterval(() => void check(), 2000);
+    void check();
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pendingRequestId]);
+
   if (!open || !order || !sourceTable) return null;
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={isAr ? 'تحويل ونقل الطلب بين الطاولات' : 'Transfer Order to Another Table'}
-      size="lg"
-    >
+    <Modal open={open} onClose={onClose} title={isAr ? 'نقل أو دمج الطلب' : 'Transfer or Merge Order'} size="lg">
       <div className="space-y-4">
-        {/* Info Banner */}
-        <div className="rounded-2xl border border-ui-border bg-ui-page p-3.5 flex items-center justify-between">
+        <div className="flex items-center justify-between rounded-2xl border border-ui-border bg-ui-page p-3.5">
           <div>
             <p className="text-xs text-ui-subtle">{isAr ? 'الطلب الحالي' : 'Active Order'}</p>
-            <p className="text-sm font-black text-ui-text">
-              #{order.order_number} · {isAr ? `طاولة (${sourceTable.name})` : `Table (${sourceTable.name})`}
-            </p>
+            <p className="text-sm font-black text-ui-text">#{order.order_number} · {sourceTable.name}</p>
           </div>
-          <div className="text-end">
-            <span className="inline-flex items-center rounded-lg bg-ui-primary-soft text-ui-accent px-2.5 py-1 text-xs font-black">
-              {isAr ? 'احتفاظ ببيانات الطلب والمطبخ' : 'Preserve Order & KDS'}
-            </span>
-          </div>
+          <span className="inline-flex items-center rounded-lg bg-ui-primary-soft px-2.5 py-1 text-xs font-black text-ui-accent">
+            {isAr ? 'المخزون وKDS لا يتغيران' : 'Inventory & KDS unchanged'}
+          </span>
         </div>
 
-        {/* Indoor / Outdoor Tabs */}
         <div className="flex items-center gap-1 rounded-xl bg-ui-page-alt p-1">
-          <button
-            type="button"
-            onClick={() => setActiveAreaFilter('all')}
-            className={`flex-1 rounded-lg py-1.5 text-xs font-black transition ${
-              activeAreaFilter === 'all'
-                ? 'bg-ui-surface text-ui-text shadow-ui-xs'
-                : 'text-ui-muted hover:text-ui-text'
-            }`}
-          >
-            {isAr ? 'جميع الطاولات' : 'All Tables'} ({availableTargetTables.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveAreaFilter('indoor')}
-            className={`flex-1 rounded-lg py-1.5 text-xs font-black transition ${
-              activeAreaFilter === 'indoor'
-                ? 'bg-ui-surface text-ui-text shadow-ui-xs'
-                : 'text-ui-muted hover:text-ui-text'
-            }`}
-          >
-            {isAr ? 'الصالة الداخلية (Indoor)' : 'Indoor Area'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveAreaFilter('outdoor')}
-            className={`flex-1 rounded-lg py-1.5 text-xs font-black transition ${
-              activeAreaFilter === 'outdoor'
-                ? 'bg-ui-surface text-ui-text shadow-ui-xs'
-                : 'text-ui-muted hover:text-ui-text'
-            }`}
-          >
-            {isAr ? 'الصالة الخارجية (Outdoor / Terrace)' : 'Outdoor / Terrace'}
-          </button>
+          {(['all','indoor','outdoor'] as const).map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setActiveAreaFilter(filter)}
+              className={`flex-1 rounded-lg py-1.5 text-xs font-black transition ${activeAreaFilter === filter ? 'bg-ui-surface text-ui-text shadow-ui-xs' : 'text-ui-muted hover:text-ui-text'}`}
+            >
+              {filter === 'all'
+                ? (isAr ? `كل الطاولات (${availableTargetTables.length})` : `All (${availableTargetTables.length})`)
+                : filter === 'indoor'
+                  ? (isAr ? 'داخلية' : 'Indoor')
+                  : (isAr ? 'خارجية' : 'Outdoor')}
+            </button>
+          ))}
         </div>
 
-        {/* Tables Grid Selection */}
-        <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-          <p className="text-xs font-bold text-ui-subtle">
-            {isAr ? 'اختر الطاولة المراد نقل الطلب إليها:' : 'Select destination table:'}
-          </p>
-          
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+        <div className="max-h-[300px] space-y-2 overflow-y-auto pr-1">
+          <p className="text-xs font-bold text-ui-subtle">{isAr ? 'اختر الطاولة المستهدفة:' : 'Select destination table:'}</p>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4">
             {filteredTables.map((tb) => {
               const hasOrd = (ordersByTable[tb.id]?.length || 0) > 0;
-              const isSelected = selectedTargetId === tb.id;
+              const selected = selectedTargetId === tb.id;
               return (
                 <button
                   key={tb.id}
                   type="button"
-                  onClick={() => {
-                    setSelectedTargetId(tb.id);
-                    setErrorMsg(null);
-                  }}
-                  className={`flex flex-col items-start justify-between rounded-xl border p-2.5 text-start transition ${
-                    isSelected
-                      ? 'border-ui-primary bg-ui-primary-soft ring-2 ring-ui-primary'
-                      : hasOrd
-                      ? 'border-amber-500/30 bg-amber-500/5 hover:border-amber-500/60'
-                      : 'border-ui-border bg-ui-surface hover:border-emerald-500 hover:bg-emerald-500/5'
-                  }`}
+                  data-testid={`pos-structure-target-${tb.id}`}
+                  onClick={() => { setSelectedTargetId(tb.id); setErrorMsg(null); }}
+                  className={`flex flex-col items-start justify-between rounded-xl border p-2.5 text-start transition ${selected ? 'border-ui-primary bg-ui-primary-soft ring-2 ring-ui-ring' : hasOrd ? 'border-amber-500/30 bg-amber-500/5 hover:border-amber-500/60' : 'border-ui-border bg-ui-surface hover:border-emerald-500'}`}
                 >
                   <div className="flex w-full items-center justify-between">
                     <span className="text-sm font-black text-ui-text">{tb.name}</span>
-                    <span className="flex items-center gap-0.5 text-[10px] text-ui-muted">
-                      <Users className="h-2.5 w-2.5" /> {tb.capacity}
-                    </span>
+                    <span className="flex items-center gap-0.5 text-[10px] text-ui-muted"><Users className="h-2.5 w-2.5" /> {tb.capacity}</span>
                   </div>
-
-                  <div className="mt-2 w-full">
-                    {hasOrd ? (
-                      <span className="block text-[10px] font-bold text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded text-center">
-                        {isAr ? 'مشغولة بطلب' : 'Occupied'}
-                      </span>
-                    ) : (
-                      <span className="block text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded text-center">
-                        {isAr ? 'متاحة فارغة' : 'Vacant'}
-                      </span>
-                    )}
-                  </div>
+                  <span className={`mt-2 block w-full rounded px-1.5 py-0.5 text-center text-[10px] font-bold ${hasOrd ? 'bg-amber-500/10 text-amber-600' : 'bg-emerald-500/10 text-emerald-600'}`}>
+                    {hasOrd ? (isAr ? 'مشغولة — Merge' : 'Occupied — Merge') : (isAr ? 'فارغة — Transfer' : 'Vacant — Transfer')}
+                  </span>
                 </button>
               );
             })}
           </div>
-
-          {filteredTables.length === 0 && (
-            <div className="py-8 text-center text-xs font-semibold text-ui-muted">
-              {isAr ? 'لا توجد طاولات أخرى مطابقة للتصفية' : 'No other tables found'}
-            </div>
-          )}
         </div>
 
-        {/* Error message */}
+        {selectedTargetTable && (
+          <div className={`rounded-xl border p-3 text-xs font-semibold ${targetHasOrder ? 'border-amber-500/20 bg-amber-500/5 text-amber-700' : 'border-emerald-500/20 bg-emerald-500/5 text-emerald-700'}`}>
+            {targetHasOrder
+              ? (isAr
+                ? `Merge: سيتم ضم الطلب #${order.order_number} إلى الطلب #${targetOrder?.order_number} على ${selectedTargetTable.name}.`
+                : `Merge order #${order.order_number} into #${targetOrder?.order_number} on ${selectedTargetTable.name}.`)
+              : (isAr
+                ? `Transfer: سيتم نقل الطلب كاملًا من ${sourceTable.name} إلى ${selectedTargetTable.name}.`
+                : `Transfer the whole order from ${sourceTable.name} to ${selectedTargetTable.name}.`)}
+          </div>
+        )}
+
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-black text-ui-muted">{isAr ? 'سبب العملية — يظهر للمدير' : 'Reason — shown to manager'}</span>
+          <input
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder={isAr ? 'مثال: نقل الضيف لطاولة أخرى' : 'Example: guest moved to another table'}
+            className="h-11 w-full rounded-xl border border-ui-border bg-ui-surface px-3 text-sm font-bold text-ui-text outline-none focus:border-ui-primary"
+          />
+        </label>
+
+        {pendingRequestId && (
+          <div className="flex items-center gap-3 rounded-2xl border border-ui-warning/30 bg-ui-warning/10 p-3 text-ui-warning">
+            <ShieldCheck className="h-5 w-5 shrink-0" />
+            <div>
+              <p className="text-xs font-black">{isAr ? 'بانتظار موافقة المدير' : 'Waiting for manager approval'}</p>
+              <p className="mt-0.5 text-[10px] font-bold opacity-80">{isAr ? 'سيتم التنفيذ تلقائيًا فور الموافقة.' : 'It will execute automatically after approval.'} · {pendingStatus || 'pending'}</p>
+            </div>
+          </div>
+        )}
+
         {errorMsg && (
-          <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs font-bold text-rose-600 flex items-center gap-2">
+          <div className="flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs font-bold text-rose-600">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
         )}
 
-        {/* Selected target table confirmation note */}
-        {selectedTargetTable && !targetHasOrder && (
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs font-semibold text-emerald-700">
-            {isAr
-              ? `سيتم نقل الطلب #${order.order_number} من طاولة "${sourceTable.name}" إلى طاولة "${selectedTargetTable.name}" فوراً، وستصبح طاولة "${sourceTable.name}" متاحة لاستقبال زبائن جدد.`
-              : `Order #${order.order_number} will be transferred from "${sourceTable.name}" to "${selectedTargetTable.name}". Table "${sourceTable.name}" will become vacant.`}
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="flex items-center justify-end gap-2 pt-3 border-t border-ui-border">
-          <Button variant="secondary" onClick={onClose} disabled={loading}>
-            {t('cancel')}
-          </Button>
+        <div className="flex items-center justify-end gap-2 border-t border-ui-border pt-3">
+          <Button variant="secondary" onClick={onClose} disabled={loading}>{t('cancel')}</Button>
           <Button
             variant="primary"
-            onClick={handleExecuteTransfer}
-            disabled={loading || !selectedTargetId || targetHasOrder}
+            onClick={() => void perform()}
+            disabled={loading || !!pendingRequestId || !selectedTargetId || reason.trim().length < 3}
           >
-            <ArrowRightLeft className="h-4 w-4" />
-            <span>{isAr ? 'تأكيد نقل الطلب' : 'Confirm Transfer'}</span>
+            {targetHasOrder ? <GitMerge className="h-4 w-4" /> : <ArrowRightLeft className="h-4 w-4" />}
+            <span>
+              {pendingRequestId
+                ? (isAr ? 'بانتظار المدير' : 'Waiting')
+                : targetHasOrder
+                  ? (isAr ? 'طلب Merge' : 'Request Merge')
+                  : (isAr ? 'طلب Transfer' : 'Request Transfer')}
+            </span>
           </Button>
         </div>
       </div>
