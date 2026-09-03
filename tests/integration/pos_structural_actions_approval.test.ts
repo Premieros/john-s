@@ -173,6 +173,31 @@ describe.skipIf(skip)('POS structural actions manager approval', () => {
     const consumed = await client.query<{ status: string }>('SELECT status FROM public.approval_requests WHERE id = $1::uuid', [requestId]);
     expect(consumed.rows[0].status).toBe('consumed');
 
+    // The consumed approval cannot authorize the same structural mutation twice.
+    // Repeating the exact request must return to Pending with a fresh approval id.
+    const replay = await runAsPersist(
+      client,
+      ids.users.cashier,
+      `SELECT public.perform_pos_order_action('split_order', $1::uuid, $2::jsonb, 'فصل حساب عميل') AS result`,
+      [sourceOrder, payload],
+    );
+    expect(replay.error).toBeUndefined();
+    const replayResult = replay.rows[0].result as ActionResult;
+    expect(replayResult).toMatchObject({
+      success: false,
+      error: 'MANAGER_APPROVAL_REQUIRED',
+      action: 'split_order',
+      status: 'pending',
+    });
+    expect(String(replayResult.request_id || '')).toBeTruthy();
+    expect(String(replayResult.request_id || '')).not.toBe(requestId);
+
+    const sourceQtyAfterReplay = await client.query<{ quantity: string }>(
+      'SELECT quantity::text AS quantity FROM public.order_items WHERE id = $1::uuid',
+      [sourceItem],
+    );
+    expect(Number(sourceQtyAfterReplay.rows[0].quantity)).toBe(1);
+
     const afterLedger = await client.query<{ count: string }>('SELECT count(*)::text AS count FROM public.inventory_ledger');
     const afterSends = await client.query<{ count: string }>('SELECT count(*)::text AS count FROM public.order_kitchen_sends');
     expect(afterLedger.rows[0].count).toBe(beforeLedger.rows[0].count);
