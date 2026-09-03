@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-29T20:40:59.753Z",
+  "generated_at": "2026-09-03T15:49:22.661Z",
   "source": "scripts/db/gen-contract.js (extracted from src/api/domains + src)",
   "rpcs": [
     {
@@ -91,6 +91,22 @@
       "name": "approve_warehouse_transfer",
       "params": [
         "transfer_id"
+      ]
+    },
+    {
+      "name": "authorize_open_drawer",
+      "params": [
+        "reason",
+        "shift_id"
+      ]
+    },
+    {
+      "name": "bootstrap_initial_super_admin",
+      "params": [
+        "email",
+        "full_name",
+        "password",
+        "username"
       ]
     },
     {
@@ -243,6 +259,12 @@
       ]
     },
     {
+      "name": "delete_branch_cascade",
+      "params": [
+        "branch_id"
+      ]
+    },
+    {
       "name": "delete_demo_data",
       "params": [
         "branch_id"
@@ -258,6 +280,14 @@
       "name": "detach_order",
       "params": [
         "order_id"
+      ]
+    },
+    {
+      "name": "force_close_shift",
+      "params": [
+        "actual_amount",
+        "reason",
+        "shift_id"
       ]
     },
     {
@@ -319,6 +349,14 @@
       "name": "get_costing_overview",
       "params": [
         "branch_id"
+      ]
+    },
+    {
+      "name": "get_costing_sales_summary",
+      "params": [
+        "branch_id",
+        "from",
+        "to"
       ]
     },
     {
@@ -498,6 +536,15 @@
       ]
     },
     {
+      "name": "perform_pos_order_action",
+      "params": [
+        "action_type",
+        "order_id",
+        "payload",
+        "reason"
+      ]
+    },
+    {
       "name": "post_manual_journal",
       "params": [
         "branch_id",
@@ -546,6 +593,30 @@
         "order_type",
         "paid_amount",
         "payment_method",
+        "salesperson_id",
+        "shift_id",
+        "status",
+        "subtotal",
+        "table_id",
+        "tax_amount",
+        "total",
+        "warehouse_id"
+      ]
+    },
+    {
+      "name": "process_sale_split",
+      "params": [
+        "bonus_amount",
+        "branch_id",
+        "customer_id",
+        "discount_amount",
+        "discount_type",
+        "guest_count",
+        "invoice_number",
+        "items",
+        "order_id",
+        "order_type",
+        "payments",
         "salesperson_id",
         "shift_id",
         "status",
@@ -623,6 +694,19 @@
         "rfq_id",
         "supplier_id",
         "valid_until"
+      ]
+    },
+    {
+      "name": "register_branch",
+      "params": [
+        "address",
+        "currency",
+        "email",
+        "owner_name",
+        "password",
+        "phone",
+        "store_name",
+        "store_name_en"
       ]
     },
     {
@@ -725,6 +809,14 @@
       ]
     },
     {
+      "name": "transfer_order_item_to_table",
+      "params": [
+        "order_id",
+        "order_item_id",
+        "target_table_id"
+      ]
+    },
+    {
       "name": "update_branch",
       "params": [
         "address",
@@ -733,6 +825,13 @@
         "name",
         "name_en",
         "phone"
+      ]
+    },
+    {
+      "name": "update_financial_visibility_settings",
+      "params": [
+        "historical_percent",
+        "recent_days"
       ]
     },
     {
@@ -821,6 +920,7 @@
     "product_components",
     "product_unit_links",
     "product_units",
+    "production_orders",
     "production_waste",
     "products",
     "purchase_items",
@@ -842,6 +942,7 @@
     "subscription_plans",
     "subscriptions",
     "suppliers",
+    "system_settings",
     "treasury_accounts",
     "users",
     "warehouses",

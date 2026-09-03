@@ -67,7 +67,7 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
   const [adminBranchFilter, setAdminBranchFilter] = useState<string>('');
   const [filters, setFilters] = useState<ReportFilters>({});
   const [options, setOptions] = useState<{
-    warehouses: { id: string; name: string; name_en: string | null }[];
+    warehouses: { id: string; name: string }[];
     cashiers: { id: string; full_name: string | null; email: string | null }[];
     customers: { id: string; name: string; name_en: string | null }[];
     suppliers: { id: string; name: string; name_en: string | null }[];
@@ -165,7 +165,7 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
   useEffect(() => {
     (async () => {
       const [warehouses, cashiers, customers, suppliers, products, categories, tables] = await Promise.all([
-        supabase.from('warehouses').select('id, name, name_en'),
+        supabase.from('warehouses').select('id, name'),
         supabase.from('users').select('id, full_name, email'),
         supabase.from('customers').select('id, name, name_en'),
         supabase.from('suppliers').select('id, name, name_en'),
@@ -665,7 +665,7 @@ export function ReportsPage({ controlledReportType, onReportTypeChange }: Report
       case 'order_type': return ORDER_TYPE_OPTIONS.map((v) => ({ value: v, label: ORDER_TYPE_LABELS[v] || v }));
       case 'payment_method': return PAYMENT_METHOD_OPTIONS.map((v) => ({ value: v, label: PAYMENT_METHOD_LABELS[v] || v }));
       case 'status': return SALE_STATUS_OPTIONS.map((v) => ({ value: v, label: STATUS_LABELS[v] || v }));
-      case 'warehouse': return options.warehouses.map((w) => ({ value: w.id, label: name(w.name, w.name_en) }));
+      case 'warehouse': return options.warehouses.map((w) => ({ value: w.id, label: w.name }));
       case 'cashier':
       case 'buyer': return options.cashiers.map((u) => ({ value: u.id, label: u.full_name || u.email || '' }));
       case 'customer': return options.customers.map((c) => ({ value: c.id, label: name(c.name, c.name_en) }));

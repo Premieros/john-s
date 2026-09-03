@@ -37,8 +37,27 @@ jobs:
         with:
           path: dist
 
-  deploy:
+  production-parity:
     needs: build
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://azzdesuowpdcoflmyezn.supabase.co' }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Verify frontend API contract is current
+        run: node scripts/db/gen-contract.js --check
+      - name: Verify Production API parity
+        run: node scripts/db/check-production-parity.js
+
+  deploy:
+    needs: [build, production-parity]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
