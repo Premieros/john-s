@@ -30,9 +30,43 @@ export interface ProcessSplitSalePayload extends Omit<ProcessSalePayload, 'p_pai
   p_payments: SplitTenderInput[];
 }
 
+let armedSplitTender: SplitTenderInput[] | null = null;
+let armedSplitTenderAt = 0;
+const SPLIT_TENDER_ARM_TTL_MS = 15_000;
+
+export function armSplitTender(payments: SplitTenderInput[]): void {
+  armedSplitTender = payments
+    .filter((payment) => Number(payment.amount) > 0)
+    .map((payment) => ({ payment_method: payment.payment_method, amount: Number(payment.amount) }));
+  armedSplitTenderAt = Date.now();
+}
+
+export function clearArmedSplitTender(): void {
+  armedSplitTender = null;
+  armedSplitTenderAt = 0;
+}
+
+function consumeArmedSplitTender(): SplitTenderInput[] | null {
+  if (!armedSplitTender || Date.now() - armedSplitTenderAt > SPLIT_TENDER_ARM_TTL_MS) {
+    clearArmedSplitTender();
+    return null;
+  }
+  const payments = armedSplitTender;
+  clearArmedSplitTender();
+  return payments;
+}
+
 export async function processSaleForOrder(p: ProcessSalePayload): Promise<{ result: (RpcResult & { offline?: boolean }) | null; error: string | null }> {
-  // Explicit offline mode is the only place where a sale may enter the outbox.
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  const splitPayments = consumeArmedSplitTender();
+
+  // Split tender is intentionally online-only. It must never degrade into the
+  // normal offline sale queue because that could produce partial financial truth.
+  if (splitPayments && typeof navigator !== 'undefined' && !navigator.onLine) {
+    return { result: null, error: 'Split payment requires an online connection.' };
+  }
+
+  // The normal sale path is still allowed to enter the explicit offline outbox.
+  if (!splitPayments && typeof navigator !== 'undefined' && !navigator.onLine) {
     const queued = offlinePosManager.enqueueSale(p);
     return {
       result: {
@@ -43,6 +77,13 @@ export async function processSaleForOrder(p: ProcessSalePayload): Promise<{ resu
       },
       error: null,
     };
+  }
+
+  if (splitPayments) {
+    const { p_paid_amount: _paidAmount, p_payment_method: _paymentMethod, ...splitBase } = p;
+    void _paidAmount;
+    void _paymentMethod;
+    return processSplitSaleForOrder({ ...splitBase, p_payments: splitPayments });
   }
 
   try {
