@@ -16,11 +16,11 @@ This service lets the browser POS route kitchen tickets to different Windows pri
 2. Install Node.js LTS on the cashier PC if it is not already installed.
 3. Run `start.cmd` from this folder.
 4. The configuration page opens at `http://127.0.0.1:17654/`.
-5. Map stations, for example:
-   - `barista` -> the barista/drinks printer.
-   - `main` or `kitchen` -> the kitchen/food printer.
-6. Use **Test Print** before the first real order.
-7. In Johns, assign drink categories to the `barista` kitchen station and food categories to the kitchen station. The server, not the browser, decides each item's station.
+5. Map stations for the current Johns production data:
+   - `drinks` -> the barista/drinks printer.
+   - `main` -> the kitchen/food printer.
+6. Use **Test Print** on both mappings before the first real order.
+7. In Johns, drink categories must be assigned to the `drinks` kitchen station; food categories stay on `main`. The server, not the browser, decides each item's station.
 
 ## Important
 
