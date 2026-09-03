@@ -16,6 +16,7 @@ import { formatCurrency } from '@/lib/format';
 import type { DiningTable, OrderType } from '@/lib/types';
 import type { OrderKitchenSend } from '../../types';
 import { orderTypeLabel } from '../../utils/format';
+import { usePosPermissions } from '../../hooks/usePosPermissions';
 
 interface PosOrderHeaderBarProps {
   orderNumber: string | null;
@@ -62,6 +63,7 @@ export function PosOrderHeaderBar({
 }: PosOrderHeaderBarProps) {
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
+  const perms = usePosPermissions();
 
   const elapsedText = useMemo(() => {
     if (!createdAt) return null;
@@ -102,17 +104,19 @@ export function PosOrderHeaderBar({
       </div>
 
       <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-        <button
-          data-testid="pos-top-action-customer"
-          type="button"
-          onClick={onOpenCustomer}
-          className="flex items-center gap-1 rounded-xl border border-ui-border bg-ui-surface px-2.5 py-1.5 font-black text-ui-text hover:border-ui-primary hover:text-ui-primary hover:bg-ui-primary-soft transition active:scale-95 shadow-ui-xs"
-        >
-          <UserPlus className="h-3.5 w-3.5 text-ui-primary" />
-          <span className="max-w-[140px] truncate">{customerName || (isAr ? 'إضافة عميل' : 'Customer')}</span>
-        </button>
+        {perms.canManageCustomer && (
+          <button
+            data-testid="pos-top-action-customer"
+            type="button"
+            onClick={onOpenCustomer}
+            className="flex items-center gap-1 rounded-xl border border-ui-border bg-ui-surface px-2.5 py-1.5 font-black text-ui-text hover:border-ui-primary hover:text-ui-primary hover:bg-ui-primary-soft transition active:scale-95 shadow-ui-xs"
+          >
+            <UserPlus className="h-3.5 w-3.5 text-ui-primary" />
+            <span className="max-w-[140px] truncate">{customerName || (isAr ? 'إضافة عميل' : 'Customer')}</span>
+          </button>
+        )}
 
-        {activeTable && orderId && onOpenTransferModal && (
+        {perms.canTransferOrder && activeTable && orderId && onOpenTransferModal && (
           <button
             data-testid="pos-top-action-merge-transfer"
             type="button"
@@ -124,7 +128,7 @@ export function PosOrderHeaderBar({
           </button>
         )}
 
-        {itemsCount > 0 && (
+        {perms.canPrintKitchen && itemsCount > 0 && (
           <button
             data-testid="pos-action-print"
             type="button"
@@ -136,7 +140,7 @@ export function PosOrderHeaderBar({
           </button>
         )}
 
-        {itemsCount > 0 && (
+        {perms.canHoldOrder && itemsCount > 0 && (
           <button
             data-testid="pos-action-hold"
             type="button"
@@ -148,7 +152,7 @@ export function PosOrderHeaderBar({
           </button>
         )}
 
-        {itemsCount > 0 && (
+        {perms.canSendKitchen && itemsCount > 0 && (
           <button
             data-testid="pos-action-send-kitchen"
             type="button"
@@ -161,7 +165,7 @@ export function PosOrderHeaderBar({
           </button>
         )}
 
-        {itemsCount > 0 && (
+        {perms.canPay && itemsCount > 0 && (
           <button
             data-testid="pos-action-pay"
             type="button"
