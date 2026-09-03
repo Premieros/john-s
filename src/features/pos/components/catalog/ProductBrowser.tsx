@@ -188,7 +188,7 @@ export function ProductBrowser({ products, categories, stockMap, sellableStock, 
                       {!blocked && (
                         <div className="flex shrink-0 items-center gap-1">
                           {onConfigureProduct && <button type="button" onClick={(e) => { e.stopPropagation(); onConfigureProduct(p); }} title={isAr ? 'تخصيص الصنف' : 'Configure Item'} aria-label={isAr ? 'تخصيص الصنف' : 'Configure Item'} className="flex h-8 w-8 items-center justify-center rounded-lg border border-ui-border bg-ui-page-alt text-ui-muted transition hover:border-ui-primary hover:text-ui-accent"><SlidersHorizontal className="h-3.5 w-3.5" /></button>}
-                          <button type="button" aria-label={productLabel} title={isAr ? `إضافة ${productLabel}` : `Add ${productLabel}`} onClick={() => selectProduct(p)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-ui-primary text-ui-primary-fg shadow-ui-sm transition hover:bg-ui-primary/90 active:scale-95"><Plus className="h-4 w-4" /></button>
+                          <button type="button" aria-label={isAr ? 'إضافة' : 'Add'} title={isAr ? `إضافة ${productLabel}` : `Add ${productLabel}`} onClick={() => selectProduct(p)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-ui-primary text-ui-primary-fg shadow-ui-sm transition hover:bg-ui-primary/90 active:scale-95"><Plus className="h-4 w-4" /></button>
                         </div>
                       )}
                     </div>
