@@ -43,7 +43,7 @@ function makeItem(id: string, productId: string, quantity: number): OrderItem {
   };
 }
 
-function makeSend(orderItemId: string): OrderKitchenSend {
+function makeSend(orderItemId: string, sentQuantity = 1): OrderKitchenSend {
   return {
     id: `s-${orderItemId}`,
     branch_id: 'b1',
@@ -51,12 +51,13 @@ function makeSend(orderItemId: string): OrderKitchenSend {
     order_item_id: orderItemId,
     sent_at: '2026-01-01T00:00:00Z',
     sent_by: null,
+    sent_quantity: sentQuantity,
   };
 }
 
 describe('deriveOrderStage', () => {
   it('returns hold for held orders regardless of sends', () => {
-    expect(deriveOrderStage(makeOrder({ status: 'held' }), [makeItem('i1', 'p1', 2)], [makeSend('i1')])).toBe('hold');
+    expect(deriveOrderStage(makeOrder({ status: 'held' }), [makeItem('i1', 'p1', 2)], [makeSend('i1', 2)])).toBe('hold');
   });
 
   it('returns open when nothing has been sent to the kitchen', () => {
@@ -65,12 +66,12 @@ describe('deriveOrderStage', () => {
 
   it('returns kitchen for partial sends', () => {
     const items = [makeItem('i1', 'p1', 2), makeItem('i2', 'p2', 1)];
-    expect(deriveOrderStage(makeOrder({}), items, [makeSend('i1')])).toBe('kitchen');
+    expect(deriveOrderStage(makeOrder({}), items, [makeSend('i1', 2)])).toBe('kitchen');
   });
 
   it('returns ready when all item quantities are sent', () => {
     const items = [makeItem('i1', 'p1', 2), makeItem('i2', 'p2', 1)];
-    expect(deriveOrderStage(makeOrder({}), items, [makeSend('i1'), makeSend('i2')])).toBe('ready');
+    expect(deriveOrderStage(makeOrder({}), items, [makeSend('i1', 2), makeSend('i2', 1)])).toBe('ready');
   });
 
   it('returns open for an empty order', () => {
