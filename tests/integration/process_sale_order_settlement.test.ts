@@ -122,8 +122,10 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
     expect(r.success).toBe(true);
     if (!r.success) throw new Error(JSON.stringify(r));
 
-    const order = await client.query(`SELECT status FROM public.orders WHERE id = $1`, [orderId]);
+    const order = await client.query(`SELECT status, payment_status, payment_at FROM public.orders WHERE id = $1`, [orderId]);
     expect(order.rows[0].status).toBe('completed');
+    expect(order.rows[0].payment_status).toBe('paid');
+    expect(order.rows[0].payment_at).not.toBeNull();
 
     const sale = await client.query(
       `SELECT order_type, table_id FROM public.sales WHERE id = $1`,
@@ -150,8 +152,9 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
     expect(await saleCount(prefix)).toBe(saleCountBefore);
     expect(await batchQty()).toBe(beforeQty - 1);
 
-    const order = await client.query(`SELECT status FROM public.orders WHERE id = $1`, [orderId]);
+    const order = await client.query(`SELECT status, payment_status FROM public.orders WHERE id = $1`, [orderId]);
     expect(order.rows[0].status).toBe('completed');
+    expect(order.rows[0].payment_status).toBe('paid');
   });
 
   it('rejects an order from another branch WITHOUT writing a sale', async () => {
@@ -167,8 +170,9 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
     expect(r.error).toBe('ORDER_NOT_FOUND');
     expect(await saleCount(prefix)).toBe(saleCountBefore);
 
-    const order = await client.query(`SELECT status FROM public.orders WHERE id = $1`, [foreignOrderId]);
+    const order = await client.query(`SELECT status, payment_status FROM public.orders WHERE id = $1`, [foreignOrderId]);
     expect(order.rows[0].status).toBe('held');
+    expect(order.rows[0].payment_status).toBe('unpaid');
   });
 
   it('frees the table when settling a held dine-in order', async () => {
@@ -181,5 +185,7 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
 
     const t = await client.query(`SELECT status FROM public.dining_tables WHERE id = $1`, [tableId]);
     expect(t.rows[0].status).toBe('vacant');
+    const order = await client.query(`SELECT payment_status FROM public.orders WHERE id = $1`, [orderId]);
+    expect(order.rows[0].payment_status).toBe('paid');
   });
 });
