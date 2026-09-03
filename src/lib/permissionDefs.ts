@@ -98,17 +98,17 @@ export const PERMISSION_LABELS: Record<Permission, { ar: string; en: string }> =
   'pos.sell': { ar: 'البيع من نقطة البيع', en: 'Sell from POS' },
   'pos.discount': { ar: 'منح خصومات من نقطة البيع', en: 'Give POS Discounts' },
   'pos.change_price': { ar: 'تغيير سعر البيع من نقطة البيع', en: 'Change Sale Price in POS' },
-  'pos.reprint': { ar: 'إعادة طباعة فاتورة', en: 'Reprint Receipt' },
+  'pos.reprint': { ar: 'إعادة طباعة فاتورة بدون موافقة', en: 'Reprint Receipt Without Approval' },
   'pos.hold': { ar: 'تعليق واستئناف الطلب', en: 'Hold & Resume Orders' },
   'pos.send_kitchen': { ar: 'إرسال الطلب للمطبخ', en: 'Send Orders to Kitchen' },
   'pos.kds_view': { ar: 'عرض شاشة وطلبات المطبخ', en: 'View Kitchen / KDS' },
   'pos.print_kitchen': { ar: 'طباعة تذكرة المطبخ', en: 'Print Kitchen Ticket' },
   'pos.pay': { ar: 'تحصيل وإغلاق الطلب', en: 'Take Payment & Close Order' },
-  'pos.void': { ar: 'حذف/إلغاء صنف من الطلب', en: 'Void / Remove Order Item' },
-  'pos.cancel_order': { ar: 'إلغاء الطلب بالكامل', en: 'Cancel Order' },
+  'pos.void': { ar: 'بدء حذف/إلغاء صنف (المُرسل يخضع للموافقة)', en: 'Start Item Void (Sent Items Require Approval)' },
+  'pos.cancel_order': { ar: 'بدء إلغاء الطلب بالكامل', en: 'Start Order Cancellation' },
   'pos.refund': { ar: 'بدء مرتجع من نقطة البيع', en: 'Initiate POS Refund' },
-  'pos.transfer_order': { ar: 'نقل/دمج الطلب أو الطاولة', en: 'Transfer / Merge Order' },
-  'pos.split_order': { ar: 'فصل صنف/كمية من الطلب', en: 'Split Order Item / Quantity' },
+  'pos.transfer_order': { ar: 'بدء نقل/دمج الطلب أو الطاولة', en: 'Start Transfer / Merge Order' },
+  'pos.split_order': { ar: 'بدء فصل صنف/كمية من الطلب', en: 'Start Split Order Item / Quantity' },
   'pos.change_branch': { ar: 'تغيير الفرع من نقطة البيع', en: 'Change POS Branch' },
   'sales.print': { ar: 'طباعة فواتير المبيعات', en: 'Print Sales Invoices' },
   'sales.export': { ar: 'تصدير فواتير المبيعات', en: 'Export Sales Invoices' },
@@ -182,16 +182,9 @@ export interface PermissionGroup {
 }
 
 export const PERMISSION_GROUPS: PermissionGroup[] = [
+  { key: 'dashboard', ar: 'لوحة التحكم', en: 'Dashboard', permissions: ['dashboard.view'] },
   {
-    key: 'dashboard',
-    ar: 'لوحة التحكم',
-    en: 'Dashboard',
-    permissions: ['dashboard.view'],
-  },
-  {
-    key: 'pos',
-    ar: 'نقطة البيع',
-    en: 'POS',
+    key: 'pos', ar: 'نقطة البيع', en: 'POS',
     permissions: [
       'pos.sell', 'pos.discount', 'pos.change_price', 'pos.reprint',
       'pos.hold', 'pos.send_kitchen', 'pos.kds_view', 'pos.print_kitchen', 'pos.pay',
@@ -199,113 +192,23 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       'floor_plan.view', 'floor_plan.manage',
     ],
   },
-  {
-    key: 'products',
-    ar: 'المنتجات',
-    en: 'Products',
-    permissions: ['products.view', 'products.manage', 'products.print', 'products.export', 'products.import'],
-  },
-  {
-    key: 'categories',
-    ar: 'الأصناف',
-    en: 'Categories',
-    permissions: ['categories.view', 'categories.manage'],
-  },
-  {
-    key: 'components',
-    ar: 'المكونات',
-    en: 'Components',
-    permissions: ['components.view', 'components.manage'],
-  },
-  {
-    key: 'purchases',
-    ar: 'المشتريات',
-    en: 'Purchases',
-    permissions: ['purchases.view', 'purchases.manage', 'purchases.print',
-      'purchases.requests', 'purchases.rfq', 'purchases.receiving', 'purchases.evaluation'],
-  },
-  {
-    key: 'inventory',
-    ar: 'المخزون',
-    en: 'Inventory',
-    permissions: [
-      'inventory.view', 'inventory.manage',
-      'inventory.transfers', 'inventory.transfers.approve',
-      'inventory.ledger.view',
-    ],
-  },
-  {
-    key: 'raw_materials',
-    ar: 'المواد الخام',
-    en: 'Raw Materials',
-    permissions: ['raw_materials.view', 'raw_materials.manage'],
-  },
-  {
-    key: 'recipes',
-    ar: 'الوصفات',
-    en: 'Recipes',
-    permissions: ['recipes.view', 'recipes.manage'],
-  },
-  {
-    key: 'production',
-    ar: 'الإنتاج',
-    en: 'Production',
-    permissions: ['production.view', 'production.manage', 'production.waste'],
-  },
-  {
-    key: 'warehouses',
-    ar: 'المخازن',
-    en: 'Warehouses',
-    permissions: ['warehouses.view', 'warehouses.manage'],
-  },
-  {
-    key: 'customers',
-    ar: 'العملاء',
-    en: 'Customers',
-    permissions: ['customers.view', 'customers.manage', 'customers.print', 'customers.export'],
-  },
-  {
-    key: 'suppliers',
-    ar: 'الموردون',
-    en: 'Suppliers',
-    permissions: ['suppliers.view', 'suppliers.manage', 'suppliers.print'],
-  },
-  {
-    key: 'sales',
-    ar: 'المبيعات',
-    en: 'Sales',
-    permissions: ['sales.view', 'refunds.approve', 'sales.print', 'sales.export'],
-  },
-  {
-    key: 'expenses',
-    ar: 'المصروفات',
-    en: 'Expenses',
-    permissions: ['expenses.view', 'expenses.manage', 'expenses.print'],
-  },
-  {
-    key: 'accounts',
-    ar: 'المحاسبة',
-    en: 'Accounting',
-    permissions: ['accounts.view', 'accounts.manage'],
-  },
-  {
-    key: 'shifts',
-    ar: 'الشيفتات',
-    en: 'Shifts',
-    permissions: ['shifts.view', 'shifts.open', 'shifts.close', 'shifts.manage'],
-  },
-  {
-    key: 'reports',
-    ar: 'التقارير',
-    en: 'Reports',
-    permissions: ['reports.view', 'reports.financial', 'reports.costing', 'reports.print', 'reports.export'],
-  },
-  {
-    key: 'admin',
-    ar: 'الإدارة',
-    en: 'Administration',
-    permissions: ['users.view', 'users.manage', 'audit.view', 'settings.manage', 'branches.manage'],
-  },
+  { key: 'products', ar: 'المنتجات', en: 'Products', permissions: ['products.view', 'products.manage', 'products.print', 'products.export', 'products.import'] },
+  { key: 'categories', ar: 'الأصناف', en: 'Categories', permissions: ['categories.view', 'categories.manage'] },
+  { key: 'components', ar: 'المكونات', en: 'Components', permissions: ['components.view', 'components.manage'] },
+  { key: 'purchases', ar: 'المشتريات', en: 'Purchases', permissions: ['purchases.view', 'purchases.manage', 'purchases.print', 'purchases.requests', 'purchases.rfq', 'purchases.receiving', 'purchases.evaluation'] },
+  { key: 'inventory', ar: 'المخزون', en: 'Inventory', permissions: ['inventory.view', 'inventory.manage', 'inventory.transfers', 'inventory.transfers.approve', 'inventory.ledger.view'] },
+  { key: 'raw_materials', ar: 'المواد الخام', en: 'Raw Materials', permissions: ['raw_materials.view', 'raw_materials.manage'] },
+  { key: 'recipes', ar: 'الوصفات', en: 'Recipes', permissions: ['recipes.view', 'recipes.manage'] },
+  { key: 'production', ar: 'الإنتاج', en: 'Production', permissions: ['production.view', 'production.manage', 'production.waste'] },
+  { key: 'warehouses', ar: 'المخازن', en: 'Warehouses', permissions: ['warehouses.view', 'warehouses.manage'] },
+  { key: 'customers', ar: 'العملاء', en: 'Customers', permissions: ['customers.view', 'customers.manage', 'customers.print', 'customers.export'] },
+  { key: 'suppliers', ar: 'الموردون', en: 'Suppliers', permissions: ['suppliers.view', 'suppliers.manage', 'suppliers.print'] },
+  { key: 'sales', ar: 'المبيعات', en: 'Sales', permissions: ['sales.view', 'refunds.approve', 'sales.print', 'sales.export'] },
+  { key: 'expenses', ar: 'المصروفات', en: 'Expenses', permissions: ['expenses.view', 'expenses.manage', 'expenses.print'] },
+  { key: 'accounts', ar: 'المحاسبة', en: 'Accounting', permissions: ['accounts.view', 'accounts.manage'] },
+  { key: 'shifts', ar: 'الشيفتات', en: 'Shifts', permissions: ['shifts.view', 'shifts.open', 'shifts.close', 'shifts.manage'] },
+  { key: 'reports', ar: 'التقارير', en: 'Reports', permissions: ['reports.view', 'reports.financial', 'reports.costing', 'reports.print', 'reports.export'] },
+  { key: 'admin', ar: 'الإدارة', en: 'Administration', permissions: ['users.view', 'users.manage', 'audit.view', 'settings.manage', 'branches.manage'] },
 ];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
@@ -337,6 +240,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   cashier: [
     'dashboard.view',
     'pos.sell', 'pos.hold', 'pos.send_kitchen', 'pos.kds_view', 'pos.print_kitchen', 'pos.pay',
+    'pos.void', 'pos.transfer_order', 'pos.split_order',
     'floor_plan.view',
     'products.view', 'products.print',
     'customers.view', 'customers.manage', 'customers.print',
@@ -385,7 +289,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ],
 };
 
-/** DB row of the `roles` table. */
 export interface RoleDef {
   role: Role;
   name_ar: string;
@@ -394,7 +297,6 @@ export interface RoleDef {
   updated_at?: string;
 }
 
-/** Display labels for every role (fallback before the roles table loads). */
 export const ROLE_META: Record<Role, { ar: string; en: string }> = {
   super_admin: { ar: 'مدير عام', en: 'Super Admin' },
   owner: { ar: 'مالك', en: 'Owner' },
@@ -409,11 +311,6 @@ export function isAdminRole(role?: Role | null): boolean {
   return role === 'super_admin' || role === 'owner';
 }
 
-/**
- * Resolves whether a role has a permission. Admins always have everything.
- * `rolePermissionsMap` (from the DB `roles` table) overrides the code
- * defaults — it should be the source of truth once loaded.
- */
 export function hasPermission(
   role: Role | null | undefined,
   rolePermissionsMap: Record<string, Permission[]> | null | undefined,
