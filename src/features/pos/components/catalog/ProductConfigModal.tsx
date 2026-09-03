@@ -64,22 +64,6 @@ export function ProductConfigModal({
         return;
       }
       const loaded = Array.isArray(res.groups) ? res.groups : [];
-
-      if (loaded.length === 0 && !initialItem) {
-        onConfirm({
-          product,
-          unit_name: 'piece',
-          quantity: 1,
-          unit_price: Number(product.sale_price || 0),
-          discount_amount: 0,
-          bonus_quantity: 0,
-          modifier_option_ids: [],
-          modifiers: [],
-        });
-        onClose();
-        return;
-      }
-
       setGroups(loaded);
       if (!initialItem?.modifier_option_ids?.length) {
         const defaults: string[] = [];
@@ -94,7 +78,7 @@ export function ProductConfigModal({
     });
 
     return () => { cancelled = true; };
-  }, [isOpen, product, initialItem, isAr, onClose, onConfirm]);
+  }, [isOpen, product, initialItem, isAr]);
 
   const optionById = useMemo(() => {
     const map = new Map<string, { group: ProductModifierGroup; option: ProductModifierGroup['options'][number] }>();
