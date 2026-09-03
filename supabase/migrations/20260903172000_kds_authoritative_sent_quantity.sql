@@ -1,5 +1,6 @@
 -- KDS must represent what has actually been sent to the kitchen, not the
--- mutable current cart quantity. Also preserve item-level cooking notes.
+-- mutable current cart quantity. Preserve item-level cooking notes and enforce
+-- KDS permission at the authoritative RPC boundary.
 CREATE OR REPLACE FUNCTION public.get_kitchen_queue(
   p_station text DEFAULT NULL::text,
   p_branch_id uuid DEFAULT get_branch_id()
@@ -27,7 +28,8 @@ DECLARE
   v_is_service_role boolean := COALESCE(current_setting('role', true), '') = 'service_role';
 BEGIN
   IF p_branch_id IS NULL
-     OR (NOT v_is_service_role AND NOT public.user_may_access_branch(p_branch_id)) THEN
+     OR (NOT v_is_service_role AND NOT public.user_may_access_branch(p_branch_id))
+     OR (NOT v_is_service_role AND NOT public.can_permission('pos.kds_view')) THEN
     RETURN;
   END IF;
 
@@ -138,5 +140,96 @@ BEGIN
   FROM allowed_items ai
   GROUP BY ai.oid, ai.onumber, ai.station_code, ai.kstatus, ai.guests, ai.onotes
   ORDER BY MIN(ai.queue_at), ai.onumber, ai.station_code;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.get_my_kitchen_stations(p_branch_id uuid DEFAULT get_branch_id())
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_role text;
+  v_has_assignments boolean;
+  v_rows jsonb;
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN '[]'::jsonb; END IF;
+  IF NOT public.user_may_access_branch(p_branch_id)
+     OR NOT public.can_permission('pos.kds_view') THEN
+    RETURN '[]'::jsonb;
+  END IF;
+
+  SELECT role INTO v_role FROM public.users WHERE id = auth.uid() AND is_active = true;
+  SELECT EXISTS(
+    SELECT 1 FROM public.user_kitchen_station_assignments a
+    WHERE a.user_id = auth.uid() AND a.branch_id = p_branch_id
+  ) INTO v_has_assignments;
+
+  SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY s.sort_order, s.code), '[]'::jsonb)
+  INTO v_rows
+  FROM public.kitchen_stations s
+  WHERE s.is_active = true
+    AND (
+      v_role IN ('super_admin','owner','branch_manager')
+      OR NOT v_has_assignments
+      OR EXISTS (
+        SELECT 1 FROM public.user_kitchen_station_assignments a
+        WHERE a.user_id = auth.uid()
+          AND a.branch_id = p_branch_id
+          AND a.station_id = s.id
+      )
+    );
+
+  RETURN COALESCE(v_rows, '[]'::jsonb);
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.set_kitchen_status(p_order_id uuid, p_status text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_branch_id uuid;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'AUTH_REQUIRED';
+  END IF;
+
+  IF p_status NOT IN ('pending','sent','cooking','ready','served','cancelled') THEN
+    RAISE EXCEPTION 'Invalid kitchen_status: %', p_status;
+  END IF;
+
+  SELECT branch_id INTO v_branch_id
+  FROM public.orders
+  WHERE id = p_order_id;
+
+  IF v_branch_id IS NULL THEN
+    RAISE EXCEPTION 'ORDER_NOT_FOUND';
+  END IF;
+
+  IF NOT public.user_may_access_branch(v_branch_id)
+     OR NOT public.can_permission('pos.kds_view') THEN
+    RAISE EXCEPTION 'PERMISSION_DENIED:pos.kds_view';
+  END IF;
+
+  UPDATE public.orders
+  SET kitchen_status = p_status,
+      kitchen_sent_at = CASE WHEN p_status = 'sent' THEN now() ELSE kitchen_sent_at END,
+      kitchen_ready_at = CASE WHEN p_status = 'ready' THEN now() ELSE kitchen_ready_at END,
+      updated_at = now()
+  WHERE id = p_order_id;
+
+  INSERT INTO public.audit_log(user_id, action, entity, entity_id, details, branch_id)
+  VALUES (
+    auth.uid(),
+    'kitchen_status',
+    'order',
+    p_order_id,
+    jsonb_build_object('kitchen_status', p_status),
+    v_branch_id
+  );
 END;
 $function$;
