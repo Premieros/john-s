@@ -42,9 +42,16 @@ describe('hasPermission', () => {
   });
 
   it('POS action permissions follow the default role matrix', () => {
-    expect(hasPermission('cashier', null, 'pos.reprint')).toBe(true);
+    // Cashier can print the first/ordinary receipt via sales.print, but receipt
+    // reprint authority stays manager-only so authorize_sale_print can open the
+    // single-use manager approval path.
+    expect(hasPermission('cashier', null, 'pos.reprint')).toBe(false);
     expect(hasPermission('cashier', null, 'pos.discount')).toBe(false);
     expect(hasPermission('cashier', null, 'pos.change_price')).toBe(false);
+    expect(hasPermission('cashier', null, 'pos.send_kitchen')).toBe(true);
+    expect(hasPermission('cashier', null, 'pos.kds_view')).toBe(true);
+    expect(hasPermission('cashier', null, 'pos.pay')).toBe(true);
+    expect(hasPermission('branch_manager', null, 'pos.reprint')).toBe(true);
     expect(hasPermission('branch_manager', null, 'pos.discount')).toBe(true);
     expect(hasPermission('branch_manager', null, 'pos.change_price')).toBe(true);
     expect(hasPermission('super_admin', null, 'pos.discount')).toBe(true);
