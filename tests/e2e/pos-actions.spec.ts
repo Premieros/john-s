@@ -69,7 +69,7 @@ async function login(page: Page) {
 async function addProduct(page: Page) {
   await page.waitForLoadState('networkidle');
   await expect(page.getByText('E2E Burger', { exact: true }).first()).toBeVisible({ timeout: 10000 });
-  const addButton = page.getByRole('button', { name: /E2E Burger/i });
+  const addButton = page.getByTitle(/إضافة E2E Burger|Add E2E Burger/i);
   await expect(addButton).toBeEnabled({ timeout: 10000 });
   await addButton.click({ timeout: 10000 });
   await expect(page.getByTestId(`pos-cart-qty-${PRODUCT_ID}`)).toHaveText('1', { timeout: 10000 });
