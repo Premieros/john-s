@@ -6,13 +6,14 @@ import {
   ChefHat,
   Banknote,
   Pause,
-  Trash2,
+  Printer,
+  UserPlus,
   ShoppingBag,
   Bike,
 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { formatCurrency } from '@/lib/format';
-import type { DiningTable, OrderItem, OrderType } from '@/lib/types';
+import type { DiningTable, OrderType } from '@/lib/types';
 import type { OrderKitchenSend } from '../../types';
 import { orderTypeLabel } from '../../utils/format';
 
@@ -26,23 +27,20 @@ interface PosOrderHeaderBarProps {
   currency: string;
   createdAt: string | null;
   kitchenSends: OrderKitchenSend[];
-  orderItems: OrderItem[];
   kitchenSending: boolean;
   completing: boolean;
-  canDiscount?: boolean;
-  canDeleteItem?: boolean;
   hasUnsentItems: boolean;
   onOpenTransferModal?: () => void;
+  onOpenCustomer: () => void;
   onHoldOrder: () => void;
   onSendKitchen: () => void;
-  onOpenDiscount?: () => void;
+  onPrint: () => void;
   onPay: () => void;
-  onClear: () => void;
-  onNewOrder: () => void;
 }
 
 export function PosOrderHeaderBar({
   orderNumber,
+  orderId,
   activeTable,
   orderType,
   itemsCount,
@@ -52,13 +50,13 @@ export function PosOrderHeaderBar({
   kitchenSends,
   kitchenSending,
   completing,
-  canDeleteItem = true,
   hasUnsentItems,
   onOpenTransferModal,
+  onOpenCustomer,
   onHoldOrder,
   onSendKitchen,
+  onPrint,
   onPay,
-  onClear,
 }: PosOrderHeaderBarProps) {
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
@@ -72,7 +70,7 @@ export function PosOrderHeaderBar({
   const hasSent = kitchenSends.length > 0;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ui-border bg-ui-page px-3 py-2 text-xs select-none">
+    <div data-testid="pos-top-action-bar" className="flex flex-wrap items-center justify-between gap-2 border-b border-ui-border bg-ui-page px-3 py-2 text-xs select-none">
       <div className="flex items-center gap-2 flex-wrap min-w-0">
         {activeTable ? (
           <div className="flex items-center gap-1.5 rounded-xl bg-ui-primary px-2.5 py-1 text-ui-primary-fg font-black shadow-ui-xs shrink-0">
@@ -102,33 +100,75 @@ export function PosOrderHeaderBar({
       </div>
 
       <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-        {activeTable && onOpenTransferModal && (
-          <button type="button" onClick={onOpenTransferModal} className="flex items-center gap-1 rounded-xl border border-ui-border bg-ui-surface px-2.5 py-1.5 font-black text-ui-text hover:border-ui-primary hover:text-ui-primary hover:bg-ui-primary-soft transition active:scale-95 shadow-ui-xs">
+        <button
+          data-testid="pos-top-action-customer"
+          type="button"
+          onClick={onOpenCustomer}
+          className="flex items-center gap-1 rounded-xl border border-ui-border bg-ui-surface px-2.5 py-1.5 font-black text-ui-text hover:border-ui-primary hover:text-ui-primary hover:bg-ui-primary-soft transition active:scale-95 shadow-ui-xs"
+        >
+          <UserPlus className="h-3.5 w-3.5 text-ui-primary" />
+          <span className="hidden sm:inline">{isAr ? 'إضافة عميل' : 'Customer'}</span>
+        </button>
+
+        {activeTable && orderId && onOpenTransferModal && (
+          <button
+            data-testid="pos-top-action-merge-transfer"
+            type="button"
+            onClick={onOpenTransferModal}
+            className="flex items-center gap-1 rounded-xl border border-ui-border bg-ui-surface px-2.5 py-1.5 font-black text-ui-text hover:border-ui-primary hover:text-ui-primary hover:bg-ui-primary-soft transition active:scale-95 shadow-ui-xs"
+          >
             <ArrowRightLeft className="h-3.5 w-3.5 text-ui-primary" />
-            <span className="hidden sm:inline">{isAr ? 'نقل الطاولة' : 'Transfer'}</span>
+            <span className="hidden sm:inline">{isAr ? 'دمج / نقل' : 'Merge / Transfer'}</span>
           </button>
         )}
+
         {itemsCount > 0 && (
-          <button type="button" onClick={onHoldOrder} className="flex items-center gap-1 rounded-xl border border-ui-border bg-ui-surface px-2.5 py-1.5 font-black text-ui-text hover:bg-ui-page-alt transition active:scale-95 shadow-ui-xs">
+          <button
+            data-testid="pos-action-print"
+            type="button"
+            onClick={onPrint}
+            className="flex items-center gap-1 rounded-xl border border-ui-border bg-ui-surface px-2.5 py-1.5 font-black text-ui-text hover:bg-ui-page-alt transition active:scale-95 shadow-ui-xs"
+          >
+            <Printer className="h-3.5 w-3.5 text-ui-primary" />
+            <span className="hidden sm:inline">{isAr ? 'طباعة' : 'Print'}</span>
+          </button>
+        )}
+
+        {itemsCount > 0 && (
+          <button
+            data-testid="pos-action-hold"
+            type="button"
+            onClick={onHoldOrder}
+            className="flex items-center gap-1 rounded-xl border border-ui-border bg-ui-surface px-2.5 py-1.5 font-black text-ui-text hover:bg-ui-page-alt transition active:scale-95 shadow-ui-xs"
+          >
             <Pause className="h-3.5 w-3.5 text-amber-600" />
             <span className="hidden sm:inline">{isAr ? 'تعليق' : 'Hold'}</span>
           </button>
         )}
+
         {itemsCount > 0 && (
-          <button type="button" onClick={onSendKitchen} disabled={kitchenSending || (!hasUnsentItems && hasSent)} className={`flex items-center gap-1 rounded-xl px-2.5 py-1.5 font-black text-xs transition active:scale-95 shadow-ui-xs ${hasUnsentItems || !hasSent ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-amber-500/20' : 'bg-ui-page-alt text-ui-muted cursor-not-allowed'}`}>
+          <button
+            data-testid="pos-action-send-kitchen"
+            type="button"
+            onClick={onSendKitchen}
+            disabled={kitchenSending || (!hasUnsentItems && hasSent)}
+            className={`flex items-center gap-1 rounded-xl px-2.5 py-1.5 font-black text-xs transition active:scale-95 shadow-ui-xs ${hasUnsentItems || !hasSent ? 'bg-amber-500 text-white hover:bg-amber-600 shadow-amber-500/20' : 'bg-ui-page-alt text-ui-muted cursor-not-allowed'}`}
+          >
             <ChefHat className="h-3.5 w-3.5" />
             <span>{kitchenSending ? (isAr ? 'جارٍ الإرسال...' : 'Sending...') : hasSent && hasUnsentItems ? (isAr ? 'إرسال الجديد' : 'Send New') : (isAr ? 'إرسال للمطبخ' : 'Kitchen')}</span>
           </button>
         )}
+
         {itemsCount > 0 && (
-          <button type="button" onClick={onPay} disabled={completing} className="flex items-center gap-1 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 px-3 py-1.5 font-black text-xs transition active:scale-95 shadow-ui-xs">
+          <button
+            data-testid="pos-action-pay"
+            type="button"
+            onClick={onPay}
+            disabled={completing}
+            className="flex items-center gap-1 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 px-3 py-1.5 font-black text-xs transition active:scale-95 shadow-ui-xs disabled:opacity-40"
+          >
             <Banknote className="h-3.5 w-3.5" />
             <span>{isAr ? 'دفع' : 'Pay'}</span>
-          </button>
-        )}
-        {itemsCount > 0 && canDeleteItem && (
-          <button type="button" onClick={onClear} className="flex items-center justify-center h-8 w-8 rounded-xl text-ui-danger hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition">
-            <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
