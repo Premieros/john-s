@@ -84,7 +84,7 @@ export function BranchesPage() {
   const remove = async () => {
     if (!deleteId) return;
     const removedId = deleteId;
-    const { data, error } = await branchesApi.remove({ p_branch_id: removedId });
+    const { data, error } = await branchesApi.remove({ p_branch_id: deleteId });
     if (error || !data?.success) {
       const code = data?.error;
       if (code === 'CANNOT_DELETE_CURRENT_BRANCH') show(isAr ? 'لا يمكن حذف الفرع المرتبط بحسابك الحالي. انقل حساب المالك إلى فرع آخر أولًا.' : 'You cannot delete your current branch. Move the owner account to another branch first.', 'error');
