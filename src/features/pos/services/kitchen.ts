@@ -6,6 +6,28 @@ import { rpc } from '@/api/rpc';
 const activeSendLocks = new Set<string>();
 
 /**
+ * The automatic kitchen ticket currently consumes product_name from the
+ * authoritative send_to_kitchen snapshot. Preserve the base name but append
+ * modifiers and the item note so the paper ticket cannot silently lose cooking
+ * instructions that are already present in the KDS snapshot.
+ */
+function withKitchenInstructions(item: KitchenSendItem): KitchenSendItem {
+  const parts: string[] = [];
+  for (const modifier of item.modifiers || []) {
+    const name = modifier.option_name || modifier.option_name_en;
+    if (name) parts.push(name);
+  }
+  if (item.notes?.trim()) parts.push(item.notes.trim());
+  if (parts.length === 0) return item;
+
+  const baseName = item.product_name || '—';
+  return {
+    ...item,
+    product_name: `${baseName} • ${parts.join(' • ')}`,
+  };
+}
+
+/**
  * Send the persisted order to KDS.
  *
  * Hard rule: this client service never deducts, restores, or otherwise mutates
@@ -56,7 +78,7 @@ export async function sendOrderToKitchen(p: {
       };
     }
 
-    const sentItems = result.sent || [];
+    const sentItems = (result.sent || []).map(withKitchenInstructions);
     return {
       success: true,
       order_id: result.order_id || orderId,
