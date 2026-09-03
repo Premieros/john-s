@@ -95,7 +95,7 @@ export function ApprovalCenterPage() {
   };
 
   return (
-    <DesignSurface>
+    <DesignSurface testId="approval-center-page">
       <DesignPageHeader title={isAr ? 'مركز موافقات المدير' : 'Manager Approval Center'} subtitle={isAr ? 'حدد ما يحتاج موافقة، المدير المسؤول، وراجع كل الطلبات من مكان واحد.' : 'Configure approval rules, assign responsible managers, and review every request in one place.'} />
       <div className="space-y-4">
         <DesignPanel testId="approval-center-branch-panel">
