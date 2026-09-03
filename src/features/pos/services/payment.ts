@@ -1,4 +1,4 @@
-import { pos as posApi, supabase } from '@/api';
+import { pos as posApi, supabase, type SplitTenderInput } from '@/api';
 import type { RpcResult, OrderType } from '@/lib/types';
 import type { ItemPayload } from '../utils/cart';
 import { offlinePosManager } from './offlinePos';
@@ -26,8 +26,11 @@ export interface ProcessSalePayload {
   p_guest_count: number | null;
 }
 
+export interface ProcessSplitSalePayload extends Omit<ProcessSalePayload, 'p_paid_amount' | 'p_payment_method'> {
+  p_payments: SplitTenderInput[];
+}
+
 export async function processSaleForOrder(p: ProcessSalePayload): Promise<{ result: (RpcResult & { offline?: boolean }) | null; error: string | null }> {
-  // If explicitly offline, save immediately to offline queue
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     const queued = offlinePosManager.enqueueSale(p);
     return {
@@ -43,18 +46,28 @@ export async function processSaleForOrder(p: ProcessSalePayload): Promise<{ resu
 
   try {
     const { data, error } = await posApi.processSale(p);
-    if (!error && (data as { success?: boolean })?.success) {
-      return { result: data as RpcResult, error: null };
-    }
-
-    // A server rejection (approval, stock, subscription, validation, etc.) is
-    // authoritative and must never be converted into a successful offline sale.
+    if (!error && (data as { success?: boolean })?.success) return { result: data as RpcResult, error: null };
     const result = data as RpcResult | null;
     return { result, error: error?.message || result?.detail || result?.error || 'Sale processing failed' };
   } catch (err) {
-    // Do not enqueue after an ambiguous online failure: the server may have
-    // committed before the response was lost, which would create a duplicate.
     return { result: null, error: err instanceof Error ? err.message : 'Network error while processing sale' };
+  }
+}
+
+export async function processSplitSaleForOrder(p: ProcessSplitSalePayload): Promise<{ result: (RpcResult & { split?: boolean; payment_count?: number }) | null; error: string | null }> {
+  // Do not queue split tender offline until the offline outbox has a dedicated
+  // idempotent split contract. A partial local recreation would be financially unsafe.
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return { result: null, error: 'Split payment requires an online connection.' };
+  }
+
+  try {
+    const { data, error } = await posApi.processSaleSplit(p);
+    const result = data as (RpcResult & { split?: boolean; payment_count?: number }) | null;
+    if (!error && result?.success) return { result, error: null };
+    return { result, error: error?.message || result?.detail || result?.error || 'Split sale processing failed' };
+  } catch (err) {
+    return { result: null, error: err instanceof Error ? err.message : 'Network error while processing split sale' };
   }
 }
 
@@ -67,11 +80,9 @@ export async function nextInvoiceNumber(): Promise<string | null> {
 
   try {
     const { data, error } = await posApi.nextDocumentNumber({ p_type: 'sale' });
-    if (!error && data?.success) {
-      return (data as { number?: string }).number || null;
-    }
+    if (!error && data?.success) return (data as { number?: string }).number || null;
   } catch {
-    // Network fallback
+    // Network fallback.
   }
 
   const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
