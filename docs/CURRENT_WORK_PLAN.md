@@ -11,8 +11,8 @@
 - Repository: `Premieros/john-s`
 - Branch: `main`
 - Supabase Production: `azzdesuowpdcoflmyezn`
-- آخر HEAD وظيفي مُتحقق بالكامل: `c10f19df05691749481ec2ee6ca13a2b1fb206d4`
-- Verify: run `33753268374` / #415 ✅
+- آخر HEAD وظيفي مُتحقق بالكامل: `68f74be74121e4c6c266e2f2e43e86d51f30d66d`
+- Verify: run `33754327041` / #417 ✅
   - lint ✅
   - typecheck ✅
   - test suites typecheck ✅
@@ -22,7 +22,7 @@
   - schema verification ✅
   - integration + security/RLS ✅
   - Browser Smoke ✅
-- Deploy لنفس الـHEAD: run `33753268339` / #417 ✅
+- Deploy لنفس الـHEAD: run `33754327044` / #419 ✅
 
 آخر ما أُغلق في POS:
 - Tables-first landing يعمل على الهاتف/التابلت/الديسكتوب ويعرض مباشرة: Quick Order / Delivery / Drive Thru / Active Orders.
@@ -33,7 +33,8 @@
 - زر مسح الطلب الكامل الملتبس أزيل من Top Action Bar ومن رأس السلة؛ Void يظل مرتبطًا بالصنف المحدد.
 - Browser Smoke بعد هذا التنظيم أخضر.
 - manager approval للعمليات الهيكلية أصبح مغطى باختبار single-use صريح: Pending → approve → execute → consumed؛ إعادة نفس العملية لا تعيد استخدام الموافقة بل تنشئ طلب موافقة جديدًا ولا تنفذ mutation ثانية.
-- لا يوجد أي تغيير جديد في Inventory/KDS/RLS بسبب تعديلات Top Action Bar أو اختبار single-use.
+- Split Payment داخل Checkout كان موجودًا وظيفيًا بالفعل؛ أُغلقت فجوة التغطية باختبار integration مستقل يثبت Cash + Card، تسجيل `sale_payments` و`shift_operations`، خصم المخزون مرة واحدة فقط، ورفض mismatch بلا Sale أو خصم مخزون.
+- لا يوجد أي تغيير جديد في Inventory/KDS/RLS بسبب تعديلات Top Action Bar أو اختبارات single-use / Split Payment.
 - **لم تُضف أو تُطبق أي Production migration تشغيلية جديدة في مرحلة UI/test الأخيرة.**
 
 > لا تعتبر أي migration تشغيلية جديدة جاهزة لـProduction لمجرد نجاح Deploy للواجهة. أي migration جديدة مستقبلًا لا تُطبق على Production إلا بعد Verify كامل أخضر بما فيه Browser Smoke.
@@ -100,19 +101,23 @@ Backend-first. للكاشير:
 - العمليات الذرية عبر RPCs وليس تحديثات client مباشرة.
 - السطر المرسل للمطبخ لا يُعاد re-parent عبر Split بطريقة تكسر traceability.
 
-### D. Split Payment داخل الدفع فقط — **العمل التالي المفتوح**
+### D. Split Payment داخل الدفع فقط — مغلق ومثبت ✅
 
-قبل أي تعديل: افحص التنفيذ الحالي فقط ولا تعِد بناء Checkout كاملًا.
-
-العقد المطلوب:
+العقد الحالي المثبت:
 - Split Payment ليس Split الطلب.
 - يظهر فقط داخل Checkout/Payment.
 - يدعم توزيع الإجمالي بين طرق مسموحة مثل Cash + Card/Visa.
 - مجموع الأجزاء يجب أن يساوي إجمالي الفاتورة بالضبط.
-- كل جزء يُسجل في مساره المالي الصحيح.
-- حقيقة البيع وخصم المخزون تمر من المسار المركزي مرة واحدة فقط.
-- لا تقسيم دفع Offline قبل وجود عقد آمن وصريح لذلك.
-- لا تضف migration أو RPC جديدًا إذا كان backend الحالي يغطي العقد بالفعل؛ أثبت النقص أولًا.
+- كل جزء يُسجل في مساره المالي الصحيح عبر `sale_payments` وبنود الوردية/التحصيل المرتبطة به.
+- حقيقة البيع وخصم المخزون تمر من `_process_sale_core` مرة واحدة فقط.
+- لا تقسيم دفع Offline؛ المسار الحالي يرفضه صراحة بدل تحويله إلى outbox عادي.
+- لم يُضف RPC أو migration جديد لهذه المرحلة لأن backend الحالي كان يغطي العقد بالفعل؛ أُضيف اختبار التغطية الضروري فقط.
+
+إثبات Fresh DB في Verify #417:
+- Cash + Card ناجحان ويُسجلان كجزأين ماليين.
+- المخزون ينخفض مرة واحدة فقط.
+- mismatch بين مجموع وسائل الدفع وإجمالي البيع لا ينشئ Sale ولا يخصم مخزونًا.
+- integration + security/RLS + Browser Smoke كلها خضراء.
 
 ### E. قبل تطبيق أي عمل تشغيلي جديد على Production
 
@@ -283,6 +288,7 @@ Production migration:
 - Tables-first POS landing + direct Quick/Delivery/Drive Thru/Active Orders.
 - authoritative POS Top Action Bar + retired Bottom Navigation.
 - Split/Merge/Transfer manager approval + single-use approval replay protection.
+- Split Payment داخل Checkout + atomic accounting/single stock deduction coverage.
 - KDS exact sends + legacy compatibility.
 - Product Modifiers authoritative pricing/inventory effects.
 - exact sale-item inventory snapshots / partial refund.
@@ -299,7 +305,7 @@ Production migration:
 - product image storage.
 - branch selector stale-cache fix.
 
-> الاستثناء الحالي المفتوح في POS هو **Split Payment داخل Checkout** فقط، إلى جانب أي Regression جديد مثبت مستقبلًا.
+> لا يوجد بند POS مفتوح حاليًا في هذه المرحلة. افتح عملًا جديدًا فقط بطلب صريح جديد أو Regression مثبت.
 
 ---
 
@@ -330,26 +336,24 @@ Production migration:
 - Split item/quantity يعمل بموافقة المدير ضمن العقد الحالي.
 - Merge وTransfer يعملان بموافقة المدير.
 - approvals single-use ومغطاة باختبار replay صريح.
+- Split Payment يعمل داخل Checkout فقط، يوزع وسائل الدفع ماليًا، ويرفض mismatch.
+- البيع المقسم يخصم المخزون مرة واحدة فقط عبر المسار المركزي.
 - لا inventory deduction بسبب Split/Merge/Transfer.
 - لا KDS resend/trace corruption بسبب Split/Merge/Transfer.
 - lint/typecheck/unit/build ✅
 - Fresh DB/schema/integration/security/RLS ✅
 - Browser Smoke ✅
+- Deploy لنفس الـHEAD ✅
 
-المتبقي لإغلاق مرحلة POS كلها:
-- Split Payment يعمل داخل Checkout فقط وفق العقد في 3.4.
-- إذا تطلب Split Payment migration جديدة: Verify كامل أخضر ثم تطبيقها على Production.
-- Production sanity check محدود وآمن عند وجود تغيير تشغيلي فعلي يحتاجه.
-- تحديث هذا السجل بالـHEAD/Verify/Production migration النهائية لذلك البند.
+**مرحلة POS الحالية مغلقة بالكامل ✅.**
+
+لم تكن هناك migration تشغيلية جديدة في خطوة الإغلاق الأخيرة، لذلك لا يوجد Production migration جديد مطلوب تطبيقه بسبب هذا العمل.
 
 ---
 
 ## 10) Next exact step
 
-1. افحص **فقط** التنفيذ الحالي لـSplit Payment داخل Checkout/Payment والاختبارات/RPC المرتبطة به؛ لا تفحص المشروع كاملًا.
-2. حدد gap مثبتة بين التنفيذ الحالي والعقد في 3.4.
-3. إن كان موجودًا ومكتملًا: أضف/صحح الاختبار الضروري فقط ولا تعِد بناءه.
-4. إن كان ناقصًا: أكمل أقل تعديل ممكن مع الحفاظ على `_process_sale_core` / `process_sale` كنقطة البيع وخصم المخزون مرة واحدة.
-5. شغّل Verify كامل بما فيه Fresh DB + integration/security/RLS + Browser Smoke.
-6. لا تطبق Production migration إلا إذا أُضيفت migration فعلية ومطلوبة ونجحت كل البوابات.
-7. بعد ذلك فقط: Production sanity محدود وآمن وتحديث هذا الملف.
+1. لا تُعد فحص المشروع كاملًا ولا تفتح أي بند أعلاه تلقائيًا.
+2. اعتبر HEAD `68f74be74121e4c6c266e2f2e43e86d51f30d66d` + Verify `33754327041` / #417 + Deploy `33754327044` / #419 baseline مغلقًا.
+3. العمل التالي يبدأ فقط من ملاحظة/طلب جديد من المستخدم أو Regression مثبت على هذا baseline.
+4. إذا كان الطلب الجديد متعلقًا بقاعدة البيانات، أثبت الحاجة أولًا قبل أي migration جديدة، ثم طبّق نفس بوابات Verify كاملة قبل Production.
