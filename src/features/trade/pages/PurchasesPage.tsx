@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, Trash2, Eye, Download, Send, Check, X, PackageOpen } from 'lucide-react';
+import { Plus, Trash2, Eye, Download, Send, Check, X, PackageOpen, RotateCcw } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '@/api';
 import * as api from '@/api';
@@ -268,6 +268,61 @@ export function PurchasesPage() {
     reloadPurchases();
   };
 
+  const deletePurchase = async (p: Purchase) => {
+    const confirmed = window.confirm(
+      lang === 'ar'
+        ? `حذف فاتورة الشراء ${p.invoice_number} نهائيًا؟`
+        : `Permanently delete purchase invoice ${p.invoice_number}?`
+    );
+    if (!confirmed) return;
+
+    if (p.status === 'submitted') {
+      const { data, error: err } = await api.procurement.updatePurchaseOrderStatus({ p_purchase_id: p.id, p_status: 'cancelled' });
+      if (err) { show(err.message, 'error'); return; }
+      const result = data as RpcResult | null;
+      if (!result?.success) { show(result?.detail || result?.error || t('error'), 'error'); return; }
+    } else {
+      const { data, error: err } = await api.trade.deletePurchase({ p_purchase_id: p.id });
+      if (err) { show(err.message, 'error'); return; }
+      const result = data as RpcResult | null;
+      if (!result?.success) { show(result?.detail || result?.error || t('error'), 'error'); return; }
+    }
+
+    show(lang === 'ar' ? 'تم حذف فاتورة الشراء' : 'Purchase invoice deleted', 'success');
+    if (viewModal?.id === p.id) setViewModal(null);
+    reloadPurchases();
+  };
+
+  const reversePurchase = async (p: Purchase) => {
+    const confirmed = window.confirm(
+      lang === 'ar'
+        ? `سيتم عمل مرتجع كامل للفاتورة ${p.invoice_number} وعكس المخزون والأثر المحاسبي. هل تريد المتابعة؟`
+        : `This will fully return ${p.invoice_number} and reverse its inventory/accounting impact. Continue?`
+    );
+    if (!confirmed) return;
+
+    const reason = window.prompt(
+      lang === 'ar' ? 'سبب إلغاء/عكس فاتورة الشراء:' : 'Reason for reversing this purchase invoice:',
+      lang === 'ar' ? 'إلغاء فاتورة شراء' : 'Purchase invoice reversal'
+    );
+    if (reason === null) return;
+
+    const { data, error: err } = await api.trade.processPurchaseReturn({
+      p_purchase_id: p.id,
+      p_items: null,
+      p_reason: reason.trim() || (lang === 'ar' ? 'إلغاء فاتورة شراء' : 'Purchase invoice reversal'),
+    });
+    if (err) { show(err.message, 'error'); return; }
+    const result = data as RpcResult | null;
+    if (!result?.success) { show(result?.detail || result?.error || t('error'), 'error'); return; }
+
+    show(lang === 'ar' ? 'تم عكس فاتورة الشراء بالكامل' : 'Purchase invoice fully reversed', 'success');
+    if (viewModal?.id === p.id) setViewModal(null);
+    reloadPurchases();
+  };
+
+  const canReversePurchase = can('purchases.manage') && ['super_admin', 'owner', 'branch_manager', 'warehouse_manager'].includes(user?.role || '');
+
   const columns: Column<Purchase>[] = [
     { key: 'invoice_number', header: t('invoice'), render: (p) => <span className="font-medium text-ui-text">{p.invoice_number}</span> },
     { key: 'supplier', header: t('supplier'), render: (p) => (p as Purchase & { supplier?: Supplier }).supplier?.name || '-' },
@@ -288,6 +343,24 @@ export function PurchasesPage() {
         )}
         {['approved', 'submitted', 'partial'].includes(p.status) && can('purchases.receiving') && (
           <button title={t('receive')} onClick={() => navigate('/purchases/receiving')} className="p-1.5 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-500"><PackageOpen className="w-4 h-4" /></button>
+        )}
+        {['draft', 'submitted', 'cancelled'].includes(p.status) && can('purchases.delete') && (
+          <button
+            title={lang === 'ar' ? 'حذف فاتورة الشراء' : 'Delete purchase invoice'}
+            onClick={(e) => { e.stopPropagation(); void deletePurchase(p); }}
+            className="p-1.5 rounded-md hover:bg-ui-danger-soft text-ui-danger"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
+        {p.status === 'completed' && canReversePurchase && (
+          <button
+            title={lang === 'ar' ? 'إلغاء/عكس فاتورة الشراء' : 'Reverse purchase invoice'}
+            onClick={(e) => { e.stopPropagation(); void reversePurchase(p); }}
+            className="p-1.5 rounded-md hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-600"
+          >
+            <RotateCcw className="w-4 h-4" />
+          </button>
         )}
         <button onClick={() => viewPurchase(p)} className="p-1.5 rounded-md hover:bg-ui-info-soft text-ui-info"><Eye className="w-4 h-4" /></button>
       </div>
