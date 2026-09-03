@@ -96,7 +96,7 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.pos} element={<ProtectedRoute permission="pos.sell" fullscreen><PosWorkspacePage /></ProtectedRoute>} />
         <Route path={`${APP_ROUTES.pos}/:orderId`} element={<ProtectedRoute permission="pos.sell" fullscreen><PosWorkspacePage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.floorPlan} element={<ProtectedRoute permission="floor_plan.view"><ActiveOrdersPage /></ProtectedRoute>} />
-        <Route path="/kitchen" element={<Navigate to={APP_ROUTES.pos} replace />} />
+        <Route path="/kitchen" element={<ProtectedRoute permission="pos.kds_view"><Navigate to={APP_ROUTES.kitchenDisplay} replace /></ProtectedRoute>} />
         <Route path="/tables" element={<ProtectedRoute permission="floor_plan.view"><Navigate to={APP_ROUTES.floorPlan} replace /></ProtectedRoute>} />
         <Route path={APP_ROUTES.products} element={<ProtectedRoute permission="products.view"><ProductsPage /></ProtectedRoute>} />
         <Route path={`${APP_ROUTES.products}/setup`} element={<ProtectedRoute permission="products.manage"><ProductSetupWizardPage /></ProtectedRoute>} />
@@ -105,7 +105,7 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.components} element={<ProtectedRoute permission="components.view"><ComponentsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryUnits} element={<ProtectedRoute permission="raw_materials.view"><InventoryUnitsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.wasteCenter} element={<ProtectedRoute permission="production.waste"><WasteCenterPage /></ProtectedRoute>} />
-        <Route path={APP_ROUTES.kitchenDisplay} element={<ProtectedRoute permission="pos.sell"><KitchenDisplayPage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.kitchenDisplay} element={<ProtectedRoute permission="pos.kds_view"><KitchenDisplayPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.kitchenStations} element={<ProtectedRoute permission="settings.manage"><KitchenStationsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventory} element={<ProtectedRoute permission="inventory.view"><InventoryPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.warehouses} element={<ProtectedRoute permission="warehouses.view"><WarehousesPage /></ProtectedRoute>} />
@@ -145,7 +145,7 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.superAdmin} element={<ProtectedRoute superAdminOnly><SuperAdminConsolePage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.basicSettings} element={<ProtectedRoute permission="settings.manage"><Navigate to={APP_ROUTES.settings} replace /></ProtectedRoute>} />
         <Route path={APP_ROUTES.systemHealth} element={<ProtectedRoute permission="settings.manage"><SystemHealthPage /></ProtectedRoute>} />
-        <Route path={APP_ROUTES.importExport} element={<ProtectedRoute><ImportExportCenterPage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.importExport} element={<ProtectedRoute permission="settings.manage"><ImportExportCenterPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to={APP_ROUTES.dashboard} replace />} />
       </Routes>
     </Suspense>
