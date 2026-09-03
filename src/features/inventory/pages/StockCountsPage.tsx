@@ -32,7 +32,7 @@ export function StockCountsPage() {
 
   const { rows: counts, loading, error, total, hasMore, loadMore, loadingMore, refresh: reloadCounts } = usePaginatedRows<StockCount>({
     table: 'stock_counts',
-    select: '*, branch:branches(*), warehouse:warehouses(*), items:stock_count_items(product:products(*)), created_user:users!stock_counts_created_by_fkey(id, full_name, email)',
+    select: '*, branch:branches(*), warehouse:warehouses(*), items:stock_count_items(*, product:products(*)), created_user:users!stock_counts_created_by_fkey(id, full_name, email)',
     order: { column: 'created_at', ascending: false },
     pageSize: 100,
   });
