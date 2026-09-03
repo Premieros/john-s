@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Bike, Search, ShoppingBag, Utensils } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import type { DiningTable, Order, OrderItem } from '@/lib/types';
@@ -45,6 +45,12 @@ export function PosTablesSidebar(props: PosTablesSidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<TableFilter>('all');
   const [flowStarted, setFlowStarted] = useState(false);
+
+  useEffect(() => {
+    const handleExternalFlowStart = () => setFlowStarted(true);
+    window.addEventListener('pos:order-flow-started', handleExternalFlowStart);
+    return () => window.removeEventListener('pos:order-flow-started', handleExternalFlowStart);
+  }, []);
 
   const occupiedCount = useMemo(
     () => tables.filter((table) => (ordersByTable[table.id] || []).length > 0 || table.status === 'occupied').length,
@@ -120,7 +126,7 @@ export function PosTablesSidebar(props: PosTablesSidebarProps) {
             {onSelectDelivery && (
               <button
                 type="button"
-                data-testid="pos-start-delivery"
+                data-testid="pos-tables-start-delivery"
                 onClick={startDelivery}
                 className="flex h-11 items-center gap-2 rounded-xl border border-ui-border bg-ui-page px-4 text-xs font-black text-ui-text transition hover:border-ui-primary hover:text-ui-primary active:scale-[0.98]"
               >
