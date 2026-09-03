@@ -17,6 +17,8 @@ export interface KitchenSendItem {
   product_id: string | null;
   product_name: string | null;
   unit_name: string | null;
+  /** Authoritative KDS station code used for local printer routing. */
+  station_code?: string | null;
   /** Delta quantity included in this specific send_to_kitchen call. */
   quantity: number;
   unit_price: number;
