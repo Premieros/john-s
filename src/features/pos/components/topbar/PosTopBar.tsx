@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Logo } from '@/components/Logo';
 import type { Branch } from '@/lib/types';
 import type { ActiveShiftInfo } from '../../hooks/usePosOrder';
+import { usePosPermissions } from '../../hooks/usePosPermissions';
 import { offlinePosManager } from '../../services/offlinePos';
 
 export type PosPanelId = 'orders' | 'tables' | 'kitchen' | null;
@@ -51,6 +52,7 @@ export function PosTopBar({
   const { t, lang } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const { user, signOut } = useAuth();
+  const perms = usePosPermissions();
   const navigate = useNavigate();
   const location = useLocation();
   const landingOpened = useRef(false);
@@ -108,6 +110,7 @@ export function PosTopBar({
   }, [refreshPending, triggerSync]);
 
   const openShiftManagement = () => {
+    if (!perms.canCloseShift) return;
     if (activeShift && onOpenShiftModal) {
       onOpenShiftModal();
       return;
@@ -145,14 +148,16 @@ export function PosTopBar({
           <p className="text-sm font-black text-ui-text">Premier</p>
           <p className="text-[9px] font-black uppercase tracking-[.16em] text-ui-accent">{t('pos')}</p>
         </div>
-        <button
-          onClick={onNewOrder}
-          data-testid="pos-action-new-order"
-          className="flex min-h-10 items-center gap-1.5 rounded-xl bg-ui-primary px-3 text-xs font-black text-ui-primary-fg shadow-ui-sm transition active:scale-95 hover:bg-ui-primary-hover"
-        >
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">{isAr ? 'الطاولات / طلب جديد' : 'Tables / New order'}</span>
-        </button>
+        {perms.canCreateOrder && (
+          <button
+            onClick={onNewOrder}
+            data-testid="pos-action-new-order"
+            className="flex min-h-10 items-center gap-1.5 rounded-xl bg-ui-primary px-3 text-xs font-black text-ui-primary-fg shadow-ui-sm transition active:scale-95 hover:bg-ui-primary-hover"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">{isAr ? 'الطاولات / طلب جديد' : 'Tables / New order'}</span>
+          </button>
+        )}
       </div>
 
       <div className="flex-1" />
@@ -161,7 +166,7 @@ export function PosTopBar({
         {counterButton('active-orders', 'الطلبات النشطة', 'Active orders', counts.activeOrders, <ListOrdered className="h-3.5 w-3.5" />, 'orders')}
         {counterButton('delivery', 'الدليفري', 'Delivery', counts.deliveryOrders, <Truck className="h-3.5 w-3.5" />, 'orders')}
         {counterButton('tables', 'الطاولات المشغولة', 'Occupied tables', counts.occupiedTables, <CalendarCheck className="h-3.5 w-3.5" />, 'tables')}
-        {counterButton('kds', 'طلبات المطبخ', 'Kitchen queue', counts.kitchenOrders, <ChefHat className="h-3.5 w-3.5" />, 'kitchen')}
+        {perms.canViewKitchen && counterButton('kds', 'طلبات المطبخ', 'Kitchen queue', counts.kitchenOrders, <ChefHat className="h-3.5 w-3.5" />, 'kitchen')}
       </div>
 
       {pendingCount > 0 && (
@@ -189,7 +194,7 @@ export function PosTopBar({
         {now.toLocaleTimeString(isAr ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
       </div>
 
-      {isCashier && shiftChecked && (
+      {perms.canCloseShift && isCashier && shiftChecked && (
         <button
           data-testid="pos-shift-button"
           onClick={openShiftManagement}
@@ -221,14 +226,16 @@ export function PosTopBar({
               {t('activeOrders')}
               {counts.activeOrders > 0 && <span className="ms-auto rounded-full bg-ui-primary px-2 py-0.5 text-[10px] text-ui-primary-fg">{counts.activeOrders}</span>}
             </button>
-            <button
-              onClick={() => { openShiftManagement(); setMore(false); }}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold hover:bg-ui-page-alt"
-            >
-              <CalendarCheck className="h-4 w-4 text-ui-accent" />
-              {activeShift ? (isAr ? 'إغلاق اليوم والوردية (Z-Report)' : 'Day & Shift Closing') : (isAr ? 'فتح وردية' : 'Open Shift')}
-            </button>
-            {canChangeBranch && (
+            {perms.canCloseShift && (
+              <button
+                onClick={() => { openShiftManagement(); setMore(false); }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold hover:bg-ui-page-alt"
+              >
+                <CalendarCheck className="h-4 w-4 text-ui-accent" />
+                {activeShift ? (isAr ? 'إغلاق اليوم والوردية (Z-Report)' : 'Day & Shift Closing') : (isAr ? 'فتح وردية' : 'Open Shift')}
+              </button>
+            )}
+            {perms.canChangeBranch && canChangeBranch && (
               <>
                 <div className="my-1 h-px bg-ui-border" />
                 <div className="px-3 py-1.5 text-[11px] text-ui-subtle">{isAr ? 'الفرع' : 'Branch'}</div>
