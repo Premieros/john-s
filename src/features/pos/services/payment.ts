@@ -31,6 +31,7 @@ export interface ProcessSplitSalePayload extends Omit<ProcessSalePayload, 'p_pai
 }
 
 export async function processSaleForOrder(p: ProcessSalePayload): Promise<{ result: (RpcResult & { offline?: boolean }) | null; error: string | null }> {
+  // Explicit offline mode is the only place where a sale may enter the outbox.
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     const queued = offlinePosManager.enqueueSale(p);
     return {
@@ -46,10 +47,17 @@ export async function processSaleForOrder(p: ProcessSalePayload): Promise<{ resu
 
   try {
     const { data, error } = await posApi.processSale(p);
-    if (!error && (data as { success?: boolean })?.success) return { result: data as RpcResult, error: null };
+    if (!error && (data as { success?: boolean })?.success) {
+      return { result: data as RpcResult, error: null };
+    }
+
+    // A server rejection (approval, stock, subscription, validation, etc.) is
+    // authoritative and must never be converted into a successful offline sale.
     const result = data as RpcResult | null;
     return { result, error: error?.message || result?.detail || result?.error || 'Sale processing failed' };
   } catch (err) {
+    // Do not enqueue after an ambiguous online failure: the server may have
+    // committed before the response was lost, which would create a duplicate.
     return { result: null, error: err instanceof Error ? err.message : 'Network error while processing sale' };
   }
 }
@@ -65,8 +73,12 @@ export async function processSplitSaleForOrder(p: ProcessSplitSalePayload): Prom
     const { data, error } = await posApi.processSaleSplit(p);
     const result = data as (RpcResult & { split?: boolean; payment_count?: number }) | null;
     if (!error && result?.success) return { result, error: null };
+
+    // A server rejection from process_sale_split is authoritative too; never
+    // degrade it into the normal offline queue or a second financial attempt.
     return { result, error: error?.message || result?.detail || result?.error || 'Split sale processing failed' };
   } catch (err) {
+    // The server may have committed before the network response disappeared.
     return { result: null, error: err instanceof Error ? err.message : 'Network error while processing split sale' };
   }
 }
