@@ -113,9 +113,9 @@ function configPage() {
 <style>body{font-family:Segoe UI,Tahoma,sans-serif;max-width:820px;margin:32px auto;padding:0 18px;background:#f6f7f9;color:#171717}h1{margin-bottom:4px}.card{background:#fff;border:1px solid #ddd;border-radius:14px;padding:18px;margin:16px 0}label{display:block;font-weight:700;margin:12px 0 5px}select,input,button{font:inherit;padding:10px;border-radius:9px;border:1px solid #bbb}select{min-width:320px}button{cursor:pointer;background:#111;color:#fff;border:0;margin:8px 4px}.ok{color:#087a37}.muted{color:#666;font-size:13px}</style>
 <body><h1>Johns Print Service</h1><div class="muted">إعداد الطابعات لهذا الجهاز فقط — لا يتم إرسال أسماء الطابعات إلى قاعدة البيانات.</div>
 <div class="card"><div id="status">جاري قراءة الطابعات…</div><div id="routes"></div><button onclick="save()">حفظ</button><button onclick="testPrint()">طباعة اختبار للمحطة المختارة</button></div>
-<div class="card muted">المحطات الافتراضية: <b>barista</b> للمشروبات و <b>main</b> للمطبخ العام. يمكن إضافة أي station code موجود في النظام.</div>
+<div class="card muted">في Johns: <b>drinks</b> للمشروبات/الباريستا و <b>main</b> للمطبخ العام. المحطات الأخرى متاحة إذا تم استخدامها لاحقًا.</div>
 <script>
-let printers=[],config={routes:{}},stations=['main','barista','kitchen','grill','dessert'];
+let printers=[],config={routes:{}},stations=['main','drinks','grill','salad','dessert','fryer'];
 async function load(){const p=await fetch('/printers').then(r=>r.json());const c=await fetch('/config').then(r=>r.json());printers=p.printers||[];config=c;render();}
 function esc(s){return String(s).replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));}
 function render(){document.getElementById('status').innerHTML='<span class="ok">الخدمة متصلة</span> — '+printers.length+' طابعة';const extra=Object.keys(config.routes||{}).filter(x=>!stations.includes(x));stations=[...stations,...extra];document.getElementById('routes').innerHTML=stations.map(s=>'<label>'+esc(s)+'</label><select data-st="'+esc(s)+'"><option value="">بدون طابعة / استخدم fallback</option>'+printers.map(p=>'<option '+((config.routes||{})[s]===p?'selected':'')+'>'+esc(p)+'</option>').join('')+'</select>').join('');}
