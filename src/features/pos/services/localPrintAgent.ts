@@ -12,7 +12,10 @@ export interface LocalKitchenPrintContext {
 }
 
 function safeText(value: unknown): string {
-  return String(value ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim();
+  return Array.from(String(value ?? ''))
+    .filter((ch) => ch === '\n' || ch === '\r' || ch === '\t' || ch >= ' ')
+    .join('')
+    .trim();
 }
 
 function modifierNames(item: KitchenSendItem): string[] {
@@ -117,7 +120,7 @@ export function suppressNextKitchenBrowserPopup(): void {
     restored = true;
     window.open = original as typeof window.open;
   };
-  window.open = ((..._args: Parameters<typeof window.open>) => {
+  window.open = (() => {
     restore();
     return null;
   }) as typeof window.open;
