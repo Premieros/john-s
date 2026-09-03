@@ -128,7 +128,6 @@ export function StockCountsPage() {
   const createCount = async () => {
     if (!form.branch_id || !form.warehouse_id) { show(t('required') + ': ' + t('branch') + ' / ' + t('warehouse'), 'error'); return; }
     
-    // Check if there is already an active draft/submitted stock count for this warehouse
     const hasActiveForWarehouse = counts.some(
       (c) => c.warehouse_id === form.warehouse_id && (c.status === 'draft' || c.status === 'submitted')
     );
@@ -204,14 +203,46 @@ export function StockCountsPage() {
     const { count } = confirmTarget;
     const id = count.id;
     let res: { data: { success?: boolean; error?: string; detail?: string } | null; error?: { message: string } | null };
-    if (action === 'submit') res = await api.inventory.submitStockCount({ p_stock_count_id: id });
-    else if (action === 'approve') res = await api.inventory.approveStockCount({ p_stock_count_id: id });
-    else if (action === 'reject') res = await api.inventory.rejectStockCount({ p_stock_count_id: id, p_reason: rejectReason || null });
-    else res = await api.inventory.applyStockCount({ p_stock_count_id: id });
+
+    if (action === 'submit') {
+      res = await api.inventory.submitStockCount({ p_stock_count_id: id });
+    } else if (action === 'approve') {
+      res = await api.inventory.approveStockCount({ p_stock_count_id: id });
+      if (res.error) { show(res.error.message, 'error'); return; }
+      if (!res.data?.success) { show(res.data?.detail || res.data?.error || t('error'), 'error'); return; }
+
+      const applyRes = await api.inventory.applyStockCount({ p_stock_count_id: id });
+      if (applyRes.error) {
+        show((isAr ? 'تم اعتماد الجرد ولكن تعذر تطبيق الرصيد: ' : 'Count approved, but applying stock failed: ') + applyRes.error.message, 'error');
+        await logAudit('update', 'stock_counts', id, { action: 'approve', apply_failed: true, count_number: count.count_number });
+        setConfirmTarget(null);
+        reloadCounts();
+        return;
+      }
+      if (!applyRes.data?.success) {
+        show((isAr ? 'تم اعتماد الجرد ولكن تعذر تطبيق الرصيد: ' : 'Count approved, but applying stock failed: ') + (applyRes.data?.detail || applyRes.data?.error || t('error')), 'error');
+        await logAudit('update', 'stock_counts', id, { action: 'approve', apply_failed: true, count_number: count.count_number });
+        setConfirmTarget(null);
+        reloadCounts();
+        return;
+      }
+
+      show(t('countApplied'), 'success');
+      await logAudit('update', 'stock_counts', id, { action: 'approve_apply', count_number: count.count_number });
+      setConfirmTarget(null);
+      setRejectReason('');
+      reloadCounts();
+      return;
+    } else if (action === 'reject') {
+      res = await api.inventory.rejectStockCount({ p_stock_count_id: id, p_reason: rejectReason || null });
+    } else {
+      res = await api.inventory.applyStockCount({ p_stock_count_id: id });
+    }
+
     if (res.error) { show(res.error.message, 'error'); return; }
     if (!res.data?.success) { show(res.data?.detail || res.data?.error || t('error'), 'error'); return; }
-    const keyMap = { submit: 'countSubmitted', approve: 'countApproved', reject: 'countRejected', apply: 'countApplied' } as const;
-    show(t(keyMap[action]), 'success');
+    const keyMap = { submit: 'countSubmitted', reject: 'countRejected', apply: 'countApplied' } as const;
+    show(t(keyMap[action as keyof typeof keyMap]), 'success');
     await logAudit('update', 'stock_counts', id, { action, count_number: count.count_number });
     setConfirmTarget(null);
     setRejectReason('');
