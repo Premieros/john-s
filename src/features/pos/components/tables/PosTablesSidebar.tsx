@@ -37,7 +37,6 @@ export function PosTablesSidebar(props: PosTablesSidebarProps) {
     onToggleCollapse,
     onSelectTable,
     onTransferOrder,
-    activeOrderType,
   } = props;
   const { lang } = useLanguage();
   const isAr = lang === 'ar';
@@ -62,11 +61,10 @@ export function PosTablesSidebar(props: PosTablesSidebarProps) {
     });
   }, [tables, ordersByTable, searchQuery, filter]);
 
-  // Once the operator has entered an order workspace, tables stop being a
-  // permanent column. They remain available through the POS tables/transfer
-  // controls, while products + cart get the full selling width.
-  const inOrderWorkspace = Boolean(activeTableId || activeOrderId || (activeOrderType && activeOrderType !== 'dine_in'));
-  if (inOrderWorkspace) return null;
+  // Keep the tables-first landing visible until a real table/order workspace
+  // exists. OrderType defaults to takeaway before the operator chooses a flow,
+  // so it must never be used as the signal for hiding this landing area.
+  if (activeTableId || activeOrderId) return null;
 
   if (collapsed) {
     return (
