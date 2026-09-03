@@ -56,6 +56,7 @@ export const APP_ROUTES = {
   reconciliation: '/reconciliation',
   users: '/users',
   employees: '/employees',
+  approvals: '/approvals',
   auditLog: '/audit-log',
   settings: '/settings',
   basicSettings: '/settings/basic',
