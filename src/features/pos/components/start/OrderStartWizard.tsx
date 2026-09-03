@@ -52,6 +52,11 @@ export function OrderStartWizard({
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
 
+  const startOrder = (options: StartOrderOptions) => {
+    window.dispatchEvent(new Event('pos:order-flow-started'));
+    onStart(options);
+  };
+
   const title =
     step === 'type'
       ? (isAr ? 'اختر طاولة أو افتح طلبًا سريعًا' : 'Choose a table or start a quick order')
@@ -96,7 +101,7 @@ export function OrderStartWizard({
             <button
               type="button"
               data-testid="pos-start-quick"
-              onClick={() => onStart({ orderType: 'takeaway' })}
+              onClick={() => startOrder({ orderType: 'takeaway' })}
               className="flex min-h-16 items-center gap-3 rounded-2xl border border-ui-border bg-ui-surface-raised px-4 text-start shadow-ui-xs transition hover:border-ui-primary hover:bg-ui-primary-soft active:scale-[.98]"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ui-primary-soft text-ui-accent"><Zap className="h-5 w-5" /></span>
@@ -141,13 +146,13 @@ export function OrderStartWizard({
           kitchenSendsByOrder={kitchenSendsByOrder}
           currency={currency}
           preselectedTableId={preselectedTableId}
-          onStart={(table, guests) => onStart({ orderType: 'dine_in', tableId: table.id, guestCount: guests })}
+          onStart={(table, guests) => startOrder({ orderType: 'dine_in', tableId: table.id, guestCount: guests })}
           onResume={onResume}
           onPay={(order) => onResume(order, true)}
         />
       )}
-      {step === 'car' && <CarOrderStep onStart={(options) => onStart({ ...options })} />}
-      {step === 'delivery' && <DeliveryOrderStep customers={customers} onStart={(options) => onStart({ ...options })} />}
+      {step === 'car' && <CarOrderStep onStart={(options) => startOrder({ ...options })} />}
+      {step === 'delivery' && <DeliveryOrderStep customers={customers} onStart={(options) => startOrder({ ...options })} />}
     </div>
   );
 }
