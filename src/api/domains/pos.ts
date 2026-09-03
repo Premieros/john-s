@@ -3,15 +3,18 @@ import type { ApiError, ApiResult, SaleItemInput } from '../types';
 import type { RpcResult, Shift, OrderType } from '@/lib/types';
 import { rpc } from '../rpc';
 
+export interface SplitTenderInput {
+  payment_method: 'cash' | 'card' | 'transfer';
+  amount: number;
+}
+
 export const pos = {
   async getActiveShift(p: { p_branch_id: string }): ApiResult<Shift> {
     try {
       const res = await rpc<Shift>('get_active_shift', p);
-      if (!res.error && res.data) {
-        return res;
-      }
+      if (!res.error && res.data) return res;
     } catch {
-      // Fallback below
+      // Fallback below.
     }
 
     try {
@@ -24,13 +27,8 @@ export const pos = {
         .limit(1)
         .maybeSingle();
 
-      if (error) {
-        return { data: null, error: error as unknown as ApiError };
-      }
-
-      if (!data) {
-        return { data: null, error: null };
-      }
+      if (error) return { data: null, error: error as unknown as ApiError };
+      if (!data) return { data: null, error: null };
 
       return {
         data: {
@@ -77,9 +75,32 @@ export const pos = {
     p_order_id?: string | null;
     p_guest_count?: number | null;
   }): ApiResult<RpcResult> {
-    // process_sale is the only financial write boundary. Never fall back to
-    // client-side table writes: that would bypass authoritative pricing,
-    // inventory preflight, approvals, accounting, and transaction atomicity.
     return rpc<RpcResult>('process_sale', p);
+  },
+
+  async processSaleSplit(p: {
+    p_invoice_number: string;
+    p_branch_id: string;
+    p_shift_id: string | null;
+    p_warehouse_id: string | null;
+    p_customer_id: string | null;
+    p_salesperson_id: string | null;
+    p_subtotal: number;
+    p_discount_amount: number;
+    p_discount_type: 'percent' | 'amount';
+    p_tax_amount: number;
+    p_bonus_amount: number;
+    p_total: number;
+    p_payments: SplitTenderInput[];
+    p_status: string;
+    p_items: SaleItemInput[];
+    p_order_type?: OrderType;
+    p_table_id?: string | null;
+    p_order_id?: string | null;
+    p_guest_count?: number | null;
+  }): ApiResult<RpcResult & { split?: boolean; payment_count?: number }> {
+    // Split payment keeps process_sale_split as the only authoritative write.
+    // The RPC itself delegates inventory to _process_sale_core exactly once.
+    return rpc('process_sale_split', p);
   },
 };
