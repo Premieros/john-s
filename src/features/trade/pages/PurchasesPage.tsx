@@ -271,8 +271,8 @@ export function PurchasesPage() {
   const deletePurchase = async (p: Purchase) => {
     const confirmed = window.confirm(
       lang === 'ar'
-        ? `حذف فاتورة الشراء ${p.invoice_number} نهائيًا؟`
-        : `Permanently delete purchase invoice ${p.invoice_number}?`
+        ? `${p.status === 'returned' ? 'حذف الفاتورة المرتجعة' : 'حذف فاتورة الشراء'} ${p.invoice_number} نهائيًا؟`
+        : `Permanently delete ${p.status === 'returned' ? 'returned ' : ''}purchase invoice ${p.invoice_number}?`
     );
     if (!confirmed) return;
 
@@ -322,6 +322,18 @@ export function PurchasesPage() {
   };
 
   const canReversePurchase = can('purchases.manage') && ['super_admin', 'owner', 'branch_manager', 'warehouse_manager'].includes(user?.role || '');
+  const purchaseStatusLabel = (status: string) => {
+    const labels: Record<string, { ar: string; en: string }> = {
+      draft: { ar: 'مسودة', en: 'Draft' },
+      submitted: { ar: 'مرسلة', en: 'Submitted' },
+      approved: { ar: 'معتمدة', en: 'Approved' },
+      partial: { ar: 'استلام جزئي', en: 'Partial' },
+      completed: { ar: 'مكتملة', en: 'Completed' },
+      cancelled: { ar: 'ملغاة', en: 'Cancelled' },
+      returned: { ar: 'مرتجع', en: 'Returned' },
+    };
+    return labels[status]?.[lang === 'ar' ? 'ar' : 'en'] || status;
+  };
 
   const columns: Column<Purchase>[] = [
     { key: 'invoice_number', header: t('invoice'), render: (p) => <span className="font-medium text-ui-text">{p.invoice_number}</span> },
@@ -329,7 +341,7 @@ export function PurchasesPage() {
     { key: 'branch', header: t('branch'), render: (p) => <BranchBadge name={branches.find((b) => b.id === p.branch_id)?.name || '-'} /> },
     { key: 'created_at', header: t('date'), render: (p) => formatDate(p.created_at, lang) },
     { key: 'total', header: t('total'), render: (p) => <span className="font-semibold text-ui-text">{formatCurrency(p.total, currency, lang)}</span> },
-    { key: 'status', header: t('status'), render: (p) => <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-ui-success-soft text-ui-success capitalize">{p.status}</span> },
+    { key: 'status', header: t('status'), render: (p) => <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.status === 'returned' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' : 'bg-ui-success-soft text-ui-success'}`}>{purchaseStatusLabel(p.status)}</span> },
     { key: 'actions', header: t('actions'), render: (p) => (
       <div className="flex items-center gap-1 justify-end">
         {p.status === 'draft' && can('purchases.manage') && (
@@ -344,9 +356,9 @@ export function PurchasesPage() {
         {['approved', 'submitted', 'partial'].includes(p.status) && can('purchases.receiving') && (
           <button title={t('receive')} onClick={() => navigate('/purchases/receiving')} className="p-1.5 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-500"><PackageOpen className="w-4 h-4" /></button>
         )}
-        {['draft', 'submitted', 'cancelled'].includes(p.status) && can('purchases.delete') && (
+        {['draft', 'submitted', 'cancelled', 'returned'].includes(p.status) && can('purchases.delete') && (
           <button
-            title={lang === 'ar' ? 'حذف فاتورة الشراء' : 'Delete purchase invoice'}
+            title={lang === 'ar' ? (p.status === 'returned' ? 'حذف الفاتورة المرتجعة' : 'حذف فاتورة الشراء') : (p.status === 'returned' ? 'Delete returned purchase invoice' : 'Delete purchase invoice')}
             onClick={(e) => { e.stopPropagation(); void deletePurchase(p); }}
             className="p-1.5 rounded-md hover:bg-ui-danger-soft text-ui-danger"
           >
@@ -471,7 +483,7 @@ export function PurchasesPage() {
                     <select
                       value={l.unit_name}
                       onChange={(e) => updateLine(i, 'unit_name', e.target.value)}
-                      className="col-span-2 rounded-md border border border-ui-border bg-ui-surface px-2 py-1.5 text-sm"
+                      className="col-span-2 rounded-md border border-ui-border bg-ui-surface px-2 py-1.5 text-sm"
                       title={`${lang === 'ar' ? 'وحدة الشراء' : 'Purchase unit'} · ${lang === 'ar' ? 'وحدة التخزين' : 'Stock unit'}: ${rawUnitName(l.raw_material_id)}`}
                     >
                       {purchaseUnitOptions(l.raw_material_id).map((unit) => <option key={unit.value} value={unit.value}>{unit.label}</option>)}
@@ -507,6 +519,7 @@ export function PurchasesPage() {
               <div><span className="text-ui-subtle">{t('date')}: </span><span className="font-medium">{formatDate(viewModal.created_at, lang)}</span></div>
               <div><span className="text-ui-subtle">{t('supplier')}: </span><span className="font-medium">{(viewModal as Purchase & { supplier?: Supplier }).supplier?.name || '-'}</span></div>
               <div><span className="text-ui-subtle">{t('paymentMethod')}: </span><span className="font-medium capitalize">{viewModal.payment_method}</span></div>
+              <div><span className="text-ui-subtle">{t('status')}: </span><span className={`font-semibold ${viewModal.status === 'returned' ? 'text-amber-700 dark:text-amber-300' : ''}`}>{purchaseStatusLabel(viewModal.status)}</span></div>
             </div>
             <div className="border-t border-ui-border pt-3">
               <table className="w-full text-sm">
