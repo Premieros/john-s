@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ShoppingCart, Minus, Plus, X, Pause, ChefHat, Banknote, Printer, Percent, UtensilsCrossed, Clock, Check, Trash2, User } from 'lucide-react';
+import { ShoppingCart, Minus, Plus, X, Pause, ChefHat, Banknote, Printer, Percent, UtensilsCrossed, Clock, Check, Trash2, User, ArrowRightLeft } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { formatCurrency } from '@/lib/format';
 import type { CartItem, Customer, DiningTable, OrderItem, OrderType } from '@/lib/types';
@@ -58,6 +58,7 @@ interface CurrentOrderPanelProps {
   onOpenCustomerModal?: () => void;
   onOpenTableModal?: () => void;
   onVoidItem?: (item: CartItem, sentQty: number) => void;
+  onTransferItem?: (item: CartItem) => void;
 }
 
 export function CurrentOrderPanel({
@@ -100,6 +101,7 @@ export function CurrentOrderPanel({
   onOpenCustomerModal,
   onOpenTableModal,
   onVoidItem,
+  onTransferItem,
 }: CurrentOrderPanelProps) {
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
@@ -300,6 +302,19 @@ export function CurrentOrderPanel({
                   <span className="w-20 text-end text-xs font-black text-ui-text">
                     {formatCurrency(item.quantity * item.unit_price - (item.discount_amount || 0), currency, lang)}
                   </span>
+
+                  {activeOrderId && activeTable && st.sentQty === 0 && onTransferItem && (
+                    <button
+                      type="button"
+                      data-testid={`pos-transfer-item-${item.product.id}`}
+                      onClick={() => onTransferItem(item)}
+                      aria-label={isAr ? `نقل ${item.product.name} إلى طاولة أخرى` : `Move ${item.product.name} to another table`}
+                      title={isAr ? 'نقل الصنف إلى طاولة أخرى' : 'Move item to another table'}
+                      className="p-1 text-ui-subtle transition hover:text-ui-accent"
+                    >
+                      <ArrowRightLeft className="h-4 w-4" />
+                    </button>
+                  )}
 
                   {canDeleteItem && (
                     <button
