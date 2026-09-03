@@ -9,14 +9,32 @@ const PORT = Number(process.env.JOHNS_PRINT_PORT || 17654);
 const CONFIG_PATH = path.join(__dirname, 'printer-config.json');
 const MAX_BODY = 256 * 1024;
 
+function originAllowed(origin) {
+  if (!origin) return true;
+  if (origin === 'https://premieros.github.io') return true;
+  try {
+    const url = new URL(origin);
+    return (url.hostname === '127.0.0.1' || url.hostname === 'localhost') && (url.protocol === 'http:' || url.protocol === 'https:');
+  } catch {
+    return false;
+  }
+}
+
+function applyCors(req, res) {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+}
+
 function json(res, status, value) {
   const body = JSON.stringify(value);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Cache-Control': 'no-store',
   });
   res.end(body);
@@ -108,12 +126,15 @@ load().catch(e=>document.getElementById('status').textContent='خطأ: '+e.messa
 }
 
 const server = http.createServer(async (req, res) => {
+  const origin = req.headers.origin;
+  if (!originAllowed(origin)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Origin not allowed');
+  }
+  applyCors(req, res);
+
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Content-Type',
-      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    });
+    res.writeHead(204);
     return res.end();
   }
   try {
@@ -138,6 +159,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       const station = String(body.station || 'main');
       const text = String(body.text || '');
+      if (!/^[a-zA-Z0-9_-]{1,64}$/.test(station)) return json(res, 400, { success: false, error: 'INVALID_STATION' });
       if (!text || text.length > 200000) return json(res, 400, { success: false, error: 'INVALID_TEXT' });
       const config = readConfig();
       const printer = body.printer ? String(body.printer) : config.routes[station];
