@@ -75,6 +75,10 @@ async function addProduct(page: Page) {
   await expect(page.getByTestId(`pos-cart-qty-${PRODUCT_ID}`)).toHaveText('1', { timeout: 10000 });
 }
 
+function tableButton(page: Page) {
+  return page.getByRole('button', { name: new RegExp(diningTable.name, 'i') });
+}
+
 test.describe('POS action-level', () => {
   test.beforeEach(async ({ page }) => {
     await mockPosBackend(page);
@@ -85,7 +89,7 @@ test.describe('POS action-level', () => {
     await expect(page).toHaveURL(/#\/pos$/);
     await page.getByTestId('pos-action-new-order').click();
     await expect(page.getByTestId('pos-tables-landing-actions')).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId(`pos-table-${TABLE_ID}`)).toBeVisible({ timeout: 10000 });
+    await expect(tableButton(page)).toBeVisible({ timeout: 10000 });
     await expect(page.locator('body')).not.toHaveText(/Error Loading Data|خطأ في تحميل البيانات/i);
   });
 
@@ -100,7 +104,7 @@ test.describe('POS action-level', () => {
   });
 
   test('vacant table starts a dine-in order directly from the landing floor', async ({ page }) => {
-    await page.getByTestId(`pos-table-${TABLE_ID}`).click();
+    await tableButton(page).click();
     await expect(page.getByText('E2E Burger', { exact: true }).first()).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId('pos-tables-landing-actions')).toBeHidden();
   });
@@ -177,12 +181,12 @@ test.describe('POS action-level', () => {
     await expect(page.getByTestId('pos-tables-start-drive-thru')).toBeVisible();
     await expect(page.getByTestId('pos-tables-start-delivery')).toBeVisible();
     await expect(page.getByTestId('pos-tables-active-orders')).toBeVisible();
-    await expect(page.getByTestId(`pos-table-${TABLE_ID}`)).toBeVisible();
+    await expect(tableButton(page)).toBeVisible();
     await page.getByTestId('pos-tables-start-drive-thru').click();
     await expect(page.getByText(/أدخل رقم اللوحة لبدء الطلب|Enter the plate to start/i)).toBeVisible();
     await expect(page.getByTestId('pos-drive-thru-plate')).toBeVisible();
     await page.getByRole('button', { name: /رجوع|Back/i }).click();
     await expect(page.getByTestId('pos-tables-landing-actions')).toBeVisible();
-    await expect(page.getByTestId(`pos-table-${TABLE_ID}`)).toBeVisible();
+    await expect(tableButton(page)).toBeVisible();
   });
 });
