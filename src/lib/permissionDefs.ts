@@ -17,7 +17,7 @@ export type Permission =
   | 'pos.hold' | 'pos.send_kitchen' | 'pos.kds_view' | 'pos.print_kitchen' | 'pos.pay'
   | 'pos.void' | 'pos.cancel_order' | 'pos.refund' | 'pos.transfer_order' | 'pos.split_order' | 'pos.change_branch'
   | 'sales.print' | 'sales.export'
-  | 'purchases.print'
+  | 'purchases.print' | 'purchases.delete'
   | 'products.print' | 'products.export' | 'products.import'
   | 'customers.print' | 'customers.export'
   | 'suppliers.print'
@@ -58,7 +58,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'pos.hold', 'pos.send_kitchen', 'pos.kds_view', 'pos.print_kitchen', 'pos.pay',
   'pos.void', 'pos.cancel_order', 'pos.refund', 'pos.transfer_order', 'pos.split_order', 'pos.change_branch',
   'sales.print', 'sales.export',
-  'purchases.print',
+  'purchases.print', 'purchases.delete',
   'products.print', 'products.export', 'products.import',
   'customers.print', 'customers.export',
   'suppliers.print',
@@ -113,6 +113,7 @@ export const PERMISSION_LABELS: Record<Permission, { ar: string; en: string }> =
   'sales.print': { ar: 'طباعة فواتير المبيعات', en: 'Print Sales Invoices' },
   'sales.export': { ar: 'تصدير فواتير المبيعات', en: 'Export Sales Invoices' },
   'purchases.print': { ar: 'طباعة فواتير المشتريات', en: 'Print Purchase Invoices' },
+  'purchases.delete': { ar: 'حذف فواتير المشتريات غير المرحلة', en: 'Delete Unposted Purchase Invoices' },
   'products.print': { ar: 'طباعة المنتجات', en: 'Print Products' },
   'products.export': { ar: 'تصدير المنتجات', en: 'Export Products' },
   'products.import': { ar: 'استيراد المنتجات', en: 'Import Products' },
@@ -195,7 +196,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   { key: 'products', ar: 'المنتجات', en: 'Products', permissions: ['products.view', 'products.manage', 'products.print', 'products.export', 'products.import'] },
   { key: 'categories', ar: 'الأصناف', en: 'Categories', permissions: ['categories.view', 'categories.manage'] },
   { key: 'components', ar: 'المكونات', en: 'Components', permissions: ['components.view', 'components.manage'] },
-  { key: 'purchases', ar: 'المشتريات', en: 'Purchases', permissions: ['purchases.view', 'purchases.manage', 'purchases.print', 'purchases.requests', 'purchases.rfq', 'purchases.receiving', 'purchases.evaluation'] },
+  { key: 'purchases', ar: 'المشتريات', en: 'Purchases', permissions: ['purchases.view', 'purchases.manage', 'purchases.print', 'purchases.delete', 'purchases.requests', 'purchases.rfq', 'purchases.receiving', 'purchases.evaluation'] },
   { key: 'inventory', ar: 'المخزون', en: 'Inventory', permissions: ['inventory.view', 'inventory.manage', 'inventory.transfers', 'inventory.transfers.approve', 'inventory.ledger.view'] },
   { key: 'raw_materials', ar: 'المواد الخام', en: 'Raw Materials', permissions: ['raw_materials.view', 'raw_materials.manage'] },
   { key: 'recipes', ar: 'الوصفات', en: 'Recipes', permissions: ['recipes.view', 'recipes.manage'] },
@@ -223,7 +224,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'products.view', 'products.manage', 'products.print', 'products.export', 'products.import',
     'categories.view', 'categories.manage',
     'components.view', 'components.manage',
-    'purchases.view', 'purchases.manage', 'purchases.print',
+    'purchases.view', 'purchases.manage', 'purchases.print', 'purchases.delete',
     'purchases.requests', 'purchases.rfq', 'purchases.receiving', 'purchases.evaluation',
     'inventory.view', 'inventory.manage',
     'warehouses.view', 'warehouses.manage',
