@@ -15,6 +15,7 @@ interface PosBottomNavProps {
  * POS navigation now belongs to the landing/header workflow so the selling
  * workspace is not permanently reduced by a fixed footer bar.
  */
-export function PosBottomNav(_props: PosBottomNavProps) {
+export function PosBottomNav(props: PosBottomNavProps) {
+  void props;
   return null;
 }
