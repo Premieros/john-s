@@ -2,45 +2,38 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/api';
 import type { Branch } from '@/lib/types';
 
-let cache: Branch[] | null = null;
 const BRANCHES_CHANGED_EVENT = 'premier:branches-changed';
 
 export function notifyBranchesChanged(): void {
-  cache = null;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(BRANCHES_CHANGED_EVENT));
   }
 }
 
 export function useBranches() {
-  const [branches, setBranches] = useState<Branch[]>(cache ?? []);
-  const [loading, setLoading] = useState(cache === null);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    setLoading(true);
     const { data, error } = await supabase.from('branches').select('*').order('name');
     if (error) {
+      setBranches([]);
       setError(error.message);
       setLoading(false);
       return;
     }
-    cache = (data as Branch[]) || [];
-    setBranches(cache);
+    setBranches((data as Branch[]) || []);
     setError(null);
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    if (cache !== null) {
-      setBranches(cache);
-      setLoading(false);
-    } else {
-      void refresh();
-    }
+    void refresh();
 
     if (typeof window === 'undefined') return;
     const onBranchesChanged = () => {
-      setLoading(true);
       void refresh();
     };
     window.addEventListener(BRANCHES_CHANGED_EVENT, onBranchesChanged);
