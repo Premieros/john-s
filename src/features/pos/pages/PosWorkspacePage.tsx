@@ -771,12 +771,10 @@ export function PosWorkspacePage() {
             currency={pos.effCurrency}
             createdAt={activeOrderCreatedAt}
             kitchenSends={kitchenSendsForActive}
-            orderItems={orderItemsForActive}
             kitchenSending={pos.kitchenSending}
             completing={pos.completing}
-            canDiscount={perms.canDiscount}
-            canDeleteItem={perms.canDeleteItem}
             hasUnsentItems={hasUnsentItems}
+            customerName={pos.customerId ? customerById[pos.customerId]?.name || null : null}
             onOpenTransferModal={() => {
               if (pos.activeTable && pos.activeOrderId) {
                 const currentOrd =
@@ -793,15 +791,11 @@ export function PosWorkspacePage() {
                 setTransferModalOpen(true);
               }
             }}
+            onOpenCustomer={() => setCustomerModalOpen(true)}
             onHoldOrder={() => void pos.holdOrder()}
             onSendKitchen={() => void pos.sendToKitchen()}
+            onPrint={pos.printKitchenTicket}
             onPay={handlePay}
-            onClear={pos.clearCart}
-            onNewOrder={() => {
-              pos.resetWorkspace();
-              window.dispatchEvent(new Event('pos:show-tables-landing'));
-              if (orderIdParam) navigate('/pos');
-            }}
           />
 
           <div className="flex-1 min-h-0">
