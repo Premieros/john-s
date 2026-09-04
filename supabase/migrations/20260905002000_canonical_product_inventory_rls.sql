@@ -3,9 +3,9 @@
 --
 -- Product rows remain editable directly by the frontend, but every mutation is
 -- gated by its exact capability and branch access.
--- Inventory quantities are authoritative accounting state: direct authenticated
--- DML is disabled. Changes must go through audited SECURITY DEFINER workflows
--- such as adjust_stock, receiving, kitchen send/void, transfers and stock count.
+-- Inventory direct writes, when needed by an authorized administrative client,
+-- use the single granular inventory.adjust capability plus branch access. The
+-- normal application path remains the audited stock RPC/workflow boundary.
 
 -- ---------------------------------------------------------------------------
 -- Canonical default role templates.
@@ -125,30 +125,42 @@ USING (
 );
 
 -- ---------------------------------------------------------------------------
--- Inventory: no raw authenticated DML. SECURITY DEFINER workflows remain the
--- sole mutation boundary and continue to enforce their operation permissions.
--- Explicit false policies make the contract obvious and prevent accidental
--- permissive reintroduction by future broad policies with these canonical names.
+-- Inventory: replace the legacy inventory.manage gate with one granular stock
+-- adjustment permission. Normal UI writes still use adjust_stock / receiving /
+-- kitchen / transfer / count RPCs; this RLS layer is the final branch boundary
+-- for any authorized direct administrative DML.
 -- ---------------------------------------------------------------------------
 DROP POLICY IF EXISTS "auth_insert_inventory" ON public.inventory;
+CREATE POLICY "auth_insert_inventory" ON public.inventory
+FOR INSERT TO authenticated
+WITH CHECK (
+  is_pos_admin()
+  OR (public.can_permission('inventory.adjust') AND public.user_may_access_branch(branch_id))
+);
+
 DROP POLICY IF EXISTS "auth_update_inventory" ON public.inventory;
+CREATE POLICY "auth_update_inventory" ON public.inventory
+FOR UPDATE TO authenticated
+USING (
+  is_pos_admin()
+  OR (public.can_permission('inventory.adjust') AND public.user_may_access_branch(branch_id))
+)
+WITH CHECK (
+  is_pos_admin()
+  OR (public.can_permission('inventory.adjust') AND public.user_may_access_branch(branch_id))
+);
+
 DROP POLICY IF EXISTS "auth_delete_inventory" ON public.inventory;
+CREATE POLICY "auth_delete_inventory" ON public.inventory
+FOR DELETE TO authenticated
+USING (
+  is_pos_admin()
+  OR (public.can_permission('inventory.adjust') AND public.user_may_access_branch(branch_id))
+);
+
 DROP POLICY IF EXISTS "inventory_direct_insert_denied" ON public.inventory;
 DROP POLICY IF EXISTS "inventory_direct_update_denied" ON public.inventory;
 DROP POLICY IF EXISTS "inventory_direct_delete_denied" ON public.inventory;
 
-CREATE POLICY "inventory_direct_insert_denied" ON public.inventory
-FOR INSERT TO authenticated
-WITH CHECK (false);
-
-CREATE POLICY "inventory_direct_update_denied" ON public.inventory
-FOR UPDATE TO authenticated
-USING (false)
-WITH CHECK (false);
-
-CREATE POLICY "inventory_direct_delete_denied" ON public.inventory
-FOR DELETE TO authenticated
-USING (false);
-
 COMMENT ON TABLE public.inventory IS
-  'Authoritative stock balance. Authenticated clients may read branch-scoped rows but must mutate stock only through audited inventory RPC/workflow boundaries.';
+  'Authoritative stock balance. Application stock changes use audited inventory workflows; direct administrative DML requires inventory.adjust and branch access.';
