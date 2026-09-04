@@ -113,19 +113,22 @@ export function V2AppShell({ activeModule, children }: Props) {
     }
   };
 
-  const moduleContent = (module: (typeof V2_MODULES)[number], active: boolean) => (
-    <div className={`rounded-xl border px-3 py-2.5 ${active ? 'border-ui-primary bg-ui-primary-soft text-ui-primary' : 'border-transparent text-ui-muted'} ${module.key === 'pos' ? 'hover:bg-ui-page-alt' : ''}`} title={collapsed ? (isAr ? module.labelAr : module.labelEn) : undefined}>
-      <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ui-page-alt text-xs font-black uppercase">{module.key.slice(0, 2)}</div>
-        {!collapsed && (
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">{isAr ? module.labelAr : module.labelEn}</div>
-            <div className="mt-0.5 text-[11px] text-ui-subtle">{module.key === 'pos' ? (isAr ? 'فتح المساحة' : 'Open workspace') : module.status === 'building' ? (isAr ? 'قيد البناء — غير قابل للنقر بعد' : 'Building — not clickable yet') : module.status === 'foundation' ? (isAr ? 'أساس النظام' : 'Foundation') : (isAr ? 'مخطط — غير قابل للنقر بعد' : 'Planned — not clickable yet')}</div>
-          </div>
-        )}
+  const moduleContent = (module: (typeof V2_MODULES)[number], active: boolean) => {
+    const workspaceReady = module.key === 'pos' || module.key === 'shifts';
+    return (
+      <div className={`rounded-xl border px-3 py-2.5 ${active ? 'border-ui-primary bg-ui-primary-soft text-ui-primary' : 'border-transparent text-ui-muted'} ${workspaceReady ? 'hover:bg-ui-page-alt' : ''}`} title={collapsed ? (isAr ? module.labelAr : module.labelEn) : undefined}>
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ui-page-alt text-xs font-black uppercase">{module.key.slice(0, 2)}</div>
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold">{isAr ? module.labelAr : module.labelEn}</div>
+              <div className="mt-0.5 text-[11px] text-ui-subtle">{workspaceReady ? (isAr ? 'فتح المساحة' : 'Open workspace') : module.status === 'building' ? (isAr ? 'قيد البناء — غير قابل للنقر بعد' : 'Building — not clickable yet') : module.status === 'foundation' ? (isAr ? 'أساس النظام' : 'Foundation') : (isAr ? 'مخطط — غير قابل للنقر بعد' : 'Planned — not clickable yet')}</div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const sidebar = (
     <div className="flex h-full flex-col bg-ui-surface">
@@ -148,8 +151,13 @@ export function V2AppShell({ activeModule, children }: Props) {
         <div className="space-y-1">
           {visibleModules.map((module) => {
             const active = module.key === activeModule;
-            if (module.key === 'pos') {
-              return <Link key={module.key} to={`${APP_ROUTES.frontendV2}/pos`} onClick={() => setMobileOpen(false)}>{moduleContent(module, active)}</Link>;
+            const workspaceRoute = module.key === 'pos'
+              ? `${APP_ROUTES.frontendV2}/pos`
+              : module.key === 'shifts'
+                ? `${APP_ROUTES.frontendV2}/shifts`
+                : null;
+            if (workspaceRoute) {
+              return <Link key={module.key} to={workspaceRoute} onClick={() => setMobileOpen(false)}>{moduleContent(module, active)}</Link>;
             }
             return <div key={module.key} aria-disabled="true">{moduleContent(module, active)}</div>;
           })}
