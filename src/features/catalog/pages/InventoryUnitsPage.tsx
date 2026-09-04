@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { Plus, Edit2, Trash2, Beaker } from 'lucide-react';
 import { supabase } from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -17,27 +17,188 @@ import { useCan } from '@/lib/permissions';
 import { usePaginatedRows } from '@/hooks/usePaginatedRows';
 import type { InventoryUnit } from '@/lib/types';
 
-interface UnitForm { code: string; name: string; name_en: string; unit_type: 'ready' | 'manufactured'; cost_price: number; sale_price: number; min_stock: number; max_stock: number; reorder_point: number; low_stock_threshold: number; barcode: string; sku: string; description: string; }
+interface UnitForm {
+  code: string;
+  name: string;
+  name_en: string;
+  unit_type: 'ready' | 'manufactured';
+  cost_price: number;
+  sale_price: number;
+  min_stock: number;
+  max_stock: number;
+  reorder_point: number;
+  low_stock_threshold: number;
+  barcode: string;
+  sku: string;
+  description: string;
+}
 interface RecipeRow { id?: string; raw_material_id: string; quantity: number; wastage_percent: number; }
 interface RawMaterialOption { id: string; name: string; }
-const EMPTY_FORM: UnitForm = { code: '', name: '', name_en: '', unit_type: 'ready', cost_price: 0, sale_price: 0, min_stock: 0, max_stock: 0, reorder_point: 0, low_stock_threshold: 5, barcode: '', sku: '', description: '' };
+
+const EMPTY_FORM: UnitForm = {
+  code: '', name: '', name_en: '', unit_type: 'ready', cost_price: 0, sale_price: 0,
+  min_stock: 0, max_stock: 0, reorder_point: 0, low_stock_threshold: 5,
+  barcode: '', sku: '', description: '',
+};
 const EMPTY_RECIPE_ROW = (): RecipeRow => ({ raw_material_id: '', quantity: 1, wastage_percent: 0 });
 const cleanUserDescription = (description?: string | null) => {
   const value = (description || '').trim();
   return /^Manufactured component migrated from product\b/i.test(value) ? '' : value;
 };
+
 export function InventoryUnitsPage() {
-  const { t, lang } = useLanguage(); const { show } = useToast(); const can = useCan(); const branchFilter = useBranchFilter(); const isAr = lang === 'ar';
-  const { rows: items, loading, total, hasMore, loadMore, loadingMore, refresh: reloadItems } = usePaginatedRows<InventoryUnit>({ table: 'inventory_units', select: '*', order: { column: 'name', ascending: true }, branch_id: branchFilter, pageSize: 100 });
-  const [modalOpen, setModalOpen] = useState(false); const [editing, setEditing] = useState<InventoryUnit | null>(null); const [deleteId, setDeleteId] = useState<string | null>(null); const [form, setForm] = useState<UnitForm>(EMPTY_FORM);
-  const [recipeModalOpen, setRecipeModalOpen] = useState(false); const [recipeUnit, setRecipeUnit] = useState<InventoryUnit | null>(null); const [recipeRows, setRecipeRows] = useState<RecipeRow[]>([]); const [rawMaterials, setRawMaterials] = useState<RawMaterialOption[]>([]); const [recipeLoading, setRecipeLoading] = useState(false);
-  const openAdd = () => { setEditing(null); setForm(EMPTY_FORM); setModalOpen(true); };
-  const openEdit = (u: InventoryUnit) => { setEditing(u); setForm({ code: u.code, name: u.name, name_en: u.name_en || '', unit_type: u.unit_type, cost_price: u.cost_price, sale_price: u.sale_price, min_stock: u.min_stock, max_stock: u.max_stock, reorder_point: u.reorder_point, low_stock_threshold: u.low_stock_threshold, barcode: u.barcode || '', sku: u.sku || '', description: cleanUserDescription(u.description) }); setModalOpen(true); };
-  const save = async () => { if (!form.code || !form.name) { show(t('required'), 'error'); return; } const payload = { ...form, cost_price: Number(form.cost_price), sale_price: Number(form.sale_price), min_stock: Number(form.min_stock), max_stock: Number(form.max_stock), reorder_point: Number(form.reorder_point), low_stock_threshold: Number(form.low_stock_threshold), barcode: form.barcode || null, sku: form.sku || null, description: form.description.trim() || null, name_en: form.name_en || null, branch_id: branchFilter || null }; if (editing) { const { error } = await supabase.from('inventory_units').update(payload).eq('id', editing.id); if (error) { show(error.message, 'error'); return; } await logAudit('update', 'inventory_units', editing.id); } else { const { error } = await supabase.from('inventory_units').insert(payload); if (error) { show(error.message, 'error'); return; } await logAudit('create', 'inventory_units'); } show(t('saveSuccess'), 'success'); setModalOpen(false); reloadItems(); };
-  const openRecipe = async (u: InventoryUnit) => { if (u.unit_type !== 'manufactured' || !can('production.manage')) return; setRecipeUnit(u); setRecipeModalOpen(true); setRecipeLoading(true); const [{ data: rmData, error: rmError }, { data: recipeData, error: recipeError }] = await Promise.all([supabase.from('raw_materials').select('id,name').eq('is_active', true).order('name'), supabase.from('inventory_unit_recipes').select('id,raw_material_id,quantity,wastage_percent').eq('unit_id', u.id).order('created_at')]); if (rmError) show(rmError.message, 'error'); if (recipeError) show(recipeError.message, 'error'); setRawMaterials((rmData as RawMaterialOption[]) || []); setRecipeRows((recipeData as RecipeRow[]) || []); setRecipeLoading(false); };
-  const addRecipeRow = () => setRecipeRows((rows) => [...rows, EMPTY_RECIPE_ROW()]); const updateRecipeRow = (index: number, patch: Partial<RecipeRow>) => setRecipeRows((rows) => rows.map((r, i) => i === index ? { ...r, ...patch } : r)); const removeRecipeRow = (index: number) => setRecipeRows((rows) => rows.filter((_, i) => i !== index));
-  const saveRecipe = async () => { if (!recipeUnit) return; if (recipeUnit.unit_type !== 'manufactured') { show(isAr ? 'الوحدة ليست مصنّعة' : 'This unit is not manufactured', 'error'); return; } const valid = recipeRows.every((r) => r.raw_material_id && Number(r.quantity) > 0 && Number(r.wastage_percent) >= 0); if (!valid) { show(isAr ? 'أكمل بيانات الـRecipe' : 'Complete the recipe rows', 'error'); return; } setRecipeLoading(true); const { error: delError } = await supabase.from('inventory_unit_recipes').delete().eq('unit_id', recipeUnit.id); if (delError) { show(delError.message, 'error'); setRecipeLoading(false); return; } if (recipeRows.length) { const { error: insError } = await supabase.from('inventory_unit_recipes').insert(recipeRows.map((r) => ({ unit_id: recipeUnit.id, raw_material_id: r.raw_material_id, quantity: Number(r.quantity), wastage_percent: Number(r.wastage_percent) || 0 }))); if (insError) { show(insError.message, 'error'); setRecipeLoading(false); return; } } await logAudit('update', 'inventory_unit_recipes', recipeUnit.id, { unit_name: recipeUnit.name, ingredient_count: recipeRows.length }); show(t('saveSuccess'), 'success'); setRecipeLoading(false); setRecipeModalOpen(false); };
-  const remove = async () => { if (!deleteId) return; const { error } = await supabase.from('inventory_units').delete().eq('id', deleteId); if (error) show(error.message, 'error'); else { show(t('deleteSuccess'), 'success'); await logAudit('delete', 'inventory_units', deleteId); } setDeleteId(null); reloadItems(); };
-  const columns: Column<InventoryUnit>[] = [{ key: 'code', header: t('code'), render: (u) => <span className="font-mono text-sm">{u.code}</span> }, { key: 'name', header: t('name'), render: (u) => <span className="font-medium text-ui-text">{u.name}</span> }, { key: 'unit_type', header: t('unitType'), render: (u) => <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.unit_type === 'manufactured' ? 'bg-ui-warning-soft text-ui-warning' : 'bg-ui-success-soft text-ui-success  dark:text-ui-success'}`}>{u.unit_type === 'manufactured' ? t('manufactured') : t('ready')}</span> }, { key: 'cost_price', header: t('costPrice'), render: (u) => <span className="text-sm">{Number(u.cost_price).toFixed(2)}</span> }, { key: 'sale_price', header: t('salePrice'), render: (u) => <span className="text-sm">{Number(u.sale_price).toFixed(2)}</span> }, { key: 'actions', header: t('actions'), render: (u) => (<div className="flex gap-1" onClick={(e) => e.stopPropagation()}>{u.unit_type === 'manufactured' && can('production.manage') && <button onClick={() => openRecipe(u)} className="p-1.5 rounded-md hover:bg-purple-50 dark:hover:bg-purple-900/20 text-purple-500" title={isAr ? 'Recipe الوحدة' : 'Unit recipe'}><Beaker className="w-4 h-4" /></button>}{can('raw_materials.manage') && <button onClick={() => openEdit(u)} className="p-1.5 rounded-md hover:bg-ui-info-soft text-ui-info"><Edit2 className="w-4 h-4" /></button>}{can('raw_materials.manage') && <button onClick={() => setDeleteId(u.id)} className="p-1.5 rounded-md hover:bg-ui-danger-soft text-ui-danger"><Trash2 className="w-4 h-4" /></button>}</div>) }];
-  return (<DesignSurface testId="inventory-units-page"><DesignPageHeader title={t('inventoryUnits')} actions={can('raw_materials.manage') ? <Button size="sm" onClick={openAdd} data-testid="inventory-units-add"><Plus className="w-4 h-4" /> {t('add')}</Button> : undefined} /><DesignPanel testId="inventory-units-table-panel"><DataTable columns={columns} data={items} loading={loading} emptyMessage={t('noData')} onRowClick={can('raw_materials.manage') ? openEdit : undefined} /><DesignPagination loaded={items.length} total={total} hasMore={hasMore} loadingMore={loadingMore} onLoadMore={loadMore} /></DesignPanel><Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? t('edit') : t('add')}><div className="space-y-4 max-h-[70vh] overflow-y-auto"><div className="grid grid-cols-2 gap-4"><Input label={t('code')} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required /><Input label={t('name')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div><div className="grid grid-cols-2 gap-4"><Input label={t('nameEn')} value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} /><Select label={t('unitType')} value={form.unit_type} onChange={(e) => setForm({ ...form, unit_type: e.target.value as 'ready' | 'manufactured' })}><option value="ready">{t('ready')}</option><option value="manufactured">{t('manufactured')}</option></Select></div><div className="grid grid-cols-2 gap-4"><Input label={t('costPrice')} type="number" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: +e.target.value })} /><Input label={t('salePrice')} type="number" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: +e.target.value })} /></div><div className="grid grid-cols-2 gap-4"><Input label={t('minStock')} type="number" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: +e.target.value })} /><Input label={t('maxStock')} type="number" value={form.max_stock} onChange={(e) => setForm({ ...form, max_stock: +e.target.value })} /></div><div className="grid grid-cols-2 gap-4"><Input label={t('reorderPoint')} type="number" value={form.reorder_point} onChange={(e) => setForm({ ...form, reorder_point: +e.target.value })} /><Input label={t('lowStockThreshold')} type="number" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: +e.target.value })} /></div><div className="grid grid-cols-2 gap-4"><Input label={t('barcode')} value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} /><Input label={t('sku')} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></div><Textarea label={t('description')} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} /><div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>{t('cancel')}</Button><Button onClick={save}>{t('save')}</Button></div></div></Modal><Modal open={recipeModalOpen} onClose={() => setRecipeModalOpen(false)} title={recipeUnit ? `${isAr ? 'Recipe' : 'Recipe'} — ${recipeUnit.name}` : 'Recipe'} size="lg"><div className="space-y-4 max-h-[70vh] overflow-y-auto"><div className="rounded-lg bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800/40 p-3 text-sm text-purple-800 dark:text-purple-300">{isAr ? 'الخامات هنا تخص تصنيع الوحدة فقط. البيع لا يخصم الخامات مباشرة.' : 'These raw materials are consumed only when manufacturing the unit. Sales do not deduct them directly.'}</div>{recipeRows.map((row, i) => (<div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_140px_140px_auto] gap-2 items-end p-3 rounded-lg border border-ui-border"><Select label={isAr ? 'الخامة' : 'Raw material'} value={row.raw_material_id} onChange={(e) => updateRecipeRow(i, { raw_material_id: e.target.value })}><option value="">--</option>{rawMaterials.map((rm) => <option key={rm.id} value={rm.id}>{rm.name}</option>)}</Select><Input label={isAr ? 'الكمية' : 'Quantity'} type="number" min="0.0001" step="0.0001" value={row.quantity} onChange={(e) => updateRecipeRow(i, { quantity: Number(e.target.value) || 0 })} /><Input label={isAr ? 'الهالك %' : 'Wastage %'} type="number" min="0" step="0.01" value={row.wastage_percent} onChange={(e) => updateRecipeRow(i, { wastage_percent: Number(e.target.value) || 0 })} /><Button variant="outline" size="sm" onClick={() => removeRecipeRow(i)}><Trash2 className="w-4 h-4" /></Button></div>))}<div className="flex gap-2"><Button variant="outline" onClick={addRecipeRow}><Plus className="w-4 h-4" />{isAr ? 'إضافة خامة' : 'Add material'}</Button></div><div className="flex justify-end gap-2 pt-2"><Button variant="secondary" onClick={() => setRecipeModalOpen(false)}>{t('cancel')}</Button><Button disabled={recipeLoading} onClick={saveRecipe}>{t('save')}</Button></div></div></Modal><ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={remove} title={t('delete')} message={t('confirmDelete')} confirmLabel={t('delete')} cancelLabel={t('cancel')} /></DesignSurface>);
+  const { t, lang } = useLanguage();
+  const { show } = useToast();
+  const can = useCan();
+  const branchFilter = useBranchFilter();
+  const isAr = lang === 'ar';
+  const { rows: items, loading, total, hasMore, loadMore, loadingMore, refresh: reloadItems } = usePaginatedRows<InventoryUnit>({
+    table: 'inventory_units', select: '*', order: { column: 'name', ascending: true }, branch_id: branchFilter, pageSize: 100,
+  });
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<InventoryUnit | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [form, setForm] = useState<UnitForm>(EMPTY_FORM);
+  const [recipeModalOpen, setRecipeModalOpen] = useState(false);
+  const [recipeUnit, setRecipeUnit] = useState<InventoryUnit | null>(null);
+  const [recipeRows, setRecipeRows] = useState<RecipeRow[]>([]);
+  const [rawMaterials, setRawMaterials] = useState<RawMaterialOption[]>([]);
+  const [recipeLoading, setRecipeLoading] = useState(false);
+
+  const openAdd = () => { setEditing(null); setForm({ ...EMPTY_FORM }); setModalOpen(true); };
+  const openEdit = (unit: InventoryUnit) => {
+    setEditing(unit);
+    setForm({
+      code: unit.code, name: unit.name, name_en: unit.name_en || '', unit_type: unit.unit_type,
+      cost_price: unit.cost_price, sale_price: unit.sale_price, min_stock: unit.min_stock,
+      max_stock: unit.max_stock, reorder_point: unit.reorder_point,
+      low_stock_threshold: unit.low_stock_threshold, barcode: unit.barcode || '', sku: unit.sku || '',
+      description: cleanUserDescription(unit.description),
+    });
+    setModalOpen(true);
+  };
+
+  const save = async () => {
+    if (!form.code || !form.name) { show(t('required'), 'error'); return; }
+    const payload = {
+      ...form,
+      cost_price: Number(form.cost_price), sale_price: Number(form.sale_price), min_stock: Number(form.min_stock),
+      max_stock: Number(form.max_stock), reorder_point: Number(form.reorder_point), low_stock_threshold: Number(form.low_stock_threshold),
+      barcode: form.barcode || null, sku: form.sku || null, description: form.description.trim() || null,
+      name_en: form.name_en || null, branch_id: branchFilter || null,
+    };
+    if (editing) {
+      const { error } = await supabase.from('inventory_units').update(payload).eq('id', editing.id);
+      if (error) { show(error.message, 'error'); return; }
+      await logAudit('update', 'inventory_units', editing.id);
+    } else {
+      const { error } = await supabase.from('inventory_units').insert(payload);
+      if (error) { show(error.message, 'error'); return; }
+      await logAudit('create', 'inventory_units');
+    }
+    show(t('saveSuccess'), 'success');
+    setModalOpen(false);
+    reloadItems();
+  };
+
+  const openRecipe = async (unit: InventoryUnit) => {
+    if (unit.unit_type !== 'manufactured' || !can('production.manage')) return;
+    setRecipeUnit(unit);
+    setRecipeModalOpen(true);
+    setRecipeLoading(true);
+    let rawMaterialQuery = supabase.from('raw_materials').select('id,name').eq('is_active', true);
+    if (branchFilter) rawMaterialQuery = rawMaterialQuery.eq('branch_id', branchFilter);
+    const [{ data: rawData, error: rawError }, { data: recipeData, error: recipeError }] = await Promise.all([
+      rawMaterialQuery.order('name'),
+      supabase.from('inventory_unit_recipes').select('id,raw_material_id,quantity,wastage_percent').eq('unit_id', unit.id).order('created_at'),
+    ]);
+    if (rawError) show(rawError.message, 'error');
+    if (recipeError) show(recipeError.message, 'error');
+    setRawMaterials((rawData as RawMaterialOption[]) || []);
+    setRecipeRows((recipeData as RecipeRow[]) || []);
+    setRecipeLoading(false);
+  };
+
+  const saveRecipe = async () => {
+    if (!recipeUnit || recipeUnit.unit_type !== 'manufactured') return;
+    const valid = recipeRows.every((row) => row.raw_material_id && Number(row.quantity) > 0 && Number(row.wastage_percent) >= 0);
+    if (!valid) { show(isAr ? 'أكمل بيانات الوصفة' : 'Complete the recipe rows', 'error'); return; }
+    setRecipeLoading(true);
+    const { error: deleteError } = await supabase.from('inventory_unit_recipes').delete().eq('unit_id', recipeUnit.id);
+    if (deleteError) { show(deleteError.message, 'error'); setRecipeLoading(false); return; }
+    if (recipeRows.length) {
+      const { error: insertError } = await supabase.from('inventory_unit_recipes').insert(recipeRows.map((row) => ({
+        unit_id: recipeUnit.id, raw_material_id: row.raw_material_id, quantity: Number(row.quantity), wastage_percent: Number(row.wastage_percent) || 0,
+      })));
+      if (insertError) { show(insertError.message, 'error'); setRecipeLoading(false); return; }
+    }
+    await logAudit('update', 'inventory_unit_recipes', recipeUnit.id, { unit_name: recipeUnit.name, ingredient_count: recipeRows.length });
+    show(t('saveSuccess'), 'success');
+    setRecipeLoading(false);
+    setRecipeModalOpen(false);
+  };
+
+  const remove = async () => {
+    if (!deleteId) return;
+    const { error } = await supabase.from('inventory_units').delete().eq('id', deleteId);
+    if (error) show(error.message, 'error');
+    else { show(t('deleteSuccess'), 'success'); await logAudit('delete', 'inventory_units', deleteId); }
+    setDeleteId(null);
+    reloadItems();
+  };
+
+  const columns: Column<InventoryUnit>[] = [
+    { key: 'code', header: t('code'), render: (unit) => <span className="font-mono text-sm">{unit.code}</span> },
+    { key: 'name', header: t('name'), render: (unit) => <span className="font-medium text-ui-text">{unit.name}</span> },
+    { key: 'unit_type', header: t('unitType'), render: (unit) => <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${unit.unit_type === 'manufactured' ? 'bg-ui-warning-soft text-ui-warning' : 'bg-ui-success-soft text-ui-success'}`}>{unit.unit_type === 'manufactured' ? t('manufactured') : t('ready')}</span> },
+    { key: 'cost_price', header: t('costPrice'), render: (unit) => <span className="text-sm">{Number(unit.cost_price).toFixed(2)}</span> },
+    { key: 'sale_price', header: t('salePrice'), render: (unit) => <span className="text-sm">{Number(unit.sale_price).toFixed(2)}</span> },
+    { key: 'actions', header: t('actions'), render: (unit) => <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+      {unit.unit_type === 'manufactured' && can('production.manage') && <button onClick={() => openRecipe(unit)} className="p-1.5 rounded-md hover:bg-purple-50 text-purple-500" title={isAr ? 'وصفة الوحدة' : 'Unit recipe'}><Beaker className="w-4 h-4" /></button>}
+      {can('raw_materials.manage') && <button onClick={() => openEdit(unit)} className="p-1.5 rounded-md hover:bg-ui-info-soft text-ui-info"><Edit2 className="w-4 h-4" /></button>}
+      {can('raw_materials.manage') && <button onClick={() => setDeleteId(unit.id)} className="p-1.5 rounded-md hover:bg-ui-danger-soft text-ui-danger"><Trash2 className="w-4 h-4" /></button>}
+    </div> },
+  ];
+
+  const fieldGrid = 'grid grid-cols-1 sm:grid-cols-2 gap-4';
+
+  return (
+    <DesignSurface testId="inventory-units-page">
+      <DesignPageHeader title={t('inventoryUnits')} actions={can('raw_materials.manage') ? <Button size="sm" onClick={openAdd} data-testid="inventory-units-add"><Plus className="w-4 h-4" /> {t('add')}</Button> : undefined} />
+      <DesignPanel testId="inventory-units-table-panel">
+        <DataTable columns={columns} data={items} loading={loading} emptyMessage={t('noData')} onRowClick={can('raw_materials.manage') ? openEdit : undefined} />
+        <DesignPagination loaded={items.length} total={total} hasMore={hasMore} loadingMore={loadingMore} onLoadMore={loadMore} />
+      </DesignPanel>
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? t('edit') : t('add')} size="lg">
+        <div className="space-y-4">
+          <div className={fieldGrid}><Input label={t('code')} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required /><Input label={t('name')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></div>
+          <div className={fieldGrid}><Input label={t('nameEn')} value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} /><Select label={t('unitType')} value={form.unit_type} onChange={(e) => setForm({ ...form, unit_type: e.target.value as 'ready' | 'manufactured' })}><option value="ready">{t('ready')}</option><option value="manufactured">{t('manufactured')}</option></Select></div>
+          <div className={fieldGrid}><Input label={t('costPrice')} type="number" min="0" step="0.01" value={form.cost_price} onChange={(e) => setForm({ ...form, cost_price: Number(e.target.value) || 0 })} /><Input label={t('salePrice')} type="number" min="0" step="0.01" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: Number(e.target.value) || 0 })} /></div>
+          <div className={fieldGrid}><Input label={t('minStock')} type="number" min="0" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: Number(e.target.value) || 0 })} /><Input label={t('maxStock')} type="number" min="0" value={form.max_stock} onChange={(e) => setForm({ ...form, max_stock: Number(e.target.value) || 0 })} /></div>
+          <div className={fieldGrid}><Input label={t('reorderPoint')} type="number" min="0" value={form.reorder_point} onChange={(e) => setForm({ ...form, reorder_point: Number(e.target.value) || 0 })} /><Input label={t('lowStockThreshold')} type="number" min="0" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: Number(e.target.value) || 0 })} /></div>
+          <div className={fieldGrid}><Input label={t('barcode')} value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} /><Input label={t('sku')} value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></div>
+          <Textarea label={t('description')} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} />
+          <div className="sticky bottom-0 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-ui-surface/95 backdrop-blur border-t border-ui-border flex justify-end gap-2"><Button variant="secondary" onClick={() => setModalOpen(false)}>{t('cancel')}</Button><Button onClick={save}>{t('save')}</Button></div>
+        </div>
+      </Modal>
+
+      <Modal open={recipeModalOpen} onClose={() => setRecipeModalOpen(false)} title={recipeUnit ? `${isAr ? 'وصفة' : 'Recipe'} — ${recipeUnit.name}` : 'Recipe'} size="lg">
+        <div className="space-y-4">
+          <div className="rounded-lg bg-purple-50 border border-purple-200 p-3 text-sm text-purple-800">{isAr ? 'الخامات هنا تخص تصنيع الوحدة فقط. البيع لا يخصم الخامات مباشرة.' : 'These raw materials are consumed only when manufacturing the unit. Sales do not deduct them directly.'}</div>
+          {recipeRows.map((row, index) => <div key={index} className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_140px_140px_auto] gap-2 items-end p-3 rounded-lg border border-ui-border">
+            <Select label={isAr ? 'الخامة' : 'Raw material'} value={row.raw_material_id} onChange={(e) => setRecipeRows((rows) => rows.map((item, i) => i === index ? { ...item, raw_material_id: e.target.value } : item))}><option value="" disabled>--</option>{rawMaterials.map((material) => <option key={material.id} value={material.id}>{material.name}</option>)}</Select>
+            <Input label={isAr ? 'الكمية' : 'Quantity'} type="number" min="0.0001" step="0.0001" value={row.quantity} onChange={(e) => setRecipeRows((rows) => rows.map((item, i) => i === index ? { ...item, quantity: Number(e.target.value) || 0 } : item))} />
+            <Input label={isAr ? 'الهالك %' : 'Wastage %'} type="number" min="0" step="0.01" value={row.wastage_percent} onChange={(e) => setRecipeRows((rows) => rows.map((item, i) => i === index ? { ...item, wastage_percent: Number(e.target.value) || 0 } : item))} />
+            <Button variant="outline" size="sm" onClick={() => setRecipeRows((rows) => rows.filter((_, i) => i !== index))}><Trash2 className="w-4 h-4" /></Button>
+          </div>)}
+          <Button variant="outline" onClick={() => setRecipeRows((rows) => [...rows, EMPTY_RECIPE_ROW()])}><Plus className="w-4 h-4" />{isAr ? 'إضافة خامة' : 'Add material'}</Button>
+          <div className="sticky bottom-0 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-ui-surface/95 backdrop-blur border-t border-ui-border flex justify-end gap-2"><Button variant="secondary" onClick={() => setRecipeModalOpen(false)}>{t('cancel')}</Button><Button disabled={recipeLoading} onClick={saveRecipe}>{t('save')}</Button></div>
+        </div>
+      </Modal>
+
+      <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={remove} title={t('delete')} message={t('confirmDelete')} confirmLabel={t('delete')} cancelLabel={t('cancel')} />
+    </DesignSurface>
+  );
 }

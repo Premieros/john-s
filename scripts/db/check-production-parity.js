@@ -42,6 +42,14 @@ const ROOT = resolve(__dirname, '..', '..');
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
 
+// Internal database behavior can change without adding a new frontend RPC or
+// table reference. Keep a small set of structural sentinels for contracts that
+// the UI relies on indirectly. The kitchen inventory boundary, for example,
+// requires the order to retain the warehouse chosen on the first kitchen send.
+const REQUIRED_COLUMNS = {
+  orders: ['inventory_warehouse_id'],
+};
+
 if (!SUPABASE_URL || !ANON_KEY) {
   console.error('ERROR: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set (as in the build job).');
   process.exit(1);
@@ -88,6 +96,19 @@ async function probeTable(name, headers) {
   return 'present';
 }
 
+async function probeColumns(table, columns, headers) {
+  const select = encodeURIComponent(['id', ...columns].join(','));
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${select}&limit=0`, {
+    method: 'GET',
+    headers,
+  });
+  if (res.status === 400 || res.status === 404) {
+    const text = await res.text();
+    if (text.includes('PGRST204') || text.includes('PGRST205')) return 'missing';
+  }
+  return 'present';
+}
+
 async function main() {
   const headers = { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` };
 
@@ -100,6 +121,7 @@ async function main() {
 
   const missingRpc = [];
   const missingTables = [];
+  const missingColumns = [];
 
   for (const [name, params] of rpcs) {
     const status = await probeRpc(name, params, headers);
@@ -113,9 +135,15 @@ async function main() {
     process.stdout.write(`  ${status === 'present' ? 'ok ' : 'FAIL'} table ${name}\n`);
   }
 
+  for (const [table, columns] of Object.entries(REQUIRED_COLUMNS)) {
+    const status = await probeColumns(table, columns, headers);
+    if (status === 'missing') missingColumns.push(`${table}.${columns.join(',')}`);
+    process.stdout.write(`  ${status === 'present' ? 'ok ' : 'FAIL'} columns ${table}(${columns.join(', ')})\n`);
+  }
+
   console.log('');
-  if (missingRpc.length === 0 && missingTables.length === 0) {
-    console.log('PARITY OK: every frontend RPC and table is present in the production schema cache.');
+  if (missingRpc.length === 0 && missingTables.length === 0 && missingColumns.length === 0) {
+    console.log('PARITY OK: every frontend RPC, table, and required structural column is present in production.');
     process.exit(0);
   }
 
@@ -128,6 +156,10 @@ async function main() {
   if (missingTables.length) {
     console.error(`\nMissing tables (${missingTables.length}):`);
     missingTables.forEach((t) => console.error(`  - ${t}`));
+  }
+  if (missingColumns.length) {
+    console.error(`\nMissing required column contracts (${missingColumns.length}):`);
+    missingColumns.forEach((column) => console.error(`  - ${column}`));
   }
   process.exit(1);
 }

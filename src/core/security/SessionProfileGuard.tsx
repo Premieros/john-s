@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { supabase } from '@/api';
 import { useAuth } from '@/context/AuthContext';
 
@@ -30,13 +30,8 @@ async function clearOfflineReadCache(): Promise<void> {
       request.onsuccess = () => {
         const db = request.result;
         const readableStores = [
-          'products',
-          'categories',
-          'customers',
-          'dining_tables',
-          'dining_areas',
-          'stock_map',
-          'system_settings',
+          'products', 'categories', 'customers', 'dining_tables',
+          'dining_areas', 'stock_map', 'system_settings',
         ].filter((name) => db.objectStoreNames.contains(name));
 
         if (readableStores.length === 0) {
@@ -47,42 +42,34 @@ async function clearOfflineReadCache(): Promise<void> {
 
         const tx = db.transaction(readableStores, 'readwrite');
         readableStores.forEach((name) => tx.objectStore(name).clear());
-        tx.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-        tx.onerror = () => {
-          db.close();
-          resolve();
-        };
-        tx.onabort = () => {
+        tx.oncomplete = tx.onerror = tx.onabort = () => {
           db.close();
           resolve();
         };
       };
     });
   } catch {
-    // Never block sign-in because a browser cache could not be cleared.
+    // Never block the authenticated shell because browser cache cleanup failed.
   }
 }
 
 export function SessionProfileGuard({ children }: { children: ReactNode }) {
-  const { session, signOut } = useAuth();
-  const [verifiedSessionId, setVerifiedSessionId] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
+  const { session, user, signOut } = useAuth();
+  const checkedUserIdRef = useRef<string | null>(null);
+  const signOutRef = useRef(signOut);
+
+  useEffect(() => { signOutRef.current = signOut; }, [signOut]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    if (!session?.user?.id) {
-      setVerifiedSessionId(null);
-      setChecking(false);
+    const sessionUserId = session?.user?.id ?? null;
+    if (!sessionUserId || !user?.id || user.id !== sessionUserId) {
+      checkedUserIdRef.current = null;
       return;
     }
+    if (checkedUserIdRef.current === sessionUserId) return;
+    checkedUserIdRef.current = sessionUserId;
 
-    const sessionUserId = session.user.id;
-    setChecking(true);
-
+    let cancelled = false;
     void (async () => {
       const { data, error } = await supabase
         .from('users')
@@ -91,59 +78,27 @@ export function SessionProfileGuard({ children }: { children: ReactNode }) {
         .maybeSingle();
 
       if (cancelled) return;
-
       if (error || !data || data.is_active === false) {
+        checkedUserIdRef.current = null;
         await clearOfflineReadCache();
-        try {
-          localStorage.removeItem(VERIFIED_PROFILE_KEY);
-        } catch {
-          // Ignore storage errors.
-        }
-        await signOut();
-        if (!cancelled) {
-          setVerifiedSessionId(null);
-          setChecking(false);
-        }
+        try { localStorage.removeItem(VERIFIED_PROFILE_KEY); } catch { /* ignore storage errors */ }
+        await signOutRef.current();
         return;
       }
 
       let previousProfileId: string | null = null;
-      try {
-        previousProfileId = localStorage.getItem(VERIFIED_PROFILE_KEY);
-      } catch {
-        previousProfileId = null;
-      }
-
+      try { previousProfileId = localStorage.getItem(VERIFIED_PROFILE_KEY); } catch { previousProfileId = null; }
       if (previousProfileId !== sessionUserId) {
         await clearOfflineReadCache();
-        try {
-          localStorage.setItem(VERIFIED_PROFILE_KEY, sessionUserId);
-        } catch {
-          // Ignore storage errors.
-        }
-      }
-
-      if (!cancelled) {
-        setVerifiedSessionId(sessionUserId);
-        setChecking(false);
+        try { localStorage.setItem(VERIFIED_PROFILE_KEY, sessionUserId); } catch { /* ignore storage errors */ }
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.user?.id, signOut]);
+    return () => { cancelled = true; };
+  }, [session?.user?.id, user?.id]);
 
-  if (session?.user?.id && (checking || verifiedSessionId !== session.user.id)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-ui-page text-ui-text">
-        <div className="rounded-2xl border border-ui-border bg-ui-surface px-6 py-5 text-center shadow-ui-md">
-          <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-ui-primary border-t-transparent" />
-          <p className="text-sm font-black">جاري التحقق من صلاحية الحساب...</p>
-        </div>
-      </div>
-    );
-  }
-
+  // AuthContext already validates the application profile before exposing `user`.
+  // This guard is a background revalidation/cache-isolation layer only; it must
+  // never replace the mounted application with a second full-screen auth loader.
   return <>{children}</>;
 }

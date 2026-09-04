@@ -76,6 +76,17 @@
 
 هذه المشاكل مثبتة من الواجهة المنشورة بالصور بتاريخ 2026-09-05، وتُنفذ بالترتيب التالي بدون توسيع النطاق إلى POS/Inventory Backend المستقر.
 
+### نقطة تحقق الإصلاح المحلي — لم تُنشر بعد
+
+- فرع العمل: `fix/p0-ui-db-alignment` مبني على حزمة إصلاحات `fix/screenshot-regressions-and-drift-audit`.
+- Recipe/Components selectors أصبحت تقرأ المنتجات المتاحة للفرع من العقد نفسه، بدون فلتر `manufactured` القديم، وLive Costing يقرأ متوسط تكلفة مخزون المواد الخام.
+- Auth/permission revalidation أصبح في الخلفية مع بقاء App Shell مركبًا، وأضيف recovery لمرة واحدة لأخطاء stale dynamic chunks.
+- Dialog المنتج/الوحدة أصبح آمنًا ضمن ارتفاع الـviewport، وحقول الأرقام تستخدم NumericInput الموحد.
+- أضيف Contract test لانحراف UI/DB، كما أصبح Production Parity يفشل صراحةً عند غياب `orders.inventory_warehouse_id` بدل إعطاء نتيجة خضراء زائفة.
+- Production ما زالت تفتقد حزمة kitchen inventory boundary؛ لم تُطبّق migrations ولم يحدث Push/Deploy ضمن هذه النقطة.
+- التحقق المحلي الحالي: API Contract ✅، Lint ✅، TypeScript ✅، Unit `323/323` ✅، Components `62/62` ✅، Build ✅.
+- المتبقي قبل الدمج/النشر: تشغيل migrations على Fresh PostgreSQL بالترتيب canonical، ثم Integration/Security/RLS وBrowser Smoke وProduction parity عبر CI.
+
 ### P0 — توحيد عقد المنتجات مع الوصفات والمكونات
 
 1. شاشة **إضافة وصفة** تعرض قائمة منتجات فارغة رغم وجود منتجات في النظام.
