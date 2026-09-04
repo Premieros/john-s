@@ -32,8 +32,8 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
   async function insertOrderItem(orderId: string): Promise<void> {
     await client.query(
       `INSERT INTO public.order_items
-         (order_id, product_id, product_name, unit_name, quantity, unit_price, discount_amount, bonus_quantity, total)
-       VALUES ($1, $2, '045 C1 Product', 'piece', 1, 100, 0, 0, 100)`,
+         (order_id, product_id, unit_name, quantity, unit_price, total)
+       VALUES ($1, $2, 'piece', 1, 100, 100)`,
       [orderId, productId],
     );
   }
