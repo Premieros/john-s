@@ -26,42 +26,44 @@ describe('isAdminRole', () => {
 
 describe('hasPermission', () => {
   it('denies when no role', () => {
-    expect(hasPermission(null, null, 'pos.sell')).toBe(false);
-    expect(hasPermission(undefined, undefined, 'pos.sell')).toBe(false);
+    expect(hasPermission(null, null, 'pos.view')).toBe(false);
+    expect(hasPermission(undefined, undefined, 'pos.order.create')).toBe(false);
   });
 
   it('gives only super_admin an implicit permission bypass', () => {
     expect(hasPermission('super_admin', null, 'settings.manage')).toBe(true);
     expect(hasPermission('super_admin', {}, 'branches.manage')).toBe(true);
+    expect(hasPermission('super_admin', null, 'pos.payment.take')).toBe(true);
 
     expect(hasPermission('owner', null, 'settings.manage')).toBe(false);
     expect(hasPermission('owner', {}, 'branches.manage')).toBe(false);
   });
 
   it('requires DB-backed permissions for every non-super-admin role', () => {
-    expect(hasPermission('cashier', null, 'pos.sell')).toBe(false);
+    expect(hasPermission('cashier', null, 'pos.view')).toBe(false);
     expect(hasPermission('accountant', null, 'reports.financial')).toBe(false);
     expect(hasPermission('branch_manager', {}, 'users.manage')).toBe(false);
 
     const map: Record<string, Permission[]> = {
       owner: ['branches.manage'],
-      cashier: ['pos.sell'],
+      cashier: ['pos.view', 'pos.order.create'],
       accountant: ['reports.financial'],
       branch_manager: ['users.manage'],
     };
 
     expect(hasPermission('owner', map, 'branches.manage')).toBe(true);
     expect(hasPermission('owner', map, 'settings.manage')).toBe(false);
-    expect(hasPermission('cashier', map, 'pos.sell')).toBe(true);
+    expect(hasPermission('cashier', map, 'pos.view')).toBe(true);
+    expect(hasPermission('cashier', map, 'pos.order.create')).toBe(true);
     expect(hasPermission('cashier', map, 'settings.manage')).toBe(false);
     expect(hasPermission('accountant', map, 'reports.financial')).toBe(true);
     expect(hasPermission('branch_manager', map, 'users.manage')).toBe(true);
   });
 
-  it('POS action permissions are resolved from the DB map', () => {
+  it('POS action permissions are resolved independently from the DB map', () => {
     const map: Record<string, Permission[]> = {
-      cashier: ['pos.sell', 'pos.send_kitchen', 'pos.kds_view', 'pos.pay'],
-      branch_manager: ['pos.reprint', 'pos.discount', 'pos.change_price'],
+      cashier: ['pos.view', 'pos.order.create', 'pos.send_kitchen', 'pos.kds_view', 'pos.payment.take'],
+      branch_manager: ['pos.reprint', 'pos.discount', 'pos.change_price', 'pos.order.transfer', 'pos.order.split'],
     };
 
     expect(hasPermission('cashier', map, 'pos.reprint')).toBe(false);
@@ -69,10 +71,13 @@ describe('hasPermission', () => {
     expect(hasPermission('cashier', map, 'pos.change_price')).toBe(false);
     expect(hasPermission('cashier', map, 'pos.send_kitchen')).toBe(true);
     expect(hasPermission('cashier', map, 'pos.kds_view')).toBe(true);
-    expect(hasPermission('cashier', map, 'pos.pay')).toBe(true);
+    expect(hasPermission('cashier', map, 'pos.payment.take')).toBe(true);
+    expect(hasPermission('cashier', map, 'pos.order.transfer')).toBe(false);
     expect(hasPermission('branch_manager', map, 'pos.reprint')).toBe(true);
     expect(hasPermission('branch_manager', map, 'pos.discount')).toBe(true);
     expect(hasPermission('branch_manager', map, 'pos.change_price')).toBe(true);
+    expect(hasPermission('branch_manager', map, 'pos.order.transfer')).toBe(true);
+    expect(hasPermission('branch_manager', map, 'pos.order.split')).toBe(true);
     expect(hasPermission('super_admin', null, 'pos.discount')).toBe(true);
   });
 
@@ -84,6 +89,7 @@ describe('hasPermission', () => {
 
     expect(hasPermission('cashier', map, 'pos.view')).toBe(true);
     expect(hasPermission('cashier', map, 'pos.payment.take')).toBe(true);
+    expect(hasPermission('cashier', map, 'pos.receipt.print')).toBe(true);
     expect(hasPermission('cashier', map, 'pos.order.create')).toBe(false);
     expect(hasPermission('cashier', map, 'pos.order.edit')).toBe(false);
     expect(hasPermission('branch_manager', map, 'pos.order.create')).toBe(true);
@@ -111,9 +117,10 @@ describe('hasPermission', () => {
   });
 
   it('DB map is authoritative instead of code defaults', () => {
-    const map: Record<string, Permission[]> = { cashier: ['pos.sell'] };
+    const map: Record<string, Permission[]> = { cashier: ['pos.view'] };
     expect(hasPermission('cashier', map, 'sales.view')).toBe(false);
-    expect(hasPermission('cashier', map, 'pos.sell')).toBe(true);
+    expect(hasPermission('cashier', map, 'pos.view')).toBe(true);
+    expect(hasPermission('cashier', map, 'pos.order.create')).toBe(false);
   });
 });
 
@@ -121,8 +128,8 @@ describe('permission model integrity', () => {
   it('all role defaults only reference known permissions', () => {
     const known = new Set<Permission>(ALL_PERMISSIONS);
     for (const role of Object.keys(DEFAULT_ROLE_PERMISSIONS) as Role[]) {
-      for (const p of DEFAULT_ROLE_PERMISSIONS[role]) {
-        expect(known.has(p), `${role} references unknown permission ${p}`).toBe(true);
+      for (const permission of DEFAULT_ROLE_PERMISSIONS[role]) {
+        expect(known.has(permission), `${role} references unknown permission ${permission}`).toBe(true);
       }
     }
   });
@@ -136,11 +143,11 @@ describe('permission model integrity', () => {
 
   it('every permission appears in a group (reviewable in the settings UI)', () => {
     const grouped = new Set<Permission>();
-    for (const g of PERMISSION_GROUPS) {
-      for (const p of g.permissions) grouped.add(p);
+    for (const group of PERMISSION_GROUPS) {
+      for (const permission of group.permissions) grouped.add(permission);
     }
-    for (const p of ALL_PERMISSIONS) {
-      expect(grouped.has(p), `${p} missing from PERMISSION_GROUPS`).toBe(true);
+    for (const permission of ALL_PERMISSIONS) {
+      expect(grouped.has(permission), `${permission} missing from PERMISSION_GROUPS`).toBe(true);
     }
   });
 
