@@ -81,6 +81,15 @@ describe.skipIf(skip)('POS split payment atomicity', () => {
     ids = await seedRlsFixture(client);
     impersonationAvailable = await canImpersonate(client);
 
+    // The shared RLS fixture also creates warehouse rows used only for policy
+    // probes. Pin the real operational warehouse so send_to_kitchen cannot
+    // choose a UUID-tiebroken empty probe warehouse when all rows share the
+    // transaction timestamp.
+    await client.query(
+      `UPDATE public.warehouses SET is_default = (id = $1::uuid) WHERE branch_id = $2::uuid`,
+      [ids.whA, ids.branchA],
+    );
+
     await client.query(
       `INSERT INTO public.products
          (id, name, branch_id, cost_price, sale_price, is_active)
