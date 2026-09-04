@@ -65,6 +65,10 @@ describe.skipIf(!dbUrl)('Permanent branch deletion', () => {
        VALUES ($1,$2,'owner',true),($1,$3,'member',true),($1,$4,'member',true)`,
       [orgId, ownerId, targetUserId, managerId],
     );
+    await client.query(
+      `INSERT INTO public.user_branch_access (user_id,branch_id) VALUES ($1,$2)`,
+      [ownerId, targetBranchId],
+    );
 
     const account = await client.query<{ id: string }>(
       `SELECT id FROM public.chart_of_accounts WHERE branch_id=$1 ORDER BY code LIMIT 1`,
