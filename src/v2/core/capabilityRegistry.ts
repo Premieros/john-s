@@ -14,7 +14,7 @@ export type V2ModuleKey =
   | 'reports'
   | 'admin';
 
-export type V2ModuleStatus = 'ready';
+export type V2ModuleStatus = 'ready' | 'foundation' | 'building' | 'planned';
 
 export interface V2CapabilityAction {
   key: string;
