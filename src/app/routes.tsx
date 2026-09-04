@@ -64,14 +64,7 @@ function PageLoader() {
 }
 
 function NoAccessPage() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-ui-page p-6">
-      <div className="max-w-md rounded-2xl border border-ui-border bg-ui-surface p-6 text-center shadow-ui-sm">
-        <h1 className="text-lg font-bold text-ui-text">لا توجد شاشة متاحة لهذا المستخدم</h1>
-        <p className="mt-2 text-sm text-ui-muted">يرجى مراجعة صلاحيات الدور وتعيين شاشة واحدة على الأقل.</p>
-      </div>
-    </div>
-  );
+  return <div className="min-h-screen flex items-center justify-center bg-ui-page p-6"><div className="max-w-md rounded-2xl border border-ui-border bg-ui-surface p-6 text-center shadow-ui-sm"><h1 className="text-lg font-bold text-ui-text">لا توجد شاشة متاحة لهذا المستخدم</h1><p className="mt-2 text-sm text-ui-muted">يرجى مراجعة صلاحيات الدور وتعيين شاشة واحدة على الأقل.</p></div></div>;
 }
 
 function resolveLandingRoute(can: (permission: Permission) => boolean, role?: string | null): string | null {
@@ -82,7 +75,7 @@ function resolveLandingRoute(can: (permission: Permission) => boolean, role?: st
     ['approvals.review', APP_ROUTES.approvals], ['waste.view', APP_ROUTES.wasteCenter],
     ['products.view', APP_ROUTES.products], ['categories.view', APP_ROUTES.categories], ['components.view', APP_ROUTES.components],
     ['raw_materials.view', APP_ROUTES.rawMaterials], ['recipes.view', APP_ROUTES.recipes], ['inventory.view', APP_ROUTES.inventory],
-    ['warehouses.view', APP_ROUTES.warehouses], ['inventory.transfers', APP_ROUTES.transfers], ['inventory.ledger.view', APP_ROUTES.inventoryLedger],
+    ['warehouses.view', APP_ROUTES.warehouses], ['inventory.ledger.view', APP_ROUTES.inventoryLedger],
     ['purchases.view', APP_ROUTES.purchases], ['customers.view', APP_ROUTES.customers], ['suppliers.view', APP_ROUTES.suppliers],
     ['expenses.view', APP_ROUTES.expenses], ['sales.view', APP_ROUTES.sales], ['shifts.view', APP_ROUTES.shifts],
     ['reports.view', APP_ROUTES.reports], ['reports.financial', APP_ROUTES.financialReports], ['accounts.view', APP_ROUTES.accounts],
@@ -112,10 +105,7 @@ function PublicRoute({ children }: { children: ReactNode }) {
   const { loading: rolesLoading } = useRoles();
   const can = useCan();
   if (loading || rolesLoading) return <PageLoader />;
-  if (session && user) {
-    const landingRoute = resolveLandingRoute(can, user.role);
-    return landingRoute ? <Navigate to={landingRoute} replace /> : <NoAccessPage />;
-  }
+  if (session && user) { const landingRoute = resolveLandingRoute(can, user.role); return landingRoute ? <Navigate to={landingRoute} replace /> : <NoAccessPage />; }
   return <>{children}</>;
 }
 
@@ -152,8 +142,8 @@ export function AppRoutes() {
         <Route path="/kitchen" element={<ProtectedRoute permission="pos.kds_view"><Navigate to={APP_ROUTES.kitchenDisplay} replace /></ProtectedRoute>} />
         <Route path="/tables" element={<ProtectedRoute permission="floor_plan.view"><Navigate to={APP_ROUTES.floorPlan} replace /></ProtectedRoute>} />
         <Route path={APP_ROUTES.products} element={<ProtectedRoute permission="products.view"><ProductsPage /></ProtectedRoute>} />
-        <Route path={`${APP_ROUTES.products}/setup`} element={<ProtectedRoute permission="products.manage"><ProductSetupWizardPage /></ProtectedRoute>} />
-        <Route path={APP_ROUTES.productModifiers} element={<ProtectedRoute permission="products.manage"><ProductModifiersPage /></ProtectedRoute>} />
+        <Route path={`${APP_ROUTES.products}/setup`} element={<ProtectedRoute permission="products.create"><ProductSetupWizardPage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.productModifiers} element={<ProtectedRoute permission="products.modifiers.manage"><ProductModifiersPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.categories} element={<ProtectedRoute permission="categories.view"><CategoriesPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.components} element={<ProtectedRoute permission="components.view"><ComponentsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryUnits} element={<ProtectedRoute permission="raw_materials.view"><InventoryUnitsPage /></ProtectedRoute>} />
@@ -166,9 +156,9 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.recipes} element={<ProtectedRoute permission="recipes.view"><RecipesPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.production} element={<Navigate to={APP_ROUTES.recipes} replace />} />
         <Route path={APP_ROUTES.productionUnits} element={<Navigate to={APP_ROUTES.recipes} replace />} />
-        <Route path={APP_ROUTES.transfers} element={<ProtectedRoute permission="inventory.transfers"><TransfersPage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.transfers} element={<ProtectedRoute permission="inventory.view"><TransfersPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryLedger} element={<ProtectedRoute permission="inventory.ledger.view"><InventoryLedgerPage /></ProtectedRoute>} />
-        <Route path={APP_ROUTES.stockCounts} element={<ProtectedRoute permission="inventory.manage"><StockCountsPage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.stockCounts} element={<ProtectedRoute permission="inventory.view"><StockCountsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryBatches} element={<ProtectedRoute permission="inventory.view"><InventoryBatchesPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.stockValuation} element={<ProtectedRoute permission="inventory.ledger.view"><StockValuationPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.lowStockAlerts} element={<ProtectedRoute permission="inventory.view"><LowStockAlertsPage /></ProtectedRoute>} />
