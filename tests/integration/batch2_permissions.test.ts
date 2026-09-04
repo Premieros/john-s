@@ -1,21 +1,6 @@
 /**
  * Batch 2 — Permissions + Super Admin Console
- * Integration tests for:
- *   1. Owner sees own organization
- *   2. Owner cannot see another organization
- *   3. Owner creates branch
- *   4. Owner cannot create branch in another org
- *   5. Branch Manager sees allowed branches only
- *   6. Cashier cannot access owner screens
- *   7. Warehouse cannot access accounting screens
- *   8. Accountant cannot access platform administration
- *   9. Super Admin can see all tenants
- *  10. Normal user cannot see super admin console
- *  11. User branch assignment enforced
- *  12. Disabled branch blocks operational writes
- *  13. Disabled user cannot authenticate into protected flows
- *  14. organization_id cannot be changed directly
- *  15. cross-tenant RPC access denied
+ * Integration tests for tenant isolation and the canonical permission model.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -36,9 +21,7 @@ beforeAll(async () => {
     await client.connect();
     await client.query('BEGIN');
     canRun = await canImpersonate(client);
-    if (canRun) {
-      ids = await seedRlsFixture(client);
-    }
+    if (canRun) ids = await seedRlsFixture(client);
   } catch {
     canRun = false;
   }
@@ -52,8 +35,7 @@ afterAll(async () => {
 });
 
 function skip() {
-  if (!canRun) return true;
-  return false;
+  return !canRun;
 }
 
 describe('Batch 2: Owner sees own organization', () => {
@@ -96,9 +78,7 @@ describe('Batch 2: Owner creates branch', () => {
       `SELECT organization_id FROM public.branches WHERE id = $1`, [ids.branchA]
     )).rows[0].organization_id;
     const r = await runAsPersist(client, ids.users.owner,
-      `SELECT public.create_organization_branch(
-        $1, 'Owner Branch', 'en', null, null
-      )`, [orgId]);
+      `SELECT public.create_organization_branch($1, 'Owner Branch', 'en', null, null)`, [orgId]);
     const result = typeof r.rows[0].create_organization_branch === 'string'
       ? JSON.parse(r.rows[0].create_organization_branch)
       : r.rows[0].create_organization_branch;
@@ -109,13 +89,9 @@ describe('Batch 2: Owner creates branch', () => {
 describe('Batch 2: Owner cannot create branch in another org', () => {
   it('org A member cannot create branch in org B', async () => {
     if (skip()) return;
-    const orgB = (await client.query(
-      `SELECT id FROM public.organizations WHERE slug = 'org-b'`
-    )).rows[0].id;
+    const orgB = (await client.query(`SELECT id FROM public.organizations WHERE slug = 'org-b'`)).rows[0].id;
     const r = await runAsPersist(client, ids.users.branch_manager,
-      `SELECT public.create_organization_branch(
-        $1, 'Unauthorized Branch', null, null, null
-      )`, [orgB]);
+      `SELECT public.create_organization_branch($1, 'Unauthorized Branch', null, null, null)`, [orgB]);
     const result = typeof r.rows[0].create_organization_branch === 'string'
       ? JSON.parse(r.rows[0].create_organization_branch)
       : r.rows[0].create_organization_branch;
@@ -148,7 +124,7 @@ describe('Batch 2: Branch Manager sees allowed branches only', () => {
 });
 
 describe('Batch 2: Cashier cannot access owner screens', () => {
-  it('cashier cannot manage users', async () => {
+  it('cashier cannot manage settings', async () => {
     if (skip()) return;
     const r = await runAs(client, ids.users.cashier,
       `SELECT public.can_permission('settings.manage')`);
@@ -163,7 +139,7 @@ describe('Batch 2: Cashier cannot access owner screens', () => {
   });
 });
 
-describe('Batch 2: Warehouse cannot access accounting screens', () => {
+describe('Batch 2: Warehouse uses canonical catalog and inventory capabilities', () => {
   it('warehouse_manager cannot manage accounts', async () => {
     if (skip()) return;
     const r = await runAs(client, ids.users.warehouse_manager,
@@ -171,12 +147,33 @@ describe('Batch 2: Warehouse cannot access accounting screens', () => {
     expect(r.rows[0].can_permission).toBe(false);
   });
 
-  it('warehouse_manager can manage products and inventory', async () => {
+  it('warehouse_manager receives the granular product and inventory template', async () => {
     if (skip()) return;
-    const r = await runAs(client, ids.users.warehouse_manager,
-      `SELECT public.can_permission('products.manage') AS products_ok, public.can_permission('inventory.manage') AS inventory_ok`);
-    expect(r.rows[0].products_ok).toBe(true);
-    expect(r.rows[0].inventory_ok).toBe(true);
+    const r = await runAs(client, ids.users.warehouse_manager, `
+      SELECT
+        public.can_permission('products.create') AS product_create,
+        public.can_permission('products.edit') AS product_edit,
+        public.can_permission('products.delete') AS product_delete,
+        public.can_permission('inventory.adjust') AS inventory_adjust,
+        public.can_permission('inventory.count.create') AS count_create,
+        public.can_permission('inventory.count.approve') AS count_approve,
+        public.can_permission('inventory.transfer.create') AS transfer_create,
+        public.can_permission('inventory.transfer.approve') AS transfer_approve,
+        public.can_permission('products.manage') AS legacy_products,
+        public.can_permission('inventory.manage') AS legacy_inventory
+    `);
+    expect(r.rows[0]).toMatchObject({
+      product_create: true,
+      product_edit: true,
+      product_delete: true,
+      inventory_adjust: true,
+      count_create: true,
+      count_approve: true,
+      transfer_create: true,
+      transfer_approve: true,
+      legacy_products: false,
+      legacy_inventory: false,
+    });
   });
 });
 
@@ -210,8 +207,7 @@ describe('Batch 2: Super Admin can see all tenants', () => {
 
   it('super_admin can read all organizations', async () => {
     if (skip()) return;
-    const r = await runAs(client, ids.users.super_admin,
-      `SELECT count(*) FROM public.organizations`);
+    const r = await runAs(client, ids.users.super_admin, `SELECT count(*) FROM public.organizations`);
     expect(Number(r.rows[0].count)).toBeGreaterThanOrEqual(2);
   });
 });
@@ -219,15 +215,13 @@ describe('Batch 2: Super Admin can see all tenants', () => {
 describe('Batch 2: Normal user cannot see super admin console', () => {
   it('cashier is not platform admin', async () => {
     if (skip()) return;
-    const r = await runAs(client, ids.users.cashier,
-      `SELECT public.is_platform_admin()`);
+    const r = await runAs(client, ids.users.cashier, `SELECT public.is_platform_admin()`);
     expect(r.rows[0].is_platform_admin).toBe(false);
   });
 
   it('cashier is not pos_admin', async () => {
     if (skip()) return;
-    const r = await runAs(client, ids.users.cashier,
-      `SELECT public.is_pos_admin()`);
+    const r = await runAs(client, ids.users.cashier, `SELECT public.is_pos_admin()`);
     expect(r.rows[0].is_pos_admin).toBe(false);
   });
 });
@@ -268,9 +262,7 @@ describe('Batch 2: Sales use the controlled RPC boundary', () => {
 describe('Batch 2: organization_id cannot be changed directly', () => {
   it('attempting to change organization_id on branches is blocked', async () => {
     if (skip()) return;
-    const orgB = (await client.query(
-      `SELECT id FROM public.organizations WHERE slug = 'org-b'`
-    )).rows[0].id;
+    const orgB = (await client.query(`SELECT id FROM public.organizations WHERE slug = 'org-b'`)).rows[0].id;
     const r = await runAs(client, ids.users.super_admin,
       `UPDATE public.branches SET organization_id = $1 WHERE id = $2`, [orgB, ids.branchA]);
     expect(r.error).toContain('ORG_CHANGE_FORBIDDEN');
