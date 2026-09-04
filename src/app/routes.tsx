@@ -78,9 +78,9 @@ function NoAccessPage() {
 
 function resolveLandingRoute(can: (permission: Permission) => boolean, role?: string | null): string | null {
   if (can('dashboard.view')) return APP_ROUTES.dashboard;
-  if (role === 'cashier' && can('pos.sell')) return APP_ROUTES.pos;
+  if (role === 'cashier' && can('pos.view')) return APP_ROUTES.pos;
   const candidates: Array<[Permission, string]> = [
-    ['pos.sell', APP_ROUTES.pos], ['pos.kds_view', APP_ROUTES.kitchenDisplay], ['floor_plan.view', APP_ROUTES.floorPlan],
+    ['pos.view', APP_ROUTES.pos], ['pos.kds_view', APP_ROUTES.kitchenDisplay], ['floor_plan.view', APP_ROUTES.floorPlan],
     ['products.view', APP_ROUTES.products], ['categories.view', APP_ROUTES.categories], ['components.view', APP_ROUTES.components],
     ['raw_materials.view', APP_ROUTES.rawMaterials], ['recipes.view', APP_ROUTES.recipes], ['inventory.view', APP_ROUTES.inventory],
     ['warehouses.view', APP_ROUTES.warehouses], ['inventory.transfers', APP_ROUTES.transfers], ['inventory.ledger.view', APP_ROUTES.inventoryLedger],
@@ -140,15 +140,15 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.subscription} element={<DefaultRoute />} />
         <Route path={APP_ROUTES.subscriptions} element={<Navigate to={APP_ROUTES.superAdmin} replace />} />
         <Route path={APP_ROUTES.frontendV2} element={<ProtectedRoute fullscreen><V2HomePage /></ProtectedRoute>} />
-        <Route path={`${APP_ROUTES.frontendV2}/pos`} element={<ProtectedRoute permission="pos.sell" fullscreen><V2PosPage /></ProtectedRoute>} />
+        <Route path={`${APP_ROUTES.frontendV2}/pos`} element={<ProtectedRoute permission="pos.view" fullscreen><V2PosPage /></ProtectedRoute>} />
         <Route path={`${APP_ROUTES.frontendV2}/shifts`} element={<ProtectedRoute permission="shifts.view" fullscreen><V2ShiftsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.dashboard} element={<ProtectedRoute permission="dashboard.view"><DashboardPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.operationsCenter} element={<ProtectedRoute permission="dashboard.view"><OperationsCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryCenter} element={<ProtectedRoute permission="inventory.view"><InventoryCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.procurementCenter} element={<ProtectedRoute permission="purchases.view"><ProcurementCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.manufacturingCenter} element={<Navigate to={APP_ROUTES.recipes} replace />} />
-        <Route path={APP_ROUTES.pos} element={<ProtectedRoute permission="pos.sell" fullscreen><PosWorkspacePage /></ProtectedRoute>} />
-        <Route path={`${APP_ROUTES.pos}/:orderId`} element={<ProtectedRoute permission="pos.sell" fullscreen><PosWorkspacePage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.pos} element={<ProtectedRoute permission="pos.view" fullscreen><PosWorkspacePage /></ProtectedRoute>} />
+        <Route path={`${APP_ROUTES.pos}/:orderId`} element={<ProtectedRoute permission="pos.view" fullscreen><PosWorkspacePage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.floorPlan} element={<ProtectedRoute permission="floor_plan.view"><ActiveOrdersPage /></ProtectedRoute>} />
         <Route path="/kitchen" element={<ProtectedRoute permission="pos.kds_view"><Navigate to={APP_ROUTES.kitchenDisplay} replace /></ProtectedRoute>} />
         <Route path="/tables" element={<ProtectedRoute permission="floor_plan.view"><Navigate to={APP_ROUTES.floorPlan} replace /></ProtectedRoute>} />
@@ -158,7 +158,7 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.categories} element={<ProtectedRoute permission="categories.view"><CategoriesPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.components} element={<ProtectedRoute permission="components.view"><ComponentsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryUnits} element={<ProtectedRoute permission="raw_materials.view"><InventoryUnitsPage /></ProtectedRoute>} />
-        <Route path={APP_ROUTES.wasteCenter} element={<ProtectedRoute permission="production.waste"><WasteCenterPage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.wasteCenter} element={<ProtectedRoute permission="waste.view"><WasteCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.kitchenDisplay} element={<ProtectedRoute permission="pos.kds_view"><KitchenDisplayPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.kitchenStations} element={<ProtectedRoute permission="settings.manage"><KitchenStationsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventory} element={<ProtectedRoute permission="inventory.view"><InventoryPage /></ProtectedRoute>} />
@@ -194,7 +194,7 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.reconciliation} element={<ProtectedRoute permission="accounts.view"><ReconciliationPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.users} element={<ProtectedRoute permission="users.view"><UsersPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.employees} element={<ProtectedRoute permission="users.view"><Navigate to={APP_ROUTES.users} replace /></ProtectedRoute>} />
-        <Route path={APP_ROUTES.approvals} element={<ProtectedRoute permission="settings.manage"><ApprovalCenterPage /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.approvals} element={<ProtectedRoute permission="approvals.review"><ApprovalCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.auditLog} element={<ProtectedRoute permission="audit.view"><AuditLogPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.settings} element={<ProtectedRoute permission="settings.manage"><SettingsControlCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.superAdmin} element={<ProtectedRoute superAdminOnly><SuperAdminConsolePage /></ProtectedRoute>} />

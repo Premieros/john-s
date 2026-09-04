@@ -11,7 +11,7 @@ export function OperationsCenterPage() {
   const ar = lang === 'ar';
 
   const cards: CenterTileItem[] = [
-    { id: 'pos', ar: 'نقطة البيع والطلبات', en: 'POS & Orders', descriptionAr: 'فتح نقطة البيع ومتابعة الطلبات النشطة.', descriptionEn: 'Open POS and monitor active orders.', route: APP_ROUTES.pos, permission: can('pos.sell'), icon: ShoppingCart },
+    { id: 'pos', ar: 'نقطة البيع والطلبات', en: 'POS & Orders', descriptionAr: 'فتح نقطة البيع ومتابعة الطلبات النشطة.', descriptionEn: 'Open POS and monitor active orders.', route: APP_ROUTES.pos, permission: can('pos.view'), icon: ShoppingCart },
     { id: 'inventory-center', ar: 'مركز المخزون', en: 'Inventory Center', descriptionAr: 'الوصول الموحد لكل وظائف المخزون.', descriptionEn: 'Unified access to all inventory functions.', route: APP_ROUTES.inventoryCenter, permission: can('inventory.view'), icon: Boxes },
     { id: 'inventory', ar: 'المخزون', en: 'Inventory', descriptionAr: 'الرصيد الحالي وحالة الأصناف.', descriptionEn: 'Current stock and item status.', route: APP_ROUTES.inventory, permission: can('inventory.view'), icon: Boxes },
     { id: 'warehouses', ar: 'المستودعات', en: 'Warehouses', descriptionAr: 'إدارة المستودعات والأرصدة.', descriptionEn: 'Manage warehouses and balances.', route: APP_ROUTES.warehouses, permission: can('warehouses.view'), icon: Warehouse },

@@ -35,6 +35,7 @@ interface ProductBrowserProps {
   selectedCategory: string;
   currency: string;
   hasBranch: boolean;
+  canModifyOrder: boolean;
   onSearch: (value: string) => void;
   onSelectCategory: (id: string) => void;
   onAddToCart: (product: Product) => void;
@@ -42,7 +43,7 @@ interface ProductBrowserProps {
   inputRef?: React.Ref<HTMLInputElement>;
 }
 
-export function ProductBrowser({ products, categories, stockMap, sellableStock, recipeMap, search, selectedCategory, currency, hasBranch, onSearch, onSelectCategory, onAddToCart, onConfigureProduct, inputRef }: ProductBrowserProps) {
+export function ProductBrowser({ products, categories, stockMap, sellableStock, recipeMap, search, selectedCategory, currency, hasBranch, canModifyOrder, onSearch, onSelectCategory, onAddToCart, onConfigureProduct, inputRef }: ProductBrowserProps) {
   const { t, lang } = useLanguage();
   const { show } = useToast();
   const isAr = lang === 'ar';
@@ -92,7 +93,7 @@ export function ProductBrowser({ products, categories, stockMap, sellableStock, 
     return () => { cancelled = true; };
   }, [branchId, hasBranch]);
 
-  const canAddToCart = hasBranch && shiftChecked && shiftOpen;
+  const canAddToCart = canModifyOrder && hasBranch && shiftChecked && shiftOpen;
   const selectProduct = (p: Product) => {
     if (!canAddToCart) return;
     if (onConfigureProduct) onConfigureProduct(p);

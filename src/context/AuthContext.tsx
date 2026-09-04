@@ -96,6 +96,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return;
       }
+      // Token refreshes and repeated SIGNED_IN events do not change the
+      // application profile or its permissions. Keep the current screen
+      // mounted and only replace the fresh session token.
+      if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION' || (event === 'SIGNED_IN' && user?.id === activeSession.user.id)) {
+        setSession(activeSession);
+        return;
+      }
       setLoading(true);
       void loadUser(activeSession).finally(() => {
         if (mounted) setLoading(false);
@@ -106,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false;
       subscriptionHandle.subscription.unsubscribe();
     };
-  }, [clearAuthState, loadUser]);
+  }, [clearAuthState, loadUser, user?.id]);
 
   const verifySignedInProfile = useCallback(async (): Promise<{ error: { code: string; message: string } | null }> => {
     const activeSession = (await supabase.auth.getSession()).data.session;

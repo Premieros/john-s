@@ -88,10 +88,11 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const isAdmin = isAdminRole(user?.role);
   const { branches } = useBranches();
-  const [activeBranchId, setActiveBranchId] = useActiveBranchId();
+  const [, setActiveBranchId] = useActiveBranchId();
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const branchMenuRef = useRef<HTMLDivElement>(null);
-  const effectiveBranch = isAdmin ? activeBranchId : branchFilter ?? null;
+  const canSelectBranch = isAdmin || branches.length > 1;
+  const effectiveBranch = branchFilter ?? null;
   const activeBranch = branches.find((b) => b.id === effectiveBranch) ?? null;
   const branchLabel = activeBranch
     ? (lang === 'ar' ? activeBranch.name : activeBranch.name_en || activeBranch.name)
@@ -166,7 +167,7 @@ export function Layout({ children }: { children: ReactNode }) {
               const allowed = tab.key === 'general'
                 ? can('dashboard.view')
                 : tab.key === 'kitchen'
-                  ? can('pos.sell')
+                  ? can('pos.kds_view')
                   : tab.key === 'branches'
                     ? can('branches.manage')
                     : can('inventory.view');
@@ -194,20 +195,20 @@ export function Layout({ children }: { children: ReactNode }) {
             <button
               data-testid="branch-indicator"
               type="button"
-              onClick={isAdmin ? () => setBranchMenuOpen((v) => !v) : undefined}
-              aria-expanded={isAdmin ? branchMenuOpen : undefined}
+              onClick={canSelectBranch ? () => setBranchMenuOpen((v) => !v) : undefined}
+              aria-expanded={canSelectBranch ? branchMenuOpen : undefined}
               aria-label={ar ? 'الفرع النشط' : 'Active branch'}
-              className={`flex items-center gap-2 rounded-xl border border-ui-border px-3 py-1.5 text-xs font-semibold text-ui-text transition-colors ${isAdmin ? 'hover:bg-ui-page-alt' : 'cursor-default'}`}
+              className={`flex items-center gap-2 rounded-xl border border-ui-border px-3 py-1.5 text-xs font-semibold text-ui-text transition-colors ${canSelectBranch ? 'hover:bg-ui-page-alt' : 'cursor-default'}`}
             >
               <Building2 className="h-4 w-4 shrink-0 text-ui-primary" />
               <span className="max-w-[140px] truncate">{branchLabel}</span>
-              {isAdmin && <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-ui-muted transition-transform duration-150 ${branchMenuOpen ? 'rotate-180' : ''}`} />}
+              {canSelectBranch && <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-ui-muted transition-transform duration-150 ${branchMenuOpen ? 'rotate-180' : ''}`} />}
             </button>
-            {isAdmin && branchMenuOpen && (
+            {canSelectBranch && branchMenuOpen && (
               <div data-testid="branch-menu" className="absolute end-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-ui-border bg-ui-surface py-1 shadow-ui-lg animate-slide-down">
-                <button data-testid="branch-option-all" type="button" onClick={() => { setActiveBranchId(null); setBranchMenuOpen(false); }} className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors ${effectiveBranch === null ? 'bg-ui-primary-soft font-bold text-ui-primary' : 'text-ui-muted hover:bg-ui-page-alt'}`}>
+                {isAdmin && <button data-testid="branch-option-all" type="button" onClick={() => { setActiveBranchId(null); setBranchMenuOpen(false); }} className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors ${effectiveBranch === null ? 'bg-ui-primary-soft font-bold text-ui-primary' : 'text-ui-muted hover:bg-ui-page-alt'}`}>
                   {ar ? 'كل الفروع' : 'All branches'}
-                </button>
+                </button>}
                 {branches.map((b) => (
                   <button key={b.id} data-testid={`branch-option-${b.id}`} type="button" onClick={() => { setActiveBranchId(b.id); setBranchMenuOpen(false); }} className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors ${effectiveBranch === b.id ? 'bg-ui-primary-soft font-bold text-ui-primary' : 'text-ui-muted hover:bg-ui-page-alt'}`}>
                     <span className="truncate">{lang === 'ar' ? b.name : (b.name_en || b.name)}</span>

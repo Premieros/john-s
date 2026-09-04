@@ -76,6 +76,21 @@ describe('hasPermission', () => {
     expect(hasPermission('super_admin', null, 'pos.discount')).toBe(true);
   });
 
+  it('separates POS view, order mutation, payment and receipt capabilities', () => {
+    const map: Record<string, Permission[]> = {
+      cashier: ['pos.view', 'pos.payment.take', 'pos.receipt.print'],
+      branch_manager: ['pos.view', 'pos.order.create', 'pos.order.edit'],
+    };
+
+    expect(hasPermission('cashier', map, 'pos.view')).toBe(true);
+    expect(hasPermission('cashier', map, 'pos.payment.take')).toBe(true);
+    expect(hasPermission('cashier', map, 'pos.order.create')).toBe(false);
+    expect(hasPermission('cashier', map, 'pos.order.edit')).toBe(false);
+    expect(hasPermission('branch_manager', map, 'pos.order.create')).toBe(true);
+    expect(hasPermission('branch_manager', map, 'pos.order.edit')).toBe(true);
+    expect(hasPermission('branch_manager', map, 'pos.payment.take')).toBe(false);
+  });
+
   it('print/export/import permissions are resolved from the DB map', () => {
     const map: Record<string, Permission[]> = {
       cashier: ['products.print'],

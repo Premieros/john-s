@@ -18,7 +18,7 @@ export function ManufacturingCenterPage() {
     { id: 'components', ar: 'مكونات المنتجات', en: 'Product Components', descriptionAr: 'مراجعة المكونات المرتبطة بالمنتجات.', descriptionEn: 'Review components linked to products.', route: APP_ROUTES.components, permission: can('components.view'), icon: Layers3 },
     { id: 'inventory', ar: 'مخزون المواد', en: 'Material Stock', descriptionAr: 'الانتقال مباشرة إلى المخزون لمتابعة تأثير التصنيع.', descriptionEn: 'Open inventory to monitor manufacturing impact.', route: APP_ROUTES.inventoryCenter, permission: can('inventory.view'), icon: ClipboardList },
     { id: 'waste', ar: 'مركز الهالك', en: 'Waste Center', descriptionAr: 'تسجيل ومراجعة هالك المواد والمنتجات.', descriptionEn: 'Record and review material and product waste.', route: APP_ROUTES.wasteCenter, permission: can('production.waste'), icon: Trash2 },
-    { id: 'kitchen', ar: 'شاشة المطبخ', en: 'Kitchen Display', descriptionAr: 'متابعة الطلبات حسب محطة المطبخ.', descriptionEn: 'Track orders by kitchen station.', route: APP_ROUTES.kitchenDisplay, permission: can('pos.sell'), icon: ChefHat },
+    { id: 'kitchen', ar: 'شاشة المطبخ', en: 'Kitchen Display', descriptionAr: 'متابعة الطلبات حسب محطة المطبخ.', descriptionEn: 'Track orders by kitchen station.', route: APP_ROUTES.kitchenDisplay, permission: can('pos.kds_view'), icon: ChefHat },
   ];
 
   return (
