@@ -21,7 +21,7 @@ import { formatClockTime, timeAgo } from '../../utils/timeAgo';
 import { deriveCartStage } from '../../utils/orderStage';
 import { ORDER_TYPES } from '../../utils/orderTypes';
 import { orderTypeLabel } from '../../utils/format';
-import { usePosPermissions } from '../../hooks/usePosPermissions';
+import { usePosPermissions, type PosPermissions } from '../../hooks/usePosPermissions';
 import { OrderTypePill } from './OrderTypePill';
 import { OrderStageBadge } from './OrderStageBadge';
 import { TransferItemModal } from '../tables/TransferItemModal';
@@ -53,6 +53,7 @@ interface CurrentOrderPanelProps {
   sessionSent: KitchenSendItem[];
   canDiscount?: boolean;
   canDeleteItem?: boolean;
+  perms?: PosPermissions;
   onSwitchOrderType: (ot: OrderType) => void;
   onGuestCountChange: (n: number | null) => void;
   onDiscountTypeChange: (v: 'amount' | 'percent') => void;
@@ -93,6 +94,7 @@ export function CurrentOrderPanel({
   sessionSent,
   canDiscount = true,
   canDeleteItem = true,
+  perms: permissionOverride,
   onSwitchOrderType,
   onGuestCountChange,
   onDiscountTypeChange,
@@ -105,7 +107,8 @@ export function CurrentOrderPanel({
 }: CurrentOrderPanelProps) {
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
-  const perms = usePosPermissions();
+  const resolvedPermissions = usePosPermissions();
+  const perms = permissionOverride ?? resolvedPermissions;
   const [showDiscount, setShowDiscount] = useState(false);
   const [splitItem, setSplitItem] = useState<CartItem | null>(null);
   const [selectedLineKey, setSelectedLineKey] = useState<string | null>(null);

@@ -36,6 +36,7 @@ interface PaymentPanelProps {
   change: number;
   completing: boolean;
   canComplete: boolean;
+  canEditOrder?: boolean;
   onComplete: () => void;
   onBack: () => void;
   currency: string;
@@ -183,6 +184,7 @@ export function PaymentPanel(p: PaymentPanelProps) {
                 <input
                   type="number"
                   min={1}
+                  disabled={p.canEditOrder === false}
                   value={p.guestCount || ''}
                   onChange={(e) => p.onGuestCountChange(parseInt(e.target.value) || null)}
                   className="w-20 rounded-xl border border-ui-border bg-ui-surface-raised px-3 py-2 text-center text-ui-text"
@@ -226,7 +228,7 @@ export function PaymentPanel(p: PaymentPanelProps) {
             </div>
           </div>
 
-          <CashierDiscountApprovalCard
+          {p.canEditOrder !== false && <CashierDiscountApprovalCard
             subtotal={p.subtotal}
             currentType={p.discountType}
             ar={isAr}
@@ -234,7 +236,7 @@ export function PaymentPanel(p: PaymentPanelProps) {
               p.onDiscountTypeChange(type);
               p.onDiscountAmountChange(amount);
             }}
-          />
+          />}
 
           <button
             type="button"

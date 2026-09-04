@@ -52,7 +52,7 @@ describe.skipIf(skip)('V2 multi-branch shift contract', () => {
     );
     await client.query(
       `INSERT INTO public.roles (role, name_ar, name_en, permissions, scope, is_active)
-       VALUES ($1, 'V2 shift user', 'V2 shift user', '["pos.sell","shifts.view","shifts.open"]'::jsonb, 'global', true)`,
+       VALUES ($1, 'V2 shift user', 'V2 shift user', '["pos.view","shifts.view","shifts.open"]'::jsonb, 'global', true)`,
       [role],
     );
     await client.query(`ALTER TABLE public.users DISABLE TRIGGER trg_users_role_guard`);

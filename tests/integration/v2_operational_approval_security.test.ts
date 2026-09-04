@@ -22,6 +22,7 @@ describe.skipIf(skip)('V2 operational approval target security', () => {
   const warehouseB2 = randomUUID();
   const warehouseC1 = randomUUID();
   const warehouseC2 = randomUUID();
+  const productB = randomUUID();
   const wasteA = randomUUID();
   const wasteB = randomUUID();
   const wasteC = randomUUID();
@@ -68,7 +69,7 @@ describe.skipIf(skip)('V2 operational approval target security', () => {
     await client.query(
       `INSERT INTO public.roles (role, name_ar, name_en, permissions, scope, is_active)
        VALUES
-         ($1, 'V2 approver', 'V2 approver', '["production.waste","inventory.manage","inventory.transfers.approve"]'::jsonb, 'global', true),
+         ($1, 'V2 approver', 'V2 approver', '["waste.approve","inventory.manage","inventory.transfers.approve"]'::jsonb, 'global', true),
          ($2, 'V2 denied', 'V2 denied', '[]'::jsonb, 'global', true)`,
       [approverRole, deniedRole],
     );
@@ -103,6 +104,15 @@ describe.skipIf(skip)('V2 operational approval target security', () => {
       [warehouseB1, branchB, warehouseB2, warehouseC1, branchC, warehouseC2],
     );
     await client.query(
+      `INSERT INTO public.products(id,name,cost_price,sale_price,is_active,branch_id) VALUES($1,'V2 Waste Product',2,5,true,$2)`,
+      [productB, branchB],
+    );
+    await client.query(
+      `INSERT INTO public.inventory(product_id,warehouse_id,quantity,branch_id) VALUES($1,$2,5,$3)`,
+      [productB, warehouseB1, branchB],
+    );
+    await client.query(`UPDATE public.waste_entries SET product_id=$1,warehouse_id=$2 WHERE id=$3`, [productB, warehouseB1, wasteB]);
+    await client.query(
       `INSERT INTO public.stock_counts (id, branch_id, warehouse_id, status, count_type, submitted_by, submitted_at)
        VALUES ($1, $2, $3, 'submitted', 'cycle', $4, now()),
               ($5, $6, $7, 'submitted', 'cycle', $4, now())`,
@@ -124,7 +134,7 @@ describe.skipIf(skip)('V2 operational approval target security', () => {
     await client.end().catch(() => {});
   });
 
-  it('blocks direct waste approval without production.waste', async () => {
+  it('blocks direct waste approval without waste.approve', async () => {
     await expectDbError(() => asUser(deniedUser, () => client.query(
       `SELECT public.approve_waste($1, true, NULL)`,
       [wasteA],

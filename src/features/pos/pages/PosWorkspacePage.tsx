@@ -174,6 +174,7 @@ export function PosWorkspacePage() {
     stockMap,
     onInventoryChanged: handleInventoryChanged,
   });
+  const canModifyCurrentOrder = pos.activeOrderId ? perms.canEditOrder : perms.canCreateOrder;
 
   // Refresh after settlement as a second synchronization point. Kitchen send
   // already owns the physical deduction and refreshes through the callback.
@@ -226,7 +227,7 @@ export function PosWorkspacePage() {
   }, [pos.cart, kitchenSendsForActive, orderItemsForActive]);
 
   const handlePay = useCallback(() => {
-    if (pos.cart.length === 0) return;
+    if (!perms.canPay || pos.cart.length === 0) return;
     const allowed = guardPos({
       productsCount: products.length,
       activeShiftId: isCashier ? activeShift?.id || null : 'shift_exempt',
@@ -237,13 +238,13 @@ export function PosWorkspacePage() {
     pos.setPaidAmount(pos.total);
     pos.setCheckoutOpen(true);
     setMobileOrderOpen(false);
-  }, [pos, guardPos, products.length, isCashier, activeShift?.id]);
+  }, [perms.canPay, pos, guardPos, products.length, isCashier, activeShift?.id]);
 
   // Keyboard Shortcuts Hook
   usePosKeyboard({
     onFocusSearch: () => barcodeRef.current?.focus(),
     onHoldOrder: () => {
-      if (pos.cart.length > 0 && !pos.orderLoading) void pos.holdOrder();
+      if (perms.canHoldOrder && pos.cart.length > 0 && !pos.orderLoading) void pos.holdOrder();
     },
     onTriggerDiscount: () => {
       if (perms.canDiscount) {
@@ -252,7 +253,7 @@ export function PosWorkspacePage() {
     },
     onProceedToPay: handlePay,
     onPrintReceipt: () => {
-      if (pos.cart.length > 0) pos.printKitchenTicket();
+      if (perms.canPrintKitchen && pos.cart.length > 0) pos.printKitchenTicket();
     },
     onEscape: () => {
       if (configProduct) setConfigProduct(null);
@@ -290,12 +291,12 @@ export function PosWorkspacePage() {
   }, [orderIdParam, initState.tableId]);
 
   useEffect(() => {
-    if (payConsumed.current || !initState.pay || checkoutOpen || orderLoading || !activeOrderId || cart.length === 0) return;
+    if (!perms.canPay || payConsumed.current || !initState.pay || checkoutOpen || orderLoading || !activeOrderId || cart.length === 0) return;
     payConsumed.current = true;
     setPaymentMethod('cash');
     setPaidAmount(total);
     setCheckoutOpen(true);
-  }, [initState.pay, checkoutOpen, orderLoading, activeOrderId, cart.length, total, setPaymentMethod, setPaidAmount, setCheckoutOpen]);
+  }, [perms.canPay, initState.pay, checkoutOpen, orderLoading, activeOrderId, cart.length, total, setPaymentMethod, setPaidAmount, setCheckoutOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -478,7 +479,7 @@ export function PosWorkspacePage() {
 
   const openOrderWorkspace = (orderId: string, opts: { pay?: boolean } = {}) => {
     if (pos.activeOrderId === orderId) {
-      if (opts.pay) {
+      if (opts.pay && perms.canPay) {
         pos.setPaymentMethod('cash');
         pos.setPaidAmount(pos.total);
         pos.setCheckoutOpen(true);
@@ -491,6 +492,7 @@ export function PosWorkspacePage() {
   };
 
   const startOrderAtTable = (tableId: string) => {
+    if (!perms.canCreateOrder) return;
     if (pos.activeOrderId || pos.cart.length > 0) {
       const ok = window.confirm(isAr ? 'سيتم إغلاق الطلب الحالي محلياً وبدء طلب جديد على الطاولة. متابعة؟' : 'The current workspace order will be cleared. Continue?');
       if (!ok) return;
@@ -503,6 +505,7 @@ export function PosWorkspacePage() {
   };
 
   const handleStartOrder = (opts: StartOrderOptions) => {
+    if (!perms.canCreateOrder) return;
     pos.resetWorkspace();
     pos.setOrderType(opts.orderType);
     if (opts.tableId) pos.setTableId(opts.tableId);
@@ -628,8 +631,9 @@ export function PosWorkspacePage() {
       total={pos.total}
       change={pos.change}
       completing={pos.completing}
-      canComplete={!!effectiveBranch}
-      onComplete={() => void pos.completeSale()}
+      canComplete={perms.canPay && !!effectiveBranch}
+      canEditOrder={perms.canEditOrder}
+      onComplete={() => { if (perms.canPay) void pos.completeSale(); }}
       onBack={() => pos.setCheckoutOpen(false)}
       currency={pos.effCurrency}
       cart={pos.cart}
@@ -680,6 +684,7 @@ export function PosWorkspacePage() {
       onConfigureItem={(item) => setConfigItem(item)}
       onOpenCustomerModal={() => setCustomerModalOpen(true)}
       onOpenTableModal={() => setTableModalOpen(true)}
+      perms={{ ...perms, canEditOrder: canModifyCurrentOrder }}
       onVoidItem={(item, sentQty) => {
         setVoidItem(item);
         setVoidSentQty(sentQty);
@@ -837,6 +842,7 @@ export function PosWorkspacePage() {
               selectedCategory={selectedCategory}
               currency={pos.effCurrency}
               hasBranch={!!effectiveBranch}
+              canModifyOrder={canModifyCurrentOrder}
               onSearch={setSearch}
               onSelectCategory={setSelectedCategory}
               onAddToCart={pos.addToCart}

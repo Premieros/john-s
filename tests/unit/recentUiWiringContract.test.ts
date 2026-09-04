@@ -44,7 +44,7 @@ describe('Recent UI wiring contracts', () => {
 
   it('keeps POS cart additions blocked until the active shift check passes', () => {
     const page = source('src/features/pos/components/catalog/ProductBrowser.tsx');
-    expect(page).toContain('const canAddToCart = hasBranch && shiftChecked && shiftOpen');
+    expect(page).toContain('const canAddToCart = canModifyOrder && hasBranch && shiftChecked && shiftOpen');
     expect(page).toContain('ممنوع إضافة منتجات بدون شفت مفتوح');
     expect(page).toContain('if (!canAddToCart) return');
   });

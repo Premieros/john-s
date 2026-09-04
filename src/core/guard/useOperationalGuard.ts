@@ -77,7 +77,7 @@ export function useOperationalGuard() {
     ): boolean => {
       const valCtx = buildValidationContext({
         ...ctx,
-        hasPermission: isSuper || can('pos.sell'),
+        hasPermission: isSuper || can('pos.view'),
       });
       return workflow.validateAndProceed(
         'pos_checkout',

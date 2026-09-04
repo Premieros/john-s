@@ -11,7 +11,7 @@ describe.skipIf(skip)('Phase 2 — waste center', () => {
   const branchId = randomUUID();
   const whId = randomUUID();
   const catId = randomUUID();
-  const rmId = randomUUID();
+  const productId = randomUUID();
   const adminUser = randomUUID();
   const adminRole = `phase2_waste_${randomUUID().slice(0, 8)}`;
   let wasteId: string;
@@ -59,7 +59,7 @@ describe.skipIf(skip)('Phase 2 — waste center', () => {
     await client.query(`INSERT INTO public.branches (id, name) VALUES ($1, 'Phase2 Test')`, [branchId]);
     await client.query(
       `INSERT INTO public.roles (role, name_ar, name_en, permissions, scope, is_active)
-       VALUES ($1, 'Phase2 waste approver', 'Phase2 waste approver', '["production.waste"]'::jsonb, 'global', true)`,
+       VALUES ($1, 'Phase2 waste approver', 'Phase2 waste approver', '["waste.view","waste.create","waste.approve","waste.report"]'::jsonb, 'global', true)`,
       [adminRole],
     );
     await client.query(
@@ -68,7 +68,11 @@ describe.skipIf(skip)('Phase 2 — waste center', () => {
       [adminUser, `${randomUUID()}@test.local`, adminRole, branchId],
     );
     await client.query(`INSERT INTO public.warehouses (id, name, branch_id) VALUES ($1, 'WH', $2)`, [whId, branchId]);
-    await client.query(`INSERT INTO public.raw_materials (id, code, name, min_stock, default_cost, is_active, branch_id) VALUES ($1, 'RM-W', 'Flour', 0, 10, true, $2)`, [rmId, branchId]);
+    await client.query(`INSERT INTO public.products (id, name, cost_price, sale_price, is_active, branch_id) VALUES ($1, 'Waste Product', 10, 20, true, $2)`, [productId, branchId]);
+    await client.query(
+      `INSERT INTO public.inventory (product_id, warehouse_id, quantity, branch_id) VALUES ($1, $2, 20, $3)`,
+      [productId, whId, branchId],
+    );
     await client.query(`INSERT INTO public.waste_categories (id, name, name_en) VALUES ($1, 'Test Waste', 'Test Waste')`, [catId]);
   });
 
@@ -103,8 +107,8 @@ describe.skipIf(skip)('Phase 2 — waste center', () => {
   it('create_waste_entry RPC creates a pending entry', async () => {
     await asAdmin(async () => {
       const result = await q<{ create_waste_entry: string }>(
-        `SELECT public.create_waste_entry($1, $2, $3, $4, $5, $6)`,
-        [branchId, catId, 'raw_material', 5, 10, 'Test waste']
+        `SELECT public.create_waste_entry($1,$2,$3,$4,$5,$6,NULL,NULL,$7,$8,NULL)`,
+        [branchId, catId, 'damaged', 5, 10, 'Test waste', productId, whId]
       );
       wasteId = result[0].create_waste_entry;
       expect(wasteId).toBeTruthy();
@@ -113,7 +117,7 @@ describe.skipIf(skip)('Phase 2 — waste center', () => {
         `SELECT status, waste_type, quantity::text FROM public.waste_entries WHERE id = $1`, [wasteId]
       );
       expect(rows[0].status).toBe('pending');
-      expect(rows[0].waste_type).toBe('raw_material');
+      expect(rows[0].waste_type).toBe('damaged');
     });
   });
 
@@ -124,6 +128,11 @@ describe.skipIf(skip)('Phase 2 — waste center', () => {
         `SELECT status FROM public.waste_entries WHERE id = $1`, [wasteId]
       );
       expect(rows[0].status).toBe('approved');
+      const balance = await q<{ quantity: string }>(`SELECT quantity::text FROM public.inventory WHERE product_id=$1 AND warehouse_id=$2`, [productId, whId]);
+      expect(Number(balance[0].quantity)).toBe(15);
+      const ledger = await q<{ quantity: string }>(`SELECT quantity::text FROM public.inventory_ledger WHERE reference_type='waste' AND reference_id=$1`, [wasteId]);
+      expect(ledger).toHaveLength(1);
+      expect(Number(ledger[0].quantity)).toBe(-5);
     });
   });
 
@@ -159,7 +168,7 @@ describe.skipIf(skip)('Phase 2 — waste center', () => {
   it('create_waste_entry rejects invalid waste_type', async () => {
     await asAdmin(async () => {
       await expectDbError(() =>
-        client.query(`SELECT public.create_waste_entry($1, $2, $3, $4, $5, $6)`, [branchId, catId, 'invalid', 1, 1, null])
+        client.query(`SELECT public.create_waste_entry($1,$2,$3,$4,$5,$6,NULL,NULL,$7,$8,NULL)`, [branchId, catId, 'invalid', 1, 1, null, productId, whId])
       );
     });
   });

@@ -55,8 +55,8 @@ describe.skipIf(skip)('V2 permission-first roles and branch access', () => {
     await client.query(
       `INSERT INTO public.roles (role, name_ar, name_en, permissions, scope, is_active)
        VALUES
-         ($1, 'مدير صلاحيات V2', 'V2 permission manager', '["users.view","users.manage","settings.manage","branches.manage","pos.sell"]'::jsonb, 'global', true),
-         ($2, 'مستخدم V2', 'V2 target', '["pos.sell"]'::jsonb, 'global', true),
+         ($1, 'مدير صلاحيات V2', 'V2 permission manager', '["users.view","users.manage","settings.manage","branches.manage","pos.view"]'::jsonb, 'global', true),
+         ($2, 'مستخدم V2', 'V2 target', '["pos.view"]'::jsonb, 'global', true),
          ($3, 'دور أعلى V2', 'V2 escalated', '["accounts.manage"]'::jsonb, 'global', true)`,
       [managerRole, targetRole, escalatedRole],
     );

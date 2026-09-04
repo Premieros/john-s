@@ -50,7 +50,7 @@ describe.skipIf(skip)('V2 POS kitchen permission contract', () => {
     );
     await client.query(
       `INSERT INTO public.roles (role, name_ar, name_en, permissions, scope, is_active)
-       VALUES ($1, 'V2 order only', 'V2 order only', '["pos.sell"]'::jsonb, 'global', true)`,
+       VALUES ($1, 'V2 order only', 'V2 order only', '["pos.view","pos.order.create","pos.order.edit"]'::jsonb, 'global', true)`,
       [role],
     );
     await client.query(`ALTER TABLE public.users DISABLE TRIGGER trg_users_role_guard`);
@@ -73,7 +73,7 @@ describe.skipIf(skip)('V2 POS kitchen permission contract', () => {
     await client.end().catch(() => {});
   });
 
-  it('does not treat pos.sell as kitchen-send permission', async () => {
+  it('does not treat order permissions as kitchen-send permission', async () => {
     const denied = await asUser(userId, () => send(orderA));
     expect(denied).toMatchObject({ success: false, error: 'PERMISSION_DENIED' });
   });

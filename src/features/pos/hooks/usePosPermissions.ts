@@ -33,9 +33,9 @@ export function usePosPermissions(): PosPermissions {
   const can = useCan();
 
   return useMemo<PosPermissions>(() => ({
-    canViewPos: can('pos.sell'),
-    canCreateOrder: can('pos.sell'),
-    canEditOrder: can('pos.sell'),
+    canViewPos: can('pos.view'),
+    canCreateOrder: can('pos.order.create'),
+    canEditOrder: can('pos.order.edit'),
     canDeleteItem: can('pos.void'),
     canApplyDiscount: can('pos.discount'),
     canDiscount: can('pos.discount'),
@@ -44,14 +44,14 @@ export function usePosPermissions(): PosPermissions {
     canSendKitchen: can('pos.send_kitchen'),
     canViewKitchen: can('pos.kds_view'),
     canPrintKitchen: can('pos.print_kitchen'),
-    canPay: can('pos.pay'),
+    canPay: can('pos.payment.take'),
     canCancelOrder: can('pos.cancel_order'),
     canRefund: can('pos.refund'),
-    canTransferOrder: can('pos.transfer_order'),
-    canSplitOrder: can('pos.split_order'),
+    canTransferOrder: can('pos.order.transfer'),
+    canSplitOrder: can('pos.order.split'),
     canOpenShift: can('shifts.open'),
     canCloseShift: can('shifts.close'),
-    canPrint: can('sales.print'),
+    canPrint: can('pos.receipt.print'),
     canChangeBranch: can('pos.change_branch'),
     canManageCustomer: can('customers.manage'),
   }), [can]);

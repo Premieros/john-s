@@ -104,7 +104,7 @@ export function PosOrderHeaderBar({
       </div>
 
       <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-        {perms.canManageCustomer && (
+        {perms.canManageCustomer && perms.canEditOrder && (
           <button
             data-testid="pos-top-action-customer"
             type="button"
