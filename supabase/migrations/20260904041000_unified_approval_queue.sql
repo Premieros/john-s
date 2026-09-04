@@ -57,7 +57,7 @@ AS $function$
     AND (p_branch_id IS NULL OR t.branch_id=p_branch_id)
     AND public.user_may_access_branch(t.branch_id)
 
-  ORDER BY requested_at DESC;
+  ORDER BY 7 DESC;
 $function$;
 
 CREATE OR REPLACE FUNCTION public.decide_operational_approval(
