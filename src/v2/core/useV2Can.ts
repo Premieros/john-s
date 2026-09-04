@@ -7,8 +7,9 @@ import { useRoles } from '@/context/RolesContext';
  *
  * V2 introduces granular permission strings incrementally, so it must not be
  * limited by the legacy TypeScript Permission union. The DB-backed roles table
- * remains the runtime source of truth. Only super_admin and owner retain the
- * existing implicit global-admin capability.
+ * is the runtime source of truth for every non-platform role. Super Admin is
+ * the only implicit platform-wide bypass; owner and every other role are
+ * labels/templates whose capabilities come from explicit permissions.
  */
 export function useV2Can(): (permission: string) => boolean {
   const { user } = useAuth();
@@ -17,7 +18,7 @@ export function useV2Can(): (permission: string) => boolean {
   return useCallback((permission: string) => {
     const role = user?.role;
     if (!role) return false;
-    if (role === 'super_admin' || role === 'owner') return true;
+    if (role === 'super_admin') return true;
     const permissions = (rolePermissionsMap[role] || []) as readonly string[];
     return permissions.includes(permission);
   }, [rolePermissionsMap, user?.role]);
