@@ -71,7 +71,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $function$
-DECLARE v_branch uuid; v_result jsonb;
+DECLARE v_branch uuid;
 BEGIN
   IF auth.uid() IS NULL THEN RETURN jsonb_build_object('success',false,'error','AUTH_REQUIRED'); END IF;
 
@@ -85,24 +85,21 @@ BEGIN
     IF v_branch IS NULL OR NOT public.user_may_access_branch(v_branch) OR NOT (public.is_pos_admin() OR public.can_permission('production.waste')) THEN
       RETURN jsonb_build_object('success',false,'error','WASTE_APPROVAL_DENIED');
     END IF;
-    RETURN public.approve_waste(p_source_id,p_approve,p_reason);
+    PERFORM public.approve_waste(p_source_id,p_approve,p_reason);
+    RETURN jsonb_build_object('success',true,'source_type','waste','source_id',p_source_id,'status',CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END);
   ELSIF p_source_type='stock_count' THEN
     SELECT branch_id INTO v_branch FROM public.stock_counts WHERE id=p_source_id;
     IF v_branch IS NULL OR NOT public.user_may_access_branch(v_branch) OR NOT (public.is_pos_admin() OR public.can_permission('inventory.manage')) THEN
       RETURN jsonb_build_object('success',false,'error','STOCK_COUNT_APPROVAL_DENIED');
     END IF;
-    IF p_approve THEN
-      RETURN public.approve_stock_count(p_source_id);
-    END IF;
+    IF p_approve THEN RETURN public.approve_stock_count(p_source_id); END IF;
     RETURN public.reject_stock_count(p_source_id,COALESCE(NULLIF(trim(p_reason),''),'Rejected'));
   ELSIF p_source_type='warehouse_transfer' THEN
     SELECT branch_id INTO v_branch FROM public.warehouse_transfers WHERE id=p_source_id;
     IF v_branch IS NULL OR NOT public.user_may_access_branch(v_branch) OR NOT (public.is_pos_admin() OR public.can_permission('inventory.transfers.approve')) THEN
       RETURN jsonb_build_object('success',false,'error','TRANSFER_APPROVAL_DENIED');
     END IF;
-    IF p_approve THEN
-      RETURN public.approve_warehouse_transfer(p_source_id);
-    END IF;
+    IF p_approve THEN RETURN public.approve_warehouse_transfer(p_source_id); END IF;
     RETURN public.reject_warehouse_transfer(p_source_id,COALESCE(NULLIF(trim(p_reason),''),'Rejected'));
   END IF;
   RETURN jsonb_build_object('success',false,'error','UNSUPPORTED_APPROVAL_SOURCE');
