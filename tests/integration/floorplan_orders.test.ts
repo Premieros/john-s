@@ -30,7 +30,7 @@ describe.skipIf(skip)('floor plan + open orders (036-039)', () => {
     await client.query(`INSERT INTO public.organizations (id, name, slug) VALUES ($1, $2, $3)`, [orgId, 'FP Org', `fp-${randomUUID().slice(0, 8)}`]);
   const seedBranch = async (branchId: string, whId: string, prodId: string, unitId: string, tableId: string, cashierId: string, name: string) => {
       await client.query(`INSERT INTO public.branches (id, name, organization_id) VALUES ($1, $2, $3)`, [branchId, name, orgId]);
-      await client.query(`INSERT INTO public.warehouses (id, name, branch_id, is_active) VALUES ($1, $2, $3, true)`, [whId, `${name} WH`, branchId]);
+      await client.query(`INSERT INTO public.warehouses (id, name, branch_id, is_active, is_default) VALUES ($1, $2, $3, true, true)`, [whId, `${name} WH`, branchId]);
       await client.query(`INSERT INTO public.products (id, name, branch_id, sale_price, cost_price, is_active) VALUES ($1, $2, $3, 100, 50, true)`, [prodId, `${name} Product`, branchId]);
       await client.query(`INSERT INTO public.inventory_units (id, code, name, unit_type, branch_id, cost_price, sale_price, is_active) VALUES ($1, $2, $3, 'ready', $4, 50, 100, true)`, [unitId, `U-${randomUUID()}`, `${name} Unit`, branchId]);
       await client.query(`INSERT INTO public.product_unit_links (product_id, unit_id, quantity) VALUES ($1, $2, 1)`, [prodId, unitId]);
@@ -63,6 +63,11 @@ describe.skipIf(skip)('floor plan + open orders (036-039)', () => {
   it('process_sale stores order channel + table and settles a linked order', async () => {
     const created = await asUser(cashierA, () => client.query(`SELECT public.create_order($1, 'dine_in', $2, NULL, 2, NULL, $3::jsonb, 100, 0, 'amount', 0, 100) AS r`, [branchA, tableA, itemJson(prodA, 1)]));
     const order = created.rows[0].r; expect(order.success).toBe(true);
+
+    const sent = await asUser(cashierA, () => client.query(`SELECT public.send_to_kitchen($1) AS r`, [order.order_id]));
+    expect(sent.rows[0].r.success, JSON.stringify(sent.rows[0].r)).toBe(true);
+    expect(sent.rows[0].r.items_sent_count).toBe(1);
+
     const res = await asUser(cashierA, () => client.query(`SELECT public.process_sale($1, $2, $3, NULL, NULL, 0, 0, 'amount', 0, 0, 0, 100, 'cash', 'completed', $4::jsonb, NULL, 'dine_in', $5, $6) AS r`, [`FP-INV-${Date.now()}`, branchA, whA, itemJson(prodA, 1, 1), tableA, order.order_id]));
     const r = res.rows[0].r; expect(r.success).toBe(true); if (!r.success) throw new Error(JSON.stringify(r));
     const sale = await client.query(`SELECT order_type, table_id FROM public.sales WHERE id = $1`, [r.sale_id]);
