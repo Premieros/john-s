@@ -167,21 +167,12 @@ describe('Phase 4 — command palette', () => {
     expect(source).toContain('CommandPaletteTrigger');
   });
 
-  it('Command palette searches across all major sections', () => {
+  it('Command palette derives search destinations from the canonical menu registry only', () => {
     const source = read('src/components/CommandPalette.tsx');
-    const expectedLabels = [
-      'المواد الخام', 'Raw Materials',
-      'الوصفات', 'Recipes',
-      'أوامر الإنتاج', 'Production Orders',
-      'الجرد', 'Stock Counts',
-      'التحويلات', 'Transfers',
-      'المشتريات', 'Purchases',
-      'الموردون', 'Suppliers',
-      'الخزينة', 'Treasury',
-    ];
-    for (const label of expectedLabels) {
-      expect(source).toContain(label);
-    }
+    expect(source).toContain("import { MENU_ITEMS } from '@/core/navigation/menu.config'");
+    expect(source).toContain('MENU_ITEMS.filter');
+    expect(source).not.toContain('const extras');
+    expect(source).not.toContain('APP_ROUTES.');
   });
 
   it('Command palette respects permissions', () => {

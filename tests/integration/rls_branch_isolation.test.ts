@@ -780,8 +780,6 @@ describe.skipIf(skip)('RLS branch isolation', () => {
 
   describe('RBAC hardening (044)', () => {
     t('REVOKE: _post_journal_entry and log_audit_action are internal-only', async () => {
-      // A valid, balanced payload that WOULD post if EXECUTE were still granted —
-      // so a denial here proves the REVOKE, not a body error.
       const codeA = (await client.query<{ code: string }>(
         `SELECT code FROM public.chart_of_accounts WHERE id = $1`, [ids.coaCashA],
       )).rows[0].code;
@@ -799,8 +797,6 @@ describe.skipIf(skip)('RLS branch isolation', () => {
     });
 
     t('get_audit_trail: audit.view required; otherwise empty', async () => {
-      // Direct SELECT on audit_log stays branch-scoped (cashier can read own), but
-      // the RPC guard requires audit.view on top (044).
       const direct = await runProbe(client, 'audit_log SELECT cashier own', cashierId(),
         `SELECT count(*)::int AS c FROM public.audit_log WHERE branch_id = $1`, 'ok', [ids.branchA]);
       expect(Number(direct.rows[0].c)).toBeGreaterThanOrEqual(1);
@@ -832,7 +828,7 @@ describe.skipIf(skip)('RLS branch isolation', () => {
       const unitCashierB = `INSERT INTO public.product_units (product_id, unit_name, conversion_factor, sale_price, cost_price, is_base) VALUES ('${ids.prodB}', 'cashier-unit', 1, 20, 10, false)`;
       await runProbe(client, 'product_units INSERT bm own product', bmId(), unitA, 'ok');
       await runProbe(client, 'product_units INSERT bm other product', bmId(), unitB, 'denied');
-      await runProbe(client, 'product_units INSERT cashier own product', cashierId(), unitCashierA, 'ok');
+      await runProbe(client, 'product_units INSERT cashier own product', cashierId(), unitCashierA, 'denied');
       await runProbe(client, 'product_units INSERT cashier other product', cashierId(), unitCashierB, 'denied');
       await runProbe(client, 'product_units INSERT admin other product', adminId(), unitB, 'ok');
 
@@ -847,8 +843,6 @@ describe.skipIf(skip)('RLS branch isolation', () => {
 
     t('record_login_failure: does not extend an in-force lock (044)', async () => {
       const uid = ids.users.cashier;
-      // Lock the user directly (session role; the role-guard trigger's
-      // unknown-caller branch permits lockout-counter changes).
       await client.query(
         `UPDATE public.users SET failed_attempts = 4, is_locked = true, lock_until = now() + interval '5 minutes' WHERE id = $1`,
         [uid],
@@ -864,7 +858,6 @@ describe.skipIf(skip)('RLS branch isolation', () => {
       expect(Number(after.rows[0].failed_attempts)).toBe(4);
       expect(String(after.rows[0].lock_until)).toBe(String(before.rows[0].lock_until));
 
-      // A not-locked user still gets their counter incremented.
       await client.query(
         `UPDATE public.users SET failed_attempts = 0, is_locked = false, lock_until = NULL WHERE id = $1`, [uid],
       );
@@ -873,7 +866,6 @@ describe.skipIf(skip)('RLS branch isolation', () => {
         `SELECT failed_attempts FROM public.users WHERE id = $1`, [uid],
       );
       expect(Number(inc.rows[0].failed_attempts)).toBe(1);
-      // Restore so later assertions see a clean cashier.
       await client.query(
         `UPDATE public.users SET failed_attempts = 0, is_locked = false, lock_until = NULL WHERE id = $1`, [uid],
       );
@@ -882,19 +874,14 @@ describe.skipIf(skip)('RLS branch isolation', () => {
     t('guard_role_permissions: branch managers cannot mint admin-only roles (044)', async () => {
       const ins = (perms: string) =>
         `INSERT INTO public.roles (role, name_ar, name_en, permissions) VALUES ('${uniq('RG')}', 'X', 'Y', '${perms}'::jsonb)`;
-      // Earlier in this suite the branch manager receives settings.manage, so
-      // assigning it is valid; escalation to an unowned permission is not.
       await runProbe(client, 'roles INSERT bm with owned settings.manage', bmId(), ins('["settings.manage"]'), 'ok');
       await runProbe(client, 'roles INSERT bm with unowned audit.view', bmId(), ins('["audit.view"]'), 'denied');
-      // admin can create a normal role carrying granular perms.
       await runProbe(client, 'roles INSERT admin plain', adminId(), ins('["pos.sell"]'), 'ok');
     });
   });
 
   it('fixture sanity: admin role helper resolves', async () => {
     if (!imp) return;
-    // ADMIN_ROLES is consumed by the matrix above; ensure the seeded admin is
-    // actually recognized (guards against a fixture id regression).
     expect(ADMIN_ROLES.has('super_admin')).toBe(true);
   });
 });

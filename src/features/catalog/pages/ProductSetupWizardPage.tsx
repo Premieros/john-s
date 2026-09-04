@@ -49,7 +49,7 @@ export function ProductSetupWizardPage() {
   };
 
   const save = async () => {
-    if (!can('products.manage') || saving) return;
+    if (!can('products.create') || saving) return;
     if (!validateStep()) return;
     setSaving(true);
     try {
@@ -76,12 +76,8 @@ export function ProductSetupWizardPage() {
       await invalidatePosCatalogCache();
       show(t('saveSuccess'), 'success');
       if (guidedContext?.missingStep.key.includes('product')) {
-        setTimeout(() => {
-          completePrerequisiteAndReturn();
-        }, 500);
-      } else {
-        navigate('/products');
-      }
+        setTimeout(() => { completePrerequisiteAndReturn(); }, 500);
+      } else navigate('/products');
     } catch (e) { show(e instanceof Error ? e.message : String(e), 'error'); } finally { setSaving(false); }
   };
 

@@ -4,101 +4,79 @@
 >
 > السجل التنفيذي التفصيلي: [`docs/FRONTEND_V2_REBUILD_LOG.md`](./FRONTEND_V2_REBUILD_LOG.md)
 
-آخر تحديث: **2026-09-04 — Africa/Cairo**
-
----
+آخر تحديث: **2026-09-05 — Africa/Cairo**
 
 ## 1) الحالة الحالية
 
-- Repository: `Premieros/johna-s`
-- `main` المدموج عند بدء إغلاق الفجوات النهائية: `f70412e88aa3f2c8affb1028af07594b33f40117`
-- فرع العمل الحالي: `fix/final-operational-gaps`
-- لا يوجد أي تعديل أو Migration على Supabase Production من هذا العمل.
-- لا نعيد بناء المشتريات أو المخزون المستقر؛ نغلق الفجوات فوق الموجود.
+- Repository: `Premieros/johna-s`.
+- Baseline قبل تنظيف نموذج الصلاحيات: `main@54e3711`.
+- فرع التدقيق الحالي: `fix/permission-model-zero-drift` — Draft PR #12.
+- Production لم يُعدّل ضمن حزمة التنظيف الحالية.
+- V2 هي Gateway فقط إلى مساحات التشغيل الأصلية؛ لا يوجد POS/Shifts/Home موازٍ في V2.
 
 ## 2) القرارات التشغيلية الثابتة
 
-1. Super Admin فقط له implicit full-access؛ كل دور آخر يعتمد على `roles.permissions` الفعلية.
-2. Branch Access يأتي من `user_may_access_branch()` و`user_branch_access` مع الفرع الأساسي.
-3. المستخدم متعدد الفروع يستطيع اختيار أي فرع ظاهر له؛ اختيار الواجهة لا يتجاوز RLS.
-4. إرسال المطبخ يخصم المخزون عند الـdelta الجديد فقط، ويسجل Inventory Events/Effects، ولا يعيد الخصم عند الدفع.
-5. لا يجوز إخفاء حماية حساسة في الواجهة فقط؛ يلزم Server-side permission check.
-6. Split Payment ليس Split Order، والنقل/الفصل لا يخصمان مخزونًا ولا يعيدان إرسال KDS.
-7. لا Production deployment/migration قبل Fresh DB + Integration/RLS + Browser verification.
+1. **Super Admin فقط** له implicit full-access. كل دور آخر يعتمد على `roles.permissions`.
+2. يوجد اسم Canonical واحد لكل Capability تشغيلية؛ أسماء Legacy لا تُضاف إلى UI أو Permission Matrix أو أي كود جديد.
+3. Branch Access يأتي من `user_may_access_branch()` و`user_branch_access` مع الفرع الأساسي، والواجهة لا تتجاوز RLS.
+4. إرسال المطبخ يخصم مخزون الـdelta الجديد فقط ويسجل Inventory Events/Effects، والدفع لا يخصم المخزون مرة أخرى.
+5. الصلاحيات الحساسة تُفرض في الخادم أيضًا؛ إخفاء زر في UI ليس حماية.
+6. Split Payment ليس Split Order؛ النقل/الفصل لا يعيدان خصم المخزون أو إرسال KDS.
+7. لا Merge/Deploy لحزمة تشغيلية قبل TypeScript + Unit + Build + Fresh DB + Schema + Integration/RLS + Browser Smoke.
 
-## 3) ما هو مغلق على `main` ✅
+## 3) العقود المغلقة على main ✅
 
-- Send to Kitchen مربوط بـ`pos.send_kitchen` وبالفرع.
-- خصم المخزون عند الإرسال للمطبخ مع idempotent delta effects والاسترجاع عند void المعتمد.
-- الدفع يعيد استخدام آثار الإرسال ولا يخصم مرة ثانية.
-- Backend المشتريات والمخزون ودورات الاستلام والتحويل والجرد موجودة ومختبرة.
-- Permission-first وMulti-branch primitives موجودة في Backend وV2.
+- POS: `pos.view`, `pos.order.create`, `pos.order.edit`, `pos.payment.take`, `pos.order.split`, `pos.order.transfer`, `pos.receipt.print`, `pos.send_kitchen`.
+- KDS: `pos.kds_view`.
+- الهالك: عنصر محدد + مخزن محدد + اعتماد + خصم فعلي موثق؛ القراءة بـ`waste.view`.
+- الموافقات: `approvals.review`, `approvals.override`, `approvals.policy.manage` مع سياسات فرع/مبلغ/صلاحية/مستخدم.
+- Multi-branch: اختيار فرع موحد عبر `premier_active_branch` مع RLS.
+- Production API Parity وGitHub Pages كانا أخضرين على baseline المذكور أعلاه.
 
-## 4) العمل الحالي على `fix/final-operational-gaps`
+## 4) حزمة Zero Permission Drift الحالية
 
-### صلاحيات POS الدقيقة — منفذ محليًا، بانتظار Fresh DB CI
+الهدف هو إزالة أي ازدواج قد يسبب تعارضًا مستقبليًا، وليس الحفاظ على توافق واجهي مع أدوار غير مستخدمة حاليًا.
 
-- أضيفت وربطت: `pos.view`، `pos.order.create`، `pos.order.edit`، `pos.payment.take`، `pos.order.split`، `pos.order.transfer`، `pos.receipt.print`.
-- Route/Menu/Buttons وmutation guard تستخدم الصلاحيات الدقيقة.
-- توافق رجعي ينسخ صلاحيات POS القديمة إلى المقابلات الجديدة قبل تفعيل الحاجز.
-- مستخدم الدفع فقط لا يستطيع إنشاء أو تعديل الطلب؛ تغيير بيانات الطلب أثناء الإغلاق يتطلب `pos.order.edit`.
+### Canonical permissions
 
-### الهالك — منفذ محليًا، بانتظار Fresh DB CI
+- Products: `products.view`, `products.create`, `products.edit`, `products.delete`, `products.modifiers.manage`.
+- Stock counts: `inventory.view`, `inventory.count.create`, `inventory.count.approve`.
+- Transfers: `inventory.view`, `inventory.transfer.create`, `inventory.transfer.approve`.
+- Inventory ledger: `inventory.ledger.view`.
+- Procurement actions: `procurement.request.create`, `procurement.order.create`, `procurement.receive`, `procurement.payment.create`.
+- Accounting actions: `accounting.journal.post`, `accounting.treasury.transfer`, `accounting.reconciliation.manage`.
 
-- الإنشاء يتطلب عنصرًا واحدًا محددًا: Product أو Inventory Unit.
-- المخزن إلزامي ويجب أن يكون من نفس الفرع.
-- إنشاء الهالك يبقى `pending` ولا يغير المخزون.
-- الاعتماد بـ`waste.approve` يخصم ذريًا من المخزن المحدد ويسجل ledger/movement مرجعيًا بالهالك.
-- الرفض لا يغير المخزون، وتكرار الاعتماد ممنوع.
-- الواجهة تعرض وتختار الفرع/المخزن/العنصر الحقيقي.
+### Legacy permissions المحذوفة من التطبيق
 
-### الموافقات — منفذ محليًا، بانتظار Fresh DB CI
+`pos.sell`, `pos.pay`, `pos.transfer_order`, `pos.split_order`, `products.manage`, `inventory.manage`, `inventory.transfers`, `inventory.transfers.approve`, `catalog.view`, `procurement.view`, `accounting.view`, `admin.view`.
 
-- Route مركز الموافقات أصبح `approvals.review` بدل `settings.manage`.
-- سياسة الموافقة تدعم: العملية، الفرع، حد مبلغ، صلاحية، موظف بعينه، أو الموظف والصلاحية معًا.
-- غياب السياسة يحافظ على صلاحية الاعتماد الحالية ولا يقفل التشغيل.
-- السياسات مفروضة في DB على طلبات المدير والهالك والجرد والتحويل.
-- إدارة السياسات تحتاج `approvals.policy.manage` ولا تمنح Settings access.
+قد تظل الأسماء التاريخية داخل migrations القديمة كسجل تاريخي فقط؛ لا يجوز إعادة استخدامها في TypeScript أو Permission Matrix أو Routes أو UI جديد.
 
-### تعدد الفروع ومشكلة إعادة التحميل — منفذ محليًا
+### Dead code المحذوف
 
-- Legacy `useBranchFilter` يستخدم الفرع المختار إذا كان ظاهرًا عبر RLS، بدل حبس غير Super Admin في `users.branch_id`.
-- مدير/محاسب متعدد الفروع يرى selector الفروع المخولة؛ “كل الفروع” تبقى Super Admin فقط.
-- `TOKEN_REFRESHED` لا يعيد تحميل ملف المستخدم ولا يفك تركيب الشاشة، لمنع شاشة “التحقق من الصلاحيات” المتكررة.
+- `src/v2/pages/V2PosPage.tsx`
+- `src/v2/pages/V2ShiftsPage.tsx`
+- `src/v2/pages/V2HomePage.tsx`
+- `src/v2/components/V2AppShell.tsx`
 
-### Permission Matrix وKDS — منفذ محليًا
+`useV2Can` إن استُخدم مع permission string ديناميكي فهو Adapter إلى `useCan` فقط وليس Authorization model ثانيًا.
 
-- Matrix تعرض صلاحيات Capability Registry الدقيقة لـPOS والهالك والموافقات والشفتات والمخزون والكتالوج والمشتريات والمحاسبة والإدارة.
-- Route/Menu/Top tab لشاشة KDS كلها تستخدم `pos.kds_view`.
+## 5) بوابة التحقق الحالية
 
-## 5) التحقق المحلي الحالي
+- API contract جرى تحديثه بعد إزالة V2 dead code؛ الجداول التي لم يعد Frontend يقرأها مباشرة هي: `approval_requests`, `product_modifier_groups`, `product_modifier_options`, `shifts`.
+- Draft PR #12 يجب أن يبقى غير مدمج حتى يمر: API contract، Lint، TypeScript application/tests، Unit، Build، Fresh DB، Schema، Integration/Security/RLS، Browser Smoke.
+- أي فشل يُصلح في سببه فقط؛ لا نعيد Legacy permission ولا نضع role-name bypass لتجاوز الاختبار.
 
-- TypeScript application ✅
-- TypeScript tests ✅
-- ESLint ✅ (تحذيران Fast Refresh قديمان، بلا errors)
-- Unit/components: **376/376 ✅**
-- Production build ✅
-- API contract regenerated: **107 RPCs / 62 tables ✅**
-- Fresh DB migrations + Integration/Security/RLS: **بانتظار CI على الفرع**
-- Browser Smoke: **بعد نجاح DB gate**
+## 6) المتبقي بعد Zero Drift
 
-## 6) نقطة الاستكمال الإلزامية
+- نظام الطباعة المحلي بثلاث محطات ثابتة فقط لكل فرع: `cashier`, `kitchen`, `barista`، وأي صنف بلا محطة يذهب للمطبخ مع تنبيه للمدير.
+- حماية `main` بـrequired checks إن سمحت صلاحيات GitHub الإدارية المتاحة؛ CI وحده لا يكفي إن كان direct push مسموحًا.
 
-1. تشغيل Fresh Postgres وتطبيق كل migrations حتى `20260904056000_approval_policies.sql`.
-2. إصلاح أي خطأ SQL/Regression حقيقي بدون إضعاف RLS أو إعادة role-name bypass.
-3. تشغيل Integration/Security/RLS كاملًا، خصوصًا: عرض POS فقط؛ دفع فقط بلا إنشاء/تعديل؛ عنصر + مخزن + اعتماد هالك + خصم فعلي + ledger؛ وسياسات الموافقة عبر فرعين وحدود مبلغ.
-4. تشغيل Browser Smoke للـPOS والهالك والموافقات والتنقل بلا full-page permission reload.
-5. لا دمج إلى `main` قبل أخضر كامل ومراجعة المستخدم.
+## 7) Definition of Done
 
-## 7) مؤجل بعد هذه الحزمة
-
-- محطات الطباعة الأساسية الثلاث: Cashier / Kitchen / Barista وربط الطابعة المحلية بكل محطة وفرع.
-- استكمال واجهات V2 المخطط لها للمخزون والمشتريات والتقارير؛ لا إعادة بناء Backend المستقر.
-
-## 8) Definition of Done
-
-- Query/Mutation حقيقي، UI states كاملة، وRTL/LTR.
-- Permission في UI والخادم + Branch Access/RLS.
-- اختبار Unit/Contract، واختبار Integration لأي DB mutation.
-- Fresh DB + Schema + Integration/RLS + Browser Smoke أخضر.
-- لا تغيير على Production إلا بطلب صريح منفصل.
+- Capability واحدة = Permission canonical واحدة لكل فعل.
+- UI action + server authorization + branch/RLS متوافقة.
+- لا duplicate operational implementation قابل للصيانة بالخطأ.
+- Source of Truth محدث مع كل Merge.
+- Fresh DB + Integration/Security/RLS + Browser Smoke أخضر.
+- Production لا يتغير إلا بطلب صريح منفصل.

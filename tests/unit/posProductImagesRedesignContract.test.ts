@@ -17,7 +17,8 @@ describe('POS product image and simplified workspace contracts', () => {
   it('keeps real product photo upload permission-aware and cache-safe', () => {
     const browser = source('src/features/pos/components/catalog/ProductBrowser.tsx');
     const upload = source('src/features/catalog/services/productImages.ts');
-    expect(browser).toContain("can('products.manage')");
+    expect(browser).toContain("can('products.edit')");
+    expect(browser).not.toContain("can('products.manage')");
     expect(browser).toContain('uploadProductImage(file, product.branch_id, product.id)');
     expect(browser).toContain("update({ image_url: publicUrl })");
     expect(browser).toContain('invalidatePosCatalogCache()');
@@ -36,9 +37,10 @@ describe('POS product image and simplified workspace contracts', () => {
     expect(tables).toContain("filter === 'occupied'");
   });
 
-  it('keeps storage mutation restricted to product managers with branch access', () => {
-    const migration = source('supabase/migrations/20260903100000_product_image_storage.sql');
-    expect(migration).toContain("public.can_permission('products.manage')");
+  it('keeps storage mutation restricted to product editors with branch access', () => {
+    const migration = source('supabase/migrations/20260905001000_canonical_product_image_permission.sql');
+    expect(migration).toContain("public.can_permission('products.edit')");
+    expect(migration).not.toContain("public.can_permission('products.manage')");
     expect(migration).toContain('public.user_may_access_branch');
     expect(migration).toContain("'product-images'");
   });

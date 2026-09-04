@@ -35,19 +35,15 @@ function extractRpcCalls() {
   const calls = new Map();
   for (const file of walk(join(ROOT, 'src', 'api', 'domains'))) {
     const content = readFileSync(file, 'utf8');
-    // Find all occurrences of rpc('name', p) or rpc<...>('name', p)
     const rpcMatches = [...content.matchAll(/rpc(?:<[^>]*>)?\('([\w_]+)',\s*p\)/g)];
     for (const match of rpcMatches) {
       const fn = match[1];
       const matchIndex = match.index;
-      // Get the text before this rpc call
       const textBefore = content.slice(0, matchIndex);
-      // Find the start of the enclosing method (e.g. `async methodName(p: {` or `methodName(p: {`)
       const methodStartMatches = [...textBefore.matchAll(/(?:async\s+)?(\w+)\s*\(\s*p\s*:\s*\{/g)];
       if (methodStartMatches.length > 0) {
         const lastMethodStart = methodStartMatches[methodStartMatches.length - 1];
-        const methodStartPos = lastMethodStart.index + lastMethodStart[0].length - 1; // At `{`
-        // Find matching closing `}` for `p: { ... }`
+        const methodStartPos = lastMethodStart.index + lastMethodStart[0].length - 1;
         let braceCount = 0;
         let paramBlock = '';
         for (let i = methodStartPos; i < matchIndex; i++) {
@@ -80,9 +76,7 @@ function extractTables() {
 const contract = {
   generated_at: new Date().toISOString(),
   source: 'scripts/db/gen-contract.js (extracted from src/api/domains + src)',
-  rpcs: [...extractRpcCalls().entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([name, params]) => ({ name, params })),
+  rpcs: [...extractRpcCalls().entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, params]) => ({ name, params })),
   tables: extractTables(),
 };
 
@@ -99,7 +93,19 @@ if (checkMode) {
     console.log(`CONTRACT OK: supabase/api-contract.json is up to date (${contract.rpcs.length} RPCs, ${contract.tables.length} tables).`);
     process.exit(0);
   }
+  const existingRpc = new Set((existing?.rpcs || []).map((row) => `${row.name}(${[...(row.params || [])].sort().join(',')})`));
+  const currentRpc = new Set(contract.rpcs.map((row) => `${row.name}(${row.params.join(',')})`));
+  const existingTables = new Set(existing?.tables || []);
+  const currentTables = new Set(contract.tables);
+  const removedRpc = [...existingRpc].filter((value) => !currentRpc.has(value));
+  const addedRpc = [...currentRpc].filter((value) => !existingRpc.has(value));
+  const removedTables = [...existingTables].filter((value) => !currentTables.has(value));
+  const addedTables = [...currentTables].filter((value) => !existingTables.has(value));
   console.error('CONTRACT STALE: supabase/api-contract.json does not match src. Run `node scripts/db/gen-contract.js`.');
+  if (removedRpc.length) console.error(`RPCs no longer referenced: ${removedRpc.join(', ')}`);
+  if (addedRpc.length) console.error(`RPCs newly referenced: ${addedRpc.join(', ')}`);
+  if (removedTables.length) console.error(`Tables no longer referenced: ${removedTables.join(', ')}`);
+  if (addedTables.length) console.error(`Tables newly referenced: ${addedTables.join(', ')}`);
   process.exit(1);
 }
 
