@@ -53,6 +53,14 @@ describe.skipIf(skip)('POS operational lifecycle release gate', () => {
     ids = await seedRlsFixture(client);
     impersonationAvailable = await canImpersonate(client);
 
+    // The shared RLS fixture also creates warehouse rows used only for policy
+    // probes. Pin the real operational warehouse so kitchen inventory always
+    // resolves to the warehouse where this release-gate stock is seeded.
+    await client.query(
+      `UPDATE public.warehouses SET is_default = (id = $1::uuid) WHERE branch_id = $2::uuid`,
+      [ids.whA, ids.branchA],
+    );
+
     // The shared RLS fixture contains an open cashier shift for isolation tests.
     // Close only that fixture row directly, then exercise the real open/close RPCs below.
     // No synthetic closing amount is written here: the canonical shifts schema stores
