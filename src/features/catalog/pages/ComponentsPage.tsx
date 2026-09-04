@@ -47,7 +47,7 @@ export function ComponentsPage() {
     setLoadError(null);
     let productQuery = supabase.from('products').select('*').eq('is_active', true);
     if (branchFilter) productQuery = productQuery.eq('branch_id', branchFilter);
-    let inventoryQuery = supabase.from('inventory').select('product_id, quantity, warehouse:warehouses(branch_id)');
+    const inventoryQuery = supabase.from('inventory').select('product_id, quantity, warehouse:warehouses(branch_id)');
 
     const [{ data: p, error: productError }, { data: inv, error: inventoryError }] = await Promise.all([
       productQuery.order('name'),
@@ -88,7 +88,10 @@ export function ComponentsPage() {
   useEffect(() => {
     if (selectedProductId && !products.some((p) => p.id === selectedProductId)) setSelectedProductId('');
   }, [products, selectedProductId]);
-  useEffect(() => { void loadComponents(selectedProductId); }, [loadComponents, selectedProductId]);
+  useEffect(() => {
+    if (!selectedProductId) return;
+    void loadComponents(selectedProductId);
+  }, [loadComponents, selectedProductId]);
 
   const addComponent = async () => {
     if (!selectedProductId || !form.component_product_id || form.quantity <= 0) { show(t('required'), 'error'); return; }

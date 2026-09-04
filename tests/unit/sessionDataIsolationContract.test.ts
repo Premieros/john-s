@@ -26,11 +26,13 @@ describe('session and cached-data isolation', () => {
     expect(source).toContain("allTables.filter((item) => belongsToBranch(item, branchId))");
   });
 
-  it('blocks an authenticated session until an active public profile is verified', () => {
+  it('revalidates the active public profile without replacing the mounted app shell', () => {
     const source = read('src/core/security/SessionProfileGuard.tsx');
     expect(source).toContain(".from('users')");
     expect(source).toContain('!data || data.is_active === false');
     expect(source).toContain('await clearOfflineReadCache()');
-    expect(source).toContain('await signOut()');
+    expect(source).toContain('await signOutRef.current()');
+    expect(source).toContain('return <>{children}</>');
+    expect(source).not.toContain('جاري التحقق من صلاحية الحساب');
   });
 });
