@@ -89,9 +89,9 @@ describe.skipIf(skip)('V2 operational approval target security', () => {
     await client.query(
       `INSERT INTO public.waste_entries (id, branch_id, waste_category_id, waste_type, quantity, unit_cost, status, created_by)
        VALUES
-         ($1, $2, $3, 'product', 1, 0, 'pending', $4),
-         ($5, $6, $3, 'product', 1, 0, 'pending', $4),
-         ($7, $8, $3, 'product', 1, 0, 'pending', $4)`,
+         ($1, $2, $3, 'finished_good', 1, 0, 'pending', $4),
+         ($5, $6, $3, 'finished_good', 1, 0, 'pending', $4),
+         ($7, $8, $3, 'finished_good', 1, 0, 'pending', $4)`,
       [wasteA, branchA, categoryId, deniedUser, wasteB, branchB, wasteC, branchC],
     );
 
