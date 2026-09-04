@@ -67,12 +67,18 @@ describe('product modifier security and atomicity', () => {
 
   it('keeps modifier inventory deductions server-authoritative', async () => {
     if (!canRun) return;
-    const r = await client.query(`
+    const wrapper = await client.query(`
       SELECT pg_get_functiondef('public.deduct_sale_inventory_with_modifiers(uuid,uuid,jsonb,uuid,text)'::regprocedure) AS def
     `);
-    const def = String(r.rows[0].def || '');
-    expect(def).toContain('public.resolve_product_modifiers');
-    expect(def).toContain('public.product_modifier_inventory_effects');
-    expect(def).toContain('INVALID_MODIFIER_INVENTORY_EFFECT');
+    const wrapperDef = String(wrapper.rows[0].def || '');
+    expect(wrapperDef).toContain('public._deduct_sale_inventory_with_modifiers_core');
+
+    const core = await client.query(`
+      SELECT pg_get_functiondef('public._deduct_sale_inventory_with_modifiers_core(uuid,uuid,jsonb,uuid,text)'::regprocedure) AS def
+    `);
+    const coreDef = String(core.rows[0].def || '');
+    expect(coreDef).toContain('public.resolve_product_modifiers');
+    expect(coreDef).toContain('public.product_modifier_inventory_effects');
+    expect(coreDef).toContain('INVALID_MODIFIER_INVENTORY_EFFECT');
   });
 });
