@@ -1,260 +1,225 @@
 # FRONTEND V2 REBUILD LOG — john-s
 
-> هذا هو سجل التنفيذ التفصيلي لإعادة بناء الواجهة من الصفر فوق قاعدة البيانات الحالية. المرجع المختصر للمشروع هو `docs/CURRENT_WORK_PLAN.md`، وهذا الملف هو سجل العمل اليومي للفرع الجديد.
+> السجل التنفيذي التفصيلي لإعادة بناء الواجهة فوق قاعدة البيانات الحالية. المرجع المختصر وSource of Truth الحالي هو `docs/CURRENT_WORK_PLAN.md`.
 
 آخر تحديث: **2026-09-04 — Africa/Cairo**
 
-## 0) القرار المعماري
+---
 
-- Production branch يبقى: `main`.
+## 0) القرار المعماري الحالي
+
+- Production branch: `main`.
 - فرع التطوير الوحيد: `development/frontend-v2`.
-- قاعدة البيانات الحالية في Supabase Production `azzdesuowpdcoflmyezn` هي **Source of Truth للـbackend**.
-- لا نعيد بناء DB من الصفر ولا نغيّر منطق مالي/مخزني لمجرد تبسيط الواجهة.
-- Frontend V2 يُبنى من الصفر، لكنه يعيد استخدام RPCs والجداول والـRLS الصحيحة الموجودة بالفعل.
-- لا يوجد زر شكلي: كل Action في V2 يجب أن يكون مربوطًا بـRPC/Mutation حقيقية + Permission + Error state + اختبار.
-- العربية RTL هي الأساس، والإنجليزية LTR.
-- لا يتم حذف الواجهة القديمة قبل اكتمال كل Module واختباره؛ الانتقال تدريجي.
-- **قرار متابعة 2026-09-04 — Permission-first:** أسماء الأدوار في V2 تعتبر labels/templates بقدر الإمكان، والتحكم الفعلي بالميزات والإجراءات يتم بالصلاحيات الصريحة. صلاحيات Super Admin/platform-only تبقى استثناء. لا يعاد بناء مسار مستقر لمجرد هذا التنظيف، لكن أي Action جديد لا يعتمد على اسم الدور إذا توجد Permission واضحة.
-- العقد الحالي ما زال يعتبر `super_admin` و`owner` global admin؛ لا يتم توسيع `branch_manager` إلى global admin.
+- Draft PR: #6 — `feat: rebuild frontend v2 from database contract`.
+- Supabase Production `azzdesuowpdcoflmyezn` هو Source of Truth للـbackend.
+- لا Production migration من PR #6 بدون طلب صريح وVerify مناسب.
+- Frontend V2 يبنى تدريجيًا فوق RPCs/RLS الحالية، ولا يوجد زر شكلي بدون Backend حقيقي.
+- العربية RTL هي الأساس، الإنجليزية LTR.
 
-## 1) نقطة البداية
+### قرار المستخدم الملزم — Branch Access + Permission First
+
+هذا القرار supersedes أي نص أقدم في هذا السجل يقول إن `owner` implicit/global admin أو إن اسم الدور هو مصدر السماح.
+
+1. المستخدم يعمل على **أي فرع لديه Access فعلي عليه**.
+2. لا يتم حبسه في `users.branch_id` فقط؛ المرجع هو `user_may_access_branch()` + RLS + branch grants.
+3. وجود Branch Access وحده لا يسمح بتنفيذ Action؛ يجب وجود Permission المطلوبة.
+4. وجود Permission وحدها لا تسمح بالعمل على فرع غير مخول.
+5. **الصلاحيات هي الأساس، والأدوار أصبحت Labels/Templates.**
+6. إذا كانت للمستخدم Permission فعالة فلا يجوز حجبها بسبب اسم Role.
+7. `owner` ليس implicit admin.
+8. `branch_manager` ليس implicit admin.
+9. **Super Admin فقط** implicit/platform admin/full-access bypass.
+10. كل المستخدمين الآخرين يعتمدون على Effective Permissions + Branch Access.
+11. Server-side check إلزامي لكل Action حساس؛ UI gate وحده لا يكفي.
+12. Permission resolver لغير Super Admin يجب أن يفشل مغلقًا إذا لم تتوفر DB permission map؛ لا fallback إلى defaults القديمة.
+
+ملاحظة: التخزين الحالي للصلاحيات يعتمد أساسًا على `roles.permissions` المرتبطة بالمستخدم. إذا تقرر لاحقًا دعم Direct User Permission Overrides مستقلة، يجب أن تدخل في Effective Permission resolver نفسه، مع بقاء Role label غير قادر على حجب Permission ممنوحة للمستخدم.
+
+---
+
+## 1) نقطة البداية والتنظيم
 
 - `main` عند بدء V2: `4e63ce21597958dc9ee9852ca2ff00e4e14c86a3`.
-- آخر work-in-progress تم الحفاظ عليه كأساس للفرع الموحد: `cdeb587893132a6fa10f95dc767c58b02a0603a9` من PR #5.
-- Verify #516 على ذلك العمل: API contract/lint/typecheck ✅، unit توقف على خطأين Navigation فقط بسبب عدم تعيين permission صريحة لعنصر `approvals`; DB/browser لم يعملا في ذلك الـrun.
-- PR #3 وPR #5 مغلقان/معتبران **Superseded by `development/frontend-v2`** ولا يجب إضافة تطوير جديد عليهما.
+- PR #3 وPR #5 أغلقا وتم اعتبارهما superseded.
+- كل التطوير الجديد ينتقل فقط عبر `development/frontend-v2` وPR #6.
+- لا يعاد فتح عمل مغلق بدون Regression مثبت.
 
-## 2) Snapshot الفروع قبل التنظيف
+---
 
-تم تسجيل الفروع وSHAاتها قبل أي تنظيف حتى لا يضيع أثر أي عمل:
+## 2) Production snapshot — قراءة فقط
 
-- `feat/operations-approvals-permissions-20260904` → `cdeb587893132a6fa10f95dc767c58b02a0603a9`
-- `feature/kitchen-station-printers` → `bccc6441a7aa9657c9818b45b686fd3bf446c0ae`
-- `fix/dynamic-printer-stations` → `5f0cbcd96a60cb6da03137a634c529f08bf1356c`
-- `fix/kitchen-modifier-permissions` → `84d94b11cc2c7052e7b41f76eb4f2bbc6942b2fa`
-- `fix/kitchen-send-overload-20260904` → `d81d90cbddaa3d2f08eb442f5471c037a9c7a500`
-- `fix/kitchen-station-permissions` → `84d94b11cc2c7052e7b41f76eb4f2bbc6942b2fa`
-- `fix/pos-kitchen-resend-state` → `e2972db99e43c0d8dfe36c06b15f3590749f5c9e`
-- `fix/pos-live-available-stock-20260904` → `d30ca0c5d0c146edca5179a7084fe7602b64941c`
-- `fix/pos-product-card-buttons` → `92e13188a5c1807fd0a3a5b404f853a17c27999d`
-- `fix/pos-product-options-modal` → `6aeffb76dc8ca7b99231a0b83ffcc20463640db9`
-- `fix/pos-smoke-approval-center-20260904-ci` → `5e0514b329a7c16ce3a9bf4c5aa344f052077a62`
-- `fix/pos-smoke-approval-center-20260904` → `547d422eb2aa28be80ddd1cf880357d0affea147`
-- `fix/ready-product-sale-deduction-20260904` → `27a2ee2745f0060403cd31e78ee8f9f82f7504a6`
-- `fix/xp80-kitchen-ticket-size` → `76bcce29a1d232619b99938b56488174d030c24d`
-- `verify/approval-center-20260904` → `4d688fd63d3337173eb681992babc22d4dfbd28a`
-- `main` → `4e63ce21597958dc9ee9852ca2ff00e4e14c86a3`
+فحص 2026-09-04:
 
-من الآن: **أي تطوير جديد يذهب فقط إلى `development/frontend-v2`.**
+- Public tables: 100
+- Public functions: 243
+- RLS policies: 331
+- Active branches: 2
+- Active users: 8
+- Active products: 335
+- Active warehouses: 2
 
-## 3) فحص قاعدة Production — 2026-09-04
+Canonical backend المستخدم في V2 يشمل:
 
-الفحص قراءة فقط، بدون أي DDL/DML على Production.
+- Identity/scope: `users`, `roles`, `branches`, `user_branch_access`, `user_may_access_branch`.
+- POS/KDS: orders/order_items, create/update order, `send_to_kitchen`, KDS queue/status, sale processing.
+- Shifts: `open_shift`, `close_shift`, `get_active_shift`, closing reports.
+- Catalog/modifiers.
+- Inventory/units/counts/transfers.
+- Procurement/suppliers.
+- Waste/approvals.
+- Accounting/treasury/reports.
 
-### الحجم الحالي
+Legacy/compatibility layers تبقى موجودة في Production ولا تبنى لها واجهة تلقائيًا، وأي إزالة لاحقة تحتاج dependency proof + migration + Fresh DB/regression.
 
-- Public tables: **100**
-- Public functions: **243**
-- RLS policies: **331**
-- Active branches: **2**
-- Active users: **8**
-- Active products: **335**
-- Active warehouses: **2**
-- Open shifts وقت الفحص: **2**
-- Open orders وقت الفحص: **1**
-- Pending manager approvals: **0**
-- Pending waste: **0**
+---
 
-### 3.1 Canonical backend الذي ستُبنى عليه V2
+## 3) Foundation V2 — تم ✅
 
-**Identity / scope**
-- `users`
-- `roles`
-- `branches`
-- `user_branch_access`
-- `organizations` / `organization_members` فقط حيث ما زالت مستخدمة في branch access.
-- `user_may_access_branch(uuid)` هي Primitive العزل الأساسية.
-
-**POS / Orders / Kitchen**
-- `orders`, `order_items`
-- `order_kitchen_sends`, `order_kitchen_voids`
-- `approval_requests`
-- `create_order`, `update_order`, `perform_pos_order_action`
-- `send_to_kitchen`, `get_kitchen_queue`, `set_kitchen_status`
-- `process_sale`, `process_sale_split`, `_process_sale_core`
-- `sale_items`, `sale_payments`, `sale_item_inventory_effects`
-- `shifts`, `shift_operations`, `open_shift`, `close_shift`, `get_active_shift`
-
-**Catalog**
-- `products`, `categories`
-- `product_modifier_groups`, `product_modifier_options`, `product_modifier_inventory_effects`
-- `product_components` للتكلفة/BOM وليس كواجهة تصنيع مستقلة.
-
-**Inventory**
-- ready-product inventory (`inventory`, `inventory_batches`, ledger/movements)
-- `inventory_units`, `inventory_unit_batches`, `inventory_unit_entries`
-- `product_unit_links`
-- `stock_counts`, `stock_count_items`
-- `warehouse_transfers`, `warehouse_transfer_items`
-- availability and costing RPCs مثل `get_pos_product_availability`, `check_product_availability`, `get_stock_valuation`.
-
-**Procurement**
-- `purchase_requests`, `purchase_request_items`
-- `rfqs`, supplier quotations
-- `purchases`, `purchase_items`
-- `purchase_receipts`, `purchase_receipt_items`
-- الموردون والمدفوعات المرتبطة بهم.
-
-**Waste / approvals**
-- `waste_entries`, `waste_categories`, `create_waste_entry`, `approve_waste`
-- `approval_requests`, `request_manager_approval`, `decide_manager_approval`, `consume_manager_approval`
-- queue موحدة موجودة على فرع V2 ولم تُطبق على Production من PR #6.
-
-**Accounting**
-- `chart_of_accounts`, `account_mappings`
-- `journal_entries`, `journal_entry_lines`
-- `treasury_accounts`, `treasury_transactions`
-- `customer_payments`, `supplier_payments`
-- Trial Balance / Ledger / Income Statement / Balance Sheet / AR / AP / Cash Flow RPCs الحالية.
-
-### 3.2 Legacy / compatibility — لا يُبنى له UI جديد قبل حسمه
-
-قاعدة Production ما زالت تحتوي على طبقات قديمة/متداخلة:
-
-- subscription tables/functions (`subscriptions`, `plans`, `branch_subscriptions`, `subscription_*`, feature-plan paths).
-- raw-material / recipes / production tables and RPCs ما زالت موجودة وتُستخدم في بعض compatibility/hybrid inventory paths.
-- `inventory_unit_recipes` وما يتصل بها يحتاج فصل واضح بين وحدات مخزون وبين تصنيع قبل إظهاره للمستخدم.
-
-قرار V2 الحالي:
-- لا نحذف هذه الكيانات من Production الآن.
-- لا نعرض صفحات Legacy لمجرد وجود جدول.
-- أي إزالة DB لاحقة تحتاج dependency proof + migration + Fresh DB/Regression.
-
-### 3.3 Hardening backlog المثبت من الفحص
-
-1. overloads لا تُحذف بدون فحص callers/tests. مسار المطبخ الذي دخل V2 تم حسمه لصالح العقد canonical `send_to_kitchen(uuid, uuid DEFAULT NULL)` بدون إعادة overload أحادي غامض.
-2. عدد كبير من SECURITY DEFINER functions مضبوط على `search_path=public` بدون `pg_temp`; يعالج فقط عندما تدخل الوظيفة في مسار V2 فعلي مع regression tests.
-3. `sale_payments` و`schema_migrations` لا تُفتح للـclient لمجرد وجودها؛ V2 يستخدم server-authorized paths.
-4. V2 يستخدم explicit accessible branches بدل `users.branch_id` وحده.
-5. Production roles القديمة لا يعاد تشكيلها أثناء بناء V2؛ permission matrix الجديدة تُثبت أولًا بالاختبارات.
-
-## 4) Frontend V2 architecture
-
-### 4.1 App Shell
-
-تم بناء:
-- RTL-first Sidebar ثابت/قابل للطي.
-- mobile drawer.
-- Header: branch selector + shift state + approval/user surfaces.
-- branch context من الفروع التي ترجعها RLS.
+- RTL-first App Shell.
+- Sidebar قابل للطي + mobile drawer.
+- Header مع branch selector وshift state.
+- branch context من الفروع التي تسمح بها RLS.
 - selected branch per-user.
-- Navigation permission-aware من registry واحد.
+- capability registry موحد.
+- `/v2` Home/status surface.
+- `useV2Can()` لقراءة permission strings من DB-backed permissions.
 
-### 4.2 Module registry — Source of Truth للواجهة
+---
 
-كل Module في V2 يسجل/يجب أن يسجل:
-- route
-- label/icon
-- required view permission
-- actions
-- RPC/table backing لكل action
-- approval requirement
-- branch scope
-- test IDs
+## 4) Permission-first / Multi-branch refactor — تم كأساس ✅
 
-إذا لم يوجد backend Action حقيقي: لا يظهر زر Action في Production-ready V2.
+### Migration
 
-### 4.3 ترتيب البناء
+`20260904046000_permission_first_roles_branch_access.sql`
 
-1. Foundation: App Shell + branch context + permission/capability registry + system health surface. **منفذ كأساس V2.**
-2. POS: tables/order types → cart → modifiers منفذة؛ kitchen هو الخطوة التالية بعد ربط Shifts، ثم approvals/payment/split payment/print.
-3. Shifts/closing: الصفحة موجودة والكود يبني؛ متبقي ربط route/sidebar ثم Verify.
-4. Approval Center: queue/decision backend منفذة جزئيًا؛ متبقي route visibility حسب permissions والسياسات الكاملة.
-5. Waste Center: fixes الحالية مثبتة.
-6. Inventory/warehouses/counts/transfers.
-7. Catalog/products/modifiers.
-8. Procurement/suppliers.
-9. Sales/customers/refunds.
-10. Accounting/treasury/reconciliation.
-11. Reports unified table-first.
-12. Users/roles/permissions/settings/audit.
+### ما تغير فعليًا
 
-## 5) Permission redesign contract
+- `can_permission()`:
+  - Super Admin فقط implicit bypass.
+  - باقي المستخدمين يقرأون Permissions من DB role permissions.
+- `user_may_access_branch()`:
+  - Super Admin أو explicit `user_branch_access` أو primary branch grant.
+  - لا Role-name أو organization label يمنح وصولًا تلقائيًا لكل الفروع.
+- `owner` خرج من implicit admin behavior في المسارات التي تم تحويلها.
+- V2-sensitive RPCs التي كانت تعتمد `is_pos_admin()` تم تحويل bypass فيها إلى `is_platform_admin()` حيث استهدفتها migration.
+- `create_user` / `delete_user` / `update_user_password` أصبحت تعتمد `users.manage` + branch scope.
+- `set_user_branch_access` يسمح بإدارة فروع المستخدم في نطاق فروع المانح وبصلاحية `users.manage`.
+- Role templates يمكن إدارتها بصلاحية مناسبة، لكن غير Super Admin لا يستطيع منح Permission لا يملكها.
+- Super Admin role محمي platform-only.
+- frontend permission resolver أصبح fail-closed لغير Super Admin بدل fallback إلى Default Role map.
+- Permission Matrix أصبح Super Admin-only immutable full access؛ `owner` لم يعد كذلك.
+- `UsersPage` أصبحت Permission-first وتتعامل مع المستخدمين/الفروع التي تسمح بها RLS بدل حصر الإدارة في primary branch.
 
-- **Permission-first:** لا نستخدم Role name كبديل للصلاحية إلا للـplatform-only semantics.
-- اسم الدور في V2 هو label/template بقدر الإمكان، وليس مصدر السماح النهائي لكل Feature.
-- العقد الحالي يبقي `super_admin` و`owner` global admin؛ لا يتم إضافة `branch_manager` إلى `isAdminRole`.
-- Super Admin/platform-only capabilities تبقى خارج المصفوفة العادية حيث يلزم.
-- Permission vocabulary granular: view/create/edit/delete/approve/print/reprint/export/override حسب كل Module.
-- كل Action حساس له server-side check؛ إخفاء الزر في React ليس حماية.
-- المدير يستطيع self-approval فقط بصلاحية صريحة `approvals.override`، وليس لمجرد اسم الدور.
-- لا نعيد كتابة authorization مستقر فقط لتوحيد الشكل؛ يطبق هذا العقد على العمل الجديد، وأي refactor قديم يحتاج سببًا أو Regression مثبتًا.
+### Commits الأساسية
 
-## 6) Definition of Done لكل شاشة V2
+- `63ba58088c68663903aab3fd9bec05bc124bb8af` — permission-first roles and branch access.
+- `d0178def69fee4333763555aaf27b200331961b5` — tests for permission-first branch authorization.
+- `2739fbca9396e373c2bfc018fa9b170d12105164` — Super Admin-only implicit V2 permissions.
+- `9ab758d74f95c31a95f03318e71b9f37a99c57f0` — fail closed on DB-backed permissions.
+- `25e7366341327440b0fc931257acf3abba4218be` — app permission resolver from DB roles.
+- `8c44122ac8b61aaa900d18e51b4f649d895c4bb4` — only Super Admin immutable full-access role.
+- `751f737633fcf8a620c4996e0f4069290a59d0a8` — Permission Matrix Super Admin-only implicit.
+- `e1de2ea340b56c30d4b9124b5575b3904823e528` — users management across granted branches.
+- `c7f6d7276b934e9d5f3114e270edbff139fab322` — unit tests aligned with DB-backed authorization.
 
-الشاشة لا تعتبر منتهية حتى يتحقق:
+### مهم
 
-- Query/Mutation حقيقية تعمل على Fresh DB.
-- كل زر له نتيجة مثبتة أو لا يظهر.
-- loading/empty/error/success states.
-- branch scope صحيح.
-- permission gate على UI + server where required.
-- RTL/LTR + desktop/tablet/mobile.
-- unit/contract test.
-- integration test للعمليات التي تغير DB.
-- browser smoke للمسار الأساسي أو توثيق known legacy failure غير مرتبط قبل الدمج.
-- لا regression مثبت على KDS/inventory/accounting.
+الأدوار في V2 لا تستخدم كحاجز مستقل. Role label قد يحدد template الصلاحيات، لكن **القرار الوظيفي النهائي هو Permission + Branch Access**.
 
-## 7) الحالة الحالية
+---
 
-- [x] إنشاء الفرع الموحد `development/frontend-v2`.
-- [x] حفظ Snapshot الفروع القديمة.
-- [x] فحص Production schema/RLS/functions قراءة فقط.
-- [x] تحديد Canonical vs Legacy vs Hardening backlog.
-- [x] PR #3 وPR #5 مغلقان/superseded تنظيميًا.
-- [x] فرع V2 هو فرع التطوير النشط الوحيد.
-- [x] إصلاح permission/navigation baseline الذي أوقف Verify #516.
-- [x] إنشاء V2 App Shell + branch context + capability registry.
-- [x] بدء POS V2 وربط create/update order + cart + modifiers + availability.
-- [x] harden kitchen-send permission مع الحفاظ على canonical delta contract.
-- [x] harden multi-branch shifts/open-close permissions.
-- [x] بناء `V2ShiftsPage.tsx` وربطها بالـRPCs؛ **لم تُربط بالتنقل بعد**.
-- [x] harden operational approval targets للهالك/الجرد/التحويلات.
-- [x] إصلاح Waste fixtures بدون service-role bypass.
-- [x] Verify #543: frontend كامل أخضر + Fresh DB/schema أخضر + **444/444 integration/security/RLS أخضر**.
-- [ ] Browser Smoke النهائي: 50/55؛ الخمس failures نفس legacy POS stale direct-add selector المعروف، وليس Regression V2.
-- [ ] ربط `/v2/shifts` والـSidebar ثم Verify.
-- [ ] ربط Send to Kitchen داخل POS V2 ثم Verify.
-- [ ] Payment/Split Payment وباقي POS actions.
+## 5) POS V2 — منفذ جزئيًا
 
-## 8) ممنوعات خلال إعادة البناء
+تم:
 
-- ممنوع تعديل Production مباشرة أثناء بناء UI إلا بطلب صريح وبعد Verify مناسب.
-- ممنوع حذف Legacy DB لمجرد أنه غير ظاهر في V2.
-- ممنوع bypass لـRLS أو `user_may_access_branch`.
-- ممنوع زر Placeholder يوحي بأنه يعمل.
-- ممنوع نسخ حسابات مالية إلى client؛ التقارير المالية تعتمد على RPCs الرسمية.
-- ممنوع استخدام `users.branch_id` وحده كقائمة فروع المستخدم في V2.
-- ممنوع إعادة فتح Regression مغلق دون دليل.
-- ممنوع Role-name gate في Action V2 جديد إذا توجد Permission صريحة مناسبة.
-- ممنوع تغيير منطق POS الحقيقي لإخفاء failure في اختبار legacy selector.
+- `/v2/pos`.
+- Table-first للصالة.
+- Takeaway / Delivery / Drive Thru.
+- تحميل المنتجات/التصنيفات/الطاولات/الطلبات المفتوحة حسب الفرع.
+- Cart/kinds/remove.
+- required modifiers min/max.
+- availability.
+- `create_order`.
+- `update_order` والاستئناف.
+- branch scope عبر `user_may_access_branch`.
+- Send to Kitchen داخل POS V2.
+- dedicated Permission `pos.send_kitchen`.
+- canonical `send_to_kitchen(uuid, uuid DEFAULT NULL)`.
+- delta KDS send؛ لا يعيد إرسال الكمية التي أرسلت سابقًا.
 
-## 9) Checkpoint — Verify #543
+Commits:
+
+- `9ad0dd7fc2dab9120fbb837c78008579e6ab44a9` — V2 send to kitchen.
+- `0d5b19021e9bcda7df65e1b033bc01f1b8c1e0f8` — permission contract alignment.
+- `d20b4e70cc8fa3bf2af56332d182a395828a144f` — kitchen wiring tests.
+
+متبقي POS:
+
+- Payment.
+- Split Payment.
+- Discount/void/cancel/transfer/split UI + approvals.
+- Print/reprint.
+- **قرار المستخدم: خصم المخزون عند Send to Kitchen. الـRPC الحالي في HEAD يسجل KDS delta فقط ولا ينفذ inventory effect؛ لذلك هذا القرار ما زال Implementation + Regression مطلوبين، ولا يوثق كمكتمل حتى يصبح idempotent ويمنع الخصم المكرر.**
+
+---
+
+## 6) Shifts / Closing V2 — تم الربط الحالي ✅
+
+تم:
+
+- multi-branch `open_shift`/`close_shift` permission contract.
+- شفت مفتوح واحد للمستخدم عبر الفروع المخولة.
+- Header يكتشف الشفت عبر الفروع ويعرض الانتقال للفرع الصحيح.
+- `shifts.open`, `shifts.close`, `shifts.manage` حسب العملية.
+- `V2ShiftsPage.tsx`.
+- `/v2/shifts` route.
+- V2 Sidebar navigation.
+- user/shift/day closing reports.
+
+Commits:
+
+- `6bd3b2a71cfb0bb94f22d2f08f03237abae06cc6`
+- `8e6f23dac4ea9a0c77c90ab765fac71c11d4fc50`
+- `5b39f08874a3fe1b5b3ed6b118a680a9aa1b1385`
+- `f207fd2295e3a483ef51c0acbef3edd1a44c18bc`
+- `387313f0e0ff92b343953b273b41aa2b5aaff0b7`
+- `1bafbc5cef6b1be93b8f4382ee4fc47606a5037d`
+- `9c6dc03c82176ff704fcdc64371069980f305ad5`
+
+---
+
+## 7) Unified Approval Center — منفذ جزئيًا
+
+تم:
+
+- Queue موحدة للmanager approvals + waste + stock counts + warehouse transfers.
+- `decide_operational_approval` يوجه للـRPC الحقيقي.
+- `required_permission` per row بدل hard-code لاسم Role.
+- self approval يحتاج `approvals.override`.
+- waste/count/transfer approval targets hardened مع Permission + Branch Access.
+
+متبقي:
+
+- route visibility النهائي حسب Permissions الاعتماد الفعلية بدل Gate عام قديم.
+- assigned-manager / policy configuration الكامل لكل Action type.
+
+---
+
+## 8) Waste Center — fixes الحالية مكتملة ✅
+
+- تحميل واختيار المنتجات حسب الفرع.
+- `p_product_id` إلى `create_waste_entry`.
+- test user حقيقي بصلاحية `production.waste` بدل service-role bypass.
+- canonical waste type `finished_good` في الاختبارات.
+
+---
+
+## 9) Checkpoint تاريخي — Verify #543
 
 Run: `33850444754`
+Head: `8c819f67ecef4012ca4cca4fb43da92475116d22`
 
-Head المختبر:
-`8c819f67ecef4012ca4cca4fb43da92475116d22`
-
-### ما تم إصلاحه قبل الـrun
-
-1. `V2ShiftsPage.tsx`: إصلاح TypeScript لبطاقات summary بدون تغيير الحسابات.
-2. `20260904043000_harden_v2_kitchen_send_permission.sql`: الحفاظ على `send_to_kitchen(uuid, uuid DEFAULT NULL)` وdelta/send response القديم مع إضافة permission + canonical branch access، بدون overload أحادي جديد.
-3. `phase2_waste_center.test.ts`: المستخدم الاختباري أصبح مستخدمًا حقيقيًا بصلاحية `production.waste` بدل الاعتماد على `service_role` bypass.
-4. `v2_operational_approval_security.test.ts`: استخدام `finished_good` كنوع هالك canonical بدل القيمة غير الصحيحة `product`.
-5. `v2_pos_kitchen_permission.test.ts`: توقع cross-branch error أصبح `BRANCH_MISMATCH` مطابقًا للعقد الفعلي؛ لم يتغير RPC/RLS لإرضاء الاختبار.
-
-### نتيجة Frontend
+Frontend:
 
 - API contract ✅
 - lint ✅
@@ -263,36 +228,144 @@ Head المختبر:
 - unit ✅
 - build ✅
 
-### نتيجة Fresh DB / Security
+Fresh DB/Security:
 
-- **200 migrations applied / 0 skipped** ✅
-- Schema verification ✅
+- 200 migrations / 0 skipped ✅
+- schema ✅
 - 60/60 expected tables ✅
 - 65/65 expected functions ✅
 - 107/107 contract RPCs ✅
 - 61/61 contract tables ✅
-- **57/57 integration files passed** ✅
-- **444/444 integration/security/RLS tests passed** ✅
+- 57/57 integration files ✅
+- 444/444 integration/security/RLS ✅
 
-مهم: رسائل RLS/permission errors الظاهرة داخل logs جزء من negative security tests المتوقعة، والنتيجة النهائية لكل suites خضراء.
-
-### Browser Smoke
+Browser:
 
 - 50 passed / 5 failed.
-- الخمس failures هي نفس حالات `tests/e2e/pos-actions.spec.ts` التاريخية.
-- كلها تتوقف داخل helper `addProduct` عند انتظار `pos-cart-qty-<PRODUCT_ID>` قبل الوصول لمسارات kitchen/payment الجديدة.
-- root cause المثبت سابقًا: test helper/selector قديم بالنسبة لزر الإضافة المباشرة `+`.
-- الإصلاح التاريخي Test-only: `8d5fb44cd3da3b67b753cc4bd14e8ce3a58a1859` — `test: target direct POS add action`.
-- لا يغيّر منطق التطبيق الحقيقي. إذا احتجنا إغلاق Browser gate، ننقل هذا الإصلاح الضيق بعد إعادة قراءة HEAD ولا نغيّر POS behavior.
+- الخمس failures معروفة في legacy `tests/e2e/pos-actions.spec.ts` بسبب stale direct-add selector قبل وصول السيناريو إلى kitchen/payment logic.
+- الإصلاح التاريخي Test-only: `8d5fb44cd3da3b67b753cc4bd14e8ce3a58a1859`.
+- ممنوع تغيير POS الحقيقي فقط لإسكات selector قديم.
 
-### Production
+---
 
-- **لا يوجد أي تطبيق جديد على Supabase Production من PR #6 في هذا الـCheckpoint.**
+## 10) آخر Checkpoint — Verify #559
 
-## 10) الخطوة التالية المسجلة
+Run: `33866122650`
+Head: `c7f6d7276b934e9d5f3114e270edbff139fab322`
 
-1. ربط `V2ShiftsPage` فقط على `/v2/shifts` وفي V2 Sidebar مع `shifts.view`.
-2. Verify.
-3. عند النجاح: تحديث هذا السجل و`CURRENT_WORK_PLAN.md`.
-4. بعدها Send to Kitchen داخل POS V2 بـ`pos.send_kitchen` وRPC canonical.
-5. Verify وتحديث السجل مرة أخرى.
+### Frontend ✅
+
+- API contract ✅
+- lint ✅
+- typecheck ✅
+- typecheck:all ✅
+- unit ✅
+- build ✅
+
+هذا يثبت أن Unit tests القديمة التي كانت تتوقع `owner = admin` أو Default Role fallback تم تعديلها بما يطابق العقد الجديد.
+
+### DB / Security ❌ عند Integration step
+
+نجح:
+
+- DB/container setup ✅
+- auth stub ✅
+- canonical migrations ✅
+- schema verification ✅
+- integration fixture setup ✅
+
+فشل:
+
+- `Run integration and security/RLS regression tests` ❌
+
+Browser Smoke:
+
+- skipped لأن DB job فشل قبل فتح Browser gate.
+
+**لا يوجد في jobs API المستخدم هنا نص failing assertions نفسه؛ لذلك لا نسجل Root Cause تخمينيًا. الخطوة الصحيحة هي قراءة failure details ثم تصنيفها.**
+
+قاعدة الإصلاح:
+
+- إذا failure اختبار قديم يتوقع owner/admin bypass أو Role-name authorization القديم → يعدل الاختبار إلى Permission-first.
+- إذا failure يثبت تسرب branch أو تجاوز Permission → يصلح الكود/RLS.
+- ممنوع إعادة `owner` implicit admin أو إضافة bypass فقط لإخضرار الاختبارات.
+
+---
+
+## 11) ما تم وما تبقى الآن
+
+### تم ✅
+
+- Foundation/App Shell/RTL/branch selector.
+- Multi-branch context من RLS-visible branches.
+- Permission-first core contract.
+- Super Admin-only implicit full access.
+- Owner أصبح Role عاديًا من ناحية authorization.
+- DB-backed permission resolver fail-closed.
+- Users management بـ`users.manage` عبر granted branches.
+- Permission Matrix Super Admin-only immutable role behavior.
+- POS V2 create/update/cart/modifiers/availability.
+- Send to Kitchen V2 + `pos.send_kitchen` + canonical delta KDS send.
+- Shifts/Closing page + route + navigation + permission checks.
+- Approval Center backend/queue/security core.
+- Waste fixes الحالية.
+- Frontend gate في Verify #559 أخضر بالكامل.
+
+### المتبقي — بالترتيب
+
+1. **إغلاق Integration/Security/RLS failures في Verify #559** بدون تراجع عن Permission-first أو RLS.
+2. إعادة Verify حتى DB gate أخضر ثم Browser Smoke.
+3. Approval Center final route visibility + assigned-manager/policy config.
+4. **تنفيذ خصم المخزون عند Send to Kitchen بصورة idempotent مع delta inventory effects ومنع double deduction.**
+5. Payment + Split Payment.
+6. POS discount/void/cancel/transfer/split + approval flow.
+7. Receipt print/reprint.
+8. Waste final UX/regression.
+9. Inventory / warehouses / counts / transfers V2.
+10. Catalog / products / modifiers V2.
+11. Procurement / suppliers V2.
+12. Sales / customers / refunds V2.
+13. Accounting / treasury / reconciliation V2.
+14. Unified table-first Reports.
+15. Users / Roles / granular Permission Matrix / Settings / Audit final UX.
+16. إذا طُلب Direct per-user Permission Override مستقل عن Role template: إضافته إلى Effective Permission resolver + UI + tests.
+17. إغلاق known legacy Browser helper regression بإصلاح Test-only قبل الدمج النهائي.
+18. Final Verify كامل.
+19. Merge فقط بعد اكتمال gates المطلوبة وطلب الدمج.
+
+---
+
+## 12) ممنوعات خلال الاستكمال
+
+- ممنوع Role-name gate يمنع Permission فعالة.
+- ممنوع اعتبار `owner` أو `branch_manager` implicit admin.
+- ممنوع استخدام `users.branch_id` وحده كحد فروع المستخدم.
+- ممنوع Branch Access bypass.
+- ممنوع Permission bypass.
+- ممنوع RLS weakening.
+- ممنوع منح المستخدم Action في فرع غير مخول.
+- ممنوع منع المستخدم من Action داخل فرع مخول إذا كانت Permission الفعالة تسمح به بسبب اسم Role فقط.
+- ممنوع fallback إلى Default Role permissions عند غياب DB map لغير Super Admin.
+- ممنوع تعديل Production مباشرة أثناء بناء V2 إلا بطلب صريح وبعد Verify.
+- ممنوع زر Placeholder يوحي بأنه يعمل.
+- ممنوع نسخ الحسابات المالية authoritative إلى client.
+- ممنوع تغيير POS behavior الحقيقي فقط لإسكات legacy test selector.
+
+---
+
+## 13) Definition of Done
+
+أي Module لا يعتبر مكتملًا حتى:
+
+- backend action حقيقي.
+- Permission gate فعالة في UI وserver عند الحاجة.
+- Branch Access صحيح عبر RLS/`user_may_access_branch`.
+- Role label لا يحجب Permission فعالة.
+- loading/empty/error/success states.
+- RTL/LTR + desktop/tablet/mobile.
+- unit/contract tests.
+- integration regression لأي DB mutation.
+- browser smoke للمسار الأساسي أو توثيق known legacy failure غير مرتبط.
+- لا Regression على KDS/inventory/accounting.
+
+> المطور التالي يبدأ بقراءة `docs/CURRENT_WORK_PLAN.md` ثم هذا الملف، ويعيد قراءة HEAD/PR #6 قبل أي تعديل.
