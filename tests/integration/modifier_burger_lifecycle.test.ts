@@ -60,6 +60,14 @@ describe.skipIf(skip)('Burger modifier transactional lifecycle', () => {
     ids = await seedRlsFixture(client);
     impersonationAvailable = await canImpersonate(client);
 
+    // The shared RLS fixture adds warehouses used only for isolation probes.
+    // Make the warehouse holding this lifecycle's stock the explicit kitchen
+    // warehouse instead of relying on created_at/UUID tie-breaking.
+    await client.query(
+      `UPDATE public.warehouses SET is_default = (id = $1::uuid) WHERE branch_id = $2::uuid`,
+      [ids.whA, ids.branchA],
+    );
+
     await client.query(`UPDATE public.shifts SET status='closed', closed_at=now() WHERE id=$1`, [ids.shiftA]);
     await client.query(`UPDATE public.settings SET tax_enabled=false, tax_rate=0`);
 
@@ -190,7 +198,7 @@ describe.skipIf(skip)('Burger modifier transactional lifecycle', () => {
       onion: await unitQty(onionUnit),
     };
     const sent = await rpc(ids.users.cashier, `SELECT public.send_to_kitchen($1) AS r`, [orderId]);
-    expect(sent.success).toBe(true);
+    expect(sent.success, JSON.stringify(sent)).toBe(true);
     expect(sent.items_sent_count).toBe(2);
     expect(await unitQty(pattyUnit)).toBe(before.patty - 3);
     expect(await unitQty(cheeseUnit)).toBe(before.cheese - 3);
