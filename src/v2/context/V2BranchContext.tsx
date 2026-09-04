@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useBranches } from '@/hooks/useBranches';
+import { getActiveBranchId, setActiveBranchId } from '@/lib/activeBranch';
 import type { Branch } from '@/lib/types';
 
 type V2BranchContextValue = {
@@ -35,16 +36,25 @@ export function V2BranchProvider({ children }: { children: ReactNode }) {
     }
 
     const allowedIds = new Set(branches.map((branch) => branch.id));
+    const active = getActiveBranchId();
     const saved = typeof window !== 'undefined' ? window.localStorage.getItem(storageKey(user.id)) : null;
     const fallback = user.branch_id && allowedIds.has(user.branch_id) ? user.branch_id : branches[0].id;
-    const next = saved && allowedIds.has(saved) ? saved : fallback;
+    const next = active && allowedIds.has(active)
+      ? active
+      : saved && allowedIds.has(saved)
+        ? saved
+        : fallback;
+
     setSelectedBranchIdState(next);
+    setActiveBranchId(next);
+    if (typeof window !== 'undefined') window.localStorage.setItem(storageKey(user.id), next);
   }, [branches, user?.id, user?.branch_id]);
 
   const setSelectedBranchId = useCallback((branchId: string) => {
     if (!user?.id) return;
     if (!branches.some((branch) => branch.id === branchId)) return;
     setSelectedBranchIdState(branchId);
+    setActiveBranchId(branchId);
     if (typeof window !== 'undefined') window.localStorage.setItem(storageKey(user.id), branchId);
   }, [branches, user?.id]);
 
