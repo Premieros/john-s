@@ -51,6 +51,7 @@ const JournalPage = lazy(() => import('../features/accounting/pages/JournalPage'
 const TreasuryPage = lazy(() => import('../features/accounting/pages/TreasuryPage').then(m => ({ default: m.TreasuryPage })));
 const ReconciliationPage = lazy(() => import('../features/accounting/pages/ReconciliationPage').then(m => ({ default: m.ReconciliationPage })));
 const UsersPage = lazy(() => import('../features/admin/pages/UsersPage').then(m => ({ default: m.UsersPage })));
+const ApprovalCenterPage = lazy(() => import('../features/admin/pages/ApprovalCenterPage').then(m => ({ default: m.ApprovalCenterPage })));
 const AuditLogPage = lazy(() => import('../features/reporting/pages/AuditLogPage').then(m => ({ default: m.AuditLogPage })));
 const SettingsControlCenterPage = lazy(() => import('../features/admin/pages/SettingsControlCenterPage').then(m => ({ default: m.SettingsControlCenterPage })));
 const SuperAdminConsolePage = lazy(() => import('../features/admin/pages/SuperAdminConsolePage').then(m => ({ default: m.SuperAdminConsolePage })));
@@ -73,8 +74,6 @@ function NoAccessPage() {
 }
 
 function resolveLandingRoute(can: (permission: Permission) => boolean, role?: string | null): string | null {
-  // Keep the dashboard as the default whenever the user is allowed to see it.
-  // Only users without dashboard access fall through to their first permitted workspace.
   if (can('dashboard.view')) return APP_ROUTES.dashboard;
   if (role === 'cashier' && can('pos.sell')) return APP_ROUTES.pos;
 
@@ -211,6 +210,7 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.reconciliation} element={<ProtectedRoute permission="accounts.view"><ReconciliationPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.users} element={<ProtectedRoute permission="users.view"><UsersPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.employees} element={<ProtectedRoute permission="users.view"><Navigate to={APP_ROUTES.users} replace /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.approvals} element={<ProtectedRoute permission="settings.manage"><ApprovalCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.auditLog} element={<ProtectedRoute permission="audit.view"><AuditLogPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.settings} element={<ProtectedRoute permission="settings.manage"><SettingsControlCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.superAdmin} element={<ProtectedRoute superAdminOnly><SuperAdminConsolePage /></ProtectedRoute>} />
