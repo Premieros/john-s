@@ -177,7 +177,10 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
 
     const second = await settle(prefix, orderId);
     expect(second.success).toBe(false);
-    expect(second.error).toBe('ORDER_NOT_FOUND');
+    // The linked order still exists, but the first settlement closed it. A
+    // second payment must therefore be rejected as non-editable rather than
+    // pretending the order is missing.
+    expect(second.error).toBe('ORDER_NOT_EDITABLE');
     expect(await saleCount(prefix)).toBe(saleCountBefore);
     expect(await batchQty()).toBe(beforeQty - 1);
 
