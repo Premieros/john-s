@@ -1,3 +1,4 @@
+import { APP_ROUTES } from '@/core/navigation/routes';
 import type { Permission } from '@/lib/permissions';
 
 export type V2ModuleKey =
@@ -13,7 +14,7 @@ export type V2ModuleKey =
   | 'reports'
   | 'admin';
 
-export type V2ModuleStatus = 'foundation' | 'building' | 'planned';
+export type V2ModuleStatus = 'ready';
 
 export interface V2CapabilityAction {
   key: string;
@@ -30,33 +31,48 @@ export interface V2ModuleDefinition {
   labelEn: string;
   descriptionAr: string;
   descriptionEn: string;
-  legacyViewPermission: Permission;
-  targetViewPermission: string;
+  /** Canonical permission that controls visibility of the real production workspace. */
+  viewPermission: Permission;
+  /** Canonical production route. V2 is a gateway, not a second implementation. */
+  route: string;
   branchScoped: boolean;
   status: V2ModuleStatus;
   backend: string[];
   actions: V2CapabilityAction[];
+  /** @deprecated Compatibility for dormant V2 components. Always equals viewPermission. */
+  legacyViewPermission: Permission;
+  /** @deprecated Compatibility for dormant V2 components. Always equals viewPermission. */
+  targetViewPermission: Permission;
+}
+
+function moduleDefinition(
+  definition: Omit<V2ModuleDefinition, 'legacyViewPermission' | 'targetViewPermission' | 'status'>,
+): V2ModuleDefinition {
+  return {
+    ...definition,
+    status: 'ready',
+    legacyViewPermission: definition.viewPermission,
+    targetViewPermission: definition.viewPermission,
+  };
 }
 
 /**
- * V2 contract registry.
+ * Canonical workspace registry.
  *
- * `legacyViewPermission` is the currently available typed permission used only
- * while V2 is being introduced beside the existing application.
- * `targetViewPermission` / action permission strings are the granular contract
- * V2 will enforce server-side as modules are migrated.
+ * There is exactly one operational implementation for every module. V2 is a
+ * permission-aware gateway to those proven production workspaces; it must not
+ * maintain a second POS, shift, inventory, procurement or reporting flow.
  */
 export const V2_MODULES: V2ModuleDefinition[] = [
-  {
+  moduleDefinition({
     key: 'pos',
     labelAr: 'نقطة البيع',
     labelEn: 'Point of Sale',
-    descriptionAr: 'الطلبات والطاولات والمطبخ والدفع والطباعة من مساحة واحدة.',
-    descriptionEn: 'Orders, tables, kitchen, payment and printing in one workspace.',
-    legacyViewPermission: 'pos.sell',
-    targetViewPermission: 'pos.view',
+    descriptionAr: 'الطلبات والطاولات والمطبخ والدفع والطباعة من مساحة البيع الأساسية.',
+    descriptionEn: 'Orders, tables, kitchen, payment and printing in the canonical POS workspace.',
+    viewPermission: 'pos.view',
+    route: APP_ROUTES.pos,
     branchScoped: true,
-    status: 'building',
     backend: ['orders', 'order_items', 'order_kitchen_sends', 'sales', 'sale_items', 'shifts'],
     actions: [
       { key: 'create_order', labelAr: 'إنشاء طلب', labelEn: 'Create order', permission: 'pos.order.create', backend: ['create_order'] },
@@ -69,17 +85,16 @@ export const V2_MODULES: V2ModuleDefinition[] = [
       { key: 'refund', labelAr: 'مرتجع', labelEn: 'Refund', permission: 'sales.refund.create', backend: ['process_refund'], approval: 'refund approval when configured' },
       { key: 'print', labelAr: 'طباعة', labelEn: 'Print', permission: 'pos.receipt.print', backend: ['authorize_sale_print', 'sale_print_events'] },
     ],
-  },
-  {
+  }),
+  moduleDefinition({
     key: 'shifts',
     labelAr: 'الشفتات والإغلاق',
     labelEn: 'Shifts & Closing',
     descriptionAr: 'الشفت الفردي، تقرير المستخدم، تقرير الوردية وإغلاق اليوم.',
     descriptionEn: 'User shift, user closing, shift report and day closing.',
-    legacyViewPermission: 'shifts.view',
-    targetViewPermission: 'shifts.view',
+    viewPermission: 'shifts.view',
+    route: APP_ROUTES.shifts,
     branchScoped: true,
-    status: 'building',
     backend: ['shifts', 'shift_operations', 'sales'],
     actions: [
       { key: 'open', labelAr: 'فتح شفت', labelEn: 'Open shift', permission: 'shifts.open', backend: ['open_shift'] },
@@ -88,51 +103,48 @@ export const V2_MODULES: V2ModuleDefinition[] = [
       { key: 'shift_report', labelAr: 'تقرير شفت', labelEn: 'Shift report', permission: 'shifts.report.shift', backend: ['get_shift_closing_report'] },
       { key: 'day_close', labelAr: 'إغلاق اليوم', labelEn: 'Day close', permission: 'shifts.day_close', backend: ['get_day_closing_report'] },
     ],
-  },
-  {
+  }),
+  moduleDefinition({
     key: 'approvals',
     labelAr: 'الموافقات',
     labelEn: 'Approvals',
-    descriptionAr: 'كل ما هو معلق أو يحتاج اعتماد في Queue واحدة قابلة للتنفيذ.',
+    descriptionAr: 'كل ما هو معلق أو يحتاج اعتماد في قائمة واحدة قابلة للتنفيذ.',
     descriptionEn: 'One actionable queue for pending and approval-required work.',
-    legacyViewPermission: 'settings.manage',
-    targetViewPermission: 'approvals.review',
+    viewPermission: 'approvals.review',
+    route: APP_ROUTES.approvals,
     branchScoped: true,
-    status: 'building',
-    backend: ['approval_requests', 'waste_entries', 'stock_counts', 'warehouse_transfers'],
+    backend: ['approval_requests', 'approval_policies', 'waste_entries', 'stock_counts', 'warehouse_transfers'],
     actions: [
       { key: 'review', labelAr: 'اعتماد/رفض', labelEn: 'Approve / reject', permission: 'approvals.review', backend: ['decide_operational_approval'] },
-      { key: 'override', labelAr: 'تجاوز موافقة طلب المدير نفسه', labelEn: 'Self-approval override', permission: 'approvals.override', backend: ['decide_manager_approval'] },
-      { key: 'policy', labelAr: 'سياسات الموافقة', labelEn: 'Approval policies', permission: 'approvals.policy.manage', backend: ['approval policy configuration'] },
+      { key: 'override', labelAr: 'تجاوز الموافقة الذاتية', labelEn: 'Self-approval override', permission: 'approvals.override', backend: ['decide_manager_approval'] },
+      { key: 'policy', labelAr: 'سياسات الموافقة', labelEn: 'Approval policies', permission: 'approvals.policy.manage', backend: ['approval_policies'] },
     ],
-  },
-  {
+  }),
+  moduleDefinition({
     key: 'waste',
     labelAr: 'الهالك',
     labelEn: 'Waste',
-    descriptionAr: 'هالك المنتجات والوحدات مع السبب والتكلفة والاعتماد.',
-    descriptionEn: 'Product/unit waste with reason, cost and approval.',
-    legacyViewPermission: 'production.waste',
-    targetViewPermission: 'waste.view',
+    descriptionAr: 'هالك المنتجات والوحدات مع المخزن والسبب والتكلفة والاعتماد.',
+    descriptionEn: 'Product/unit waste with warehouse, reason, cost and approval.',
+    viewPermission: 'waste.view',
+    route: APP_ROUTES.wasteCenter,
     branchScoped: true,
-    status: 'building',
-    backend: ['waste_entries', 'waste_categories'],
+    backend: ['waste_entries', 'waste_categories', 'inventory_ledger'],
     actions: [
       { key: 'create', labelAr: 'تسجيل هالك', labelEn: 'Record waste', permission: 'waste.create', backend: ['create_waste_entry'] },
       { key: 'approve', labelAr: 'اعتماد هالك', labelEn: 'Approve waste', permission: 'waste.approve', backend: ['approve_waste'] },
       { key: 'report', labelAr: 'تقرير الهالك', labelEn: 'Waste report', permission: 'waste.report', backend: ['get_waste_report'] },
     ],
-  },
-  {
+  }),
+  moduleDefinition({
     key: 'inventory',
     labelAr: 'المخزون',
     labelEn: 'Inventory',
     descriptionAr: 'الرصيد والوحدات والجرد والتحويلات والتقييم والحركات.',
     descriptionEn: 'Stock, units, counts, transfers, valuation and ledger.',
-    legacyViewPermission: 'inventory.view',
-    targetViewPermission: 'inventory.view',
+    viewPermission: 'inventory.view',
+    route: APP_ROUTES.inventoryCenter,
     branchScoped: true,
-    status: 'planned',
     backend: ['inventory', 'inventory_units', 'stock_counts', 'warehouse_transfers', 'inventory_ledger'],
     actions: [
       { key: 'adjust', labelAr: 'تسوية مخزون', labelEn: 'Adjust stock', permission: 'inventory.adjust', backend: ['adjust_stock'] },
@@ -141,34 +153,32 @@ export const V2_MODULES: V2ModuleDefinition[] = [
       { key: 'transfer', labelAr: 'تحويل مخزني', labelEn: 'Warehouse transfer', permission: 'inventory.transfer.create', backend: ['create_warehouse_transfer'] },
       { key: 'transfer_approve', labelAr: 'اعتماد التحويل', labelEn: 'Approve transfer', permission: 'inventory.transfer.approve', backend: ['approve_warehouse_transfer'] },
     ],
-  },
-  {
+  }),
+  moduleDefinition({
     key: 'catalog',
     labelAr: 'المنتجات',
     labelEn: 'Catalog',
     descriptionAr: 'المنتجات والتصنيفات والموديفاير وربط وحدات المخزون.',
     descriptionEn: 'Products, categories, modifiers and inventory-unit links.',
-    legacyViewPermission: 'products.view',
-    targetViewPermission: 'catalog.view',
+    viewPermission: 'products.view',
+    route: APP_ROUTES.products,
     branchScoped: true,
-    status: 'planned',
     backend: ['products', 'categories', 'product_modifier_groups', 'product_modifier_options', 'product_unit_links'],
     actions: [
       { key: 'product_create', labelAr: 'إضافة منتج', labelEn: 'Create product', permission: 'products.create', backend: ['products'] },
       { key: 'product_edit', labelAr: 'تعديل منتج', labelEn: 'Edit product', permission: 'products.edit', backend: ['products'] },
       { key: 'modifiers', labelAr: 'الموديفاير', labelEn: 'Modifiers', permission: 'products.modifiers.manage', backend: ['save_product_modifiers'] },
     ],
-  },
-  {
+  }),
+  moduleDefinition({
     key: 'procurement',
     labelAr: 'المشتريات',
     labelEn: 'Procurement',
     descriptionAr: 'طلب شراء، عروض أسعار، أمر شراء، استلام ومدفوعات المورد.',
     descriptionEn: 'Requests, RFQs, purchase orders, receiving and supplier payments.',
-    legacyViewPermission: 'purchases.view',
-    targetViewPermission: 'procurement.view',
+    viewPermission: 'purchases.view',
+    route: APP_ROUTES.procurementCenter,
     branchScoped: true,
-    status: 'planned',
     backend: ['purchase_requests', 'rfqs', 'purchases', 'purchase_receipts', 'suppliers'],
     actions: [
       { key: 'request', labelAr: 'طلب شراء', labelEn: 'Purchase request', permission: 'procurement.request.create', backend: ['create_purchase_request'] },
@@ -176,67 +186,63 @@ export const V2_MODULES: V2ModuleDefinition[] = [
       { key: 'receive', labelAr: 'استلام', labelEn: 'Receive', permission: 'procurement.receive', backend: ['receive_purchase_order'] },
       { key: 'pay', labelAr: 'دفع مورد', labelEn: 'Pay supplier', permission: 'procurement.payment.create', backend: ['pay_supplier'] },
     ],
-  },
-  {
+  }),
+  moduleDefinition({
     key: 'sales',
     labelAr: 'المبيعات والعملاء',
     labelEn: 'Sales & Customers',
     descriptionAr: 'الفواتير والعملاء والمدفوعات والمرتجعات.',
     descriptionEn: 'Invoices, customers, payments and refunds.',
-    legacyViewPermission: 'sales.view',
-    targetViewPermission: 'sales.view',
+    viewPermission: 'sales.view',
+    route: APP_ROUTES.sales,
     branchScoped: true,
-    status: 'planned',
     backend: ['sales', 'sale_items', 'customers', 'customer_payments'],
     actions: [
       { key: 'refund', labelAr: 'مرتجع', labelEn: 'Refund', permission: 'sales.refund.create', backend: ['process_refund'] },
       { key: 'receive_payment', labelAr: 'تحصيل عميل', labelEn: 'Receive customer payment', permission: 'sales.payment.receive', backend: ['receive_payment'] },
       { key: 'export', labelAr: 'تصدير', labelEn: 'Export', permission: 'sales.export', backend: ['sales'] },
     ],
-  },
-  {
+  }),
+  moduleDefinition({
     key: 'accounting',
     labelAr: 'الحسابات',
     labelEn: 'Accounting',
     descriptionAr: 'دليل الحسابات والقيود والخزينة والتسويات البنكية.',
     descriptionEn: 'Chart of accounts, journals, treasury and reconciliation.',
-    legacyViewPermission: 'accounts.view',
-    targetViewPermission: 'accounting.view',
+    viewPermission: 'accounts.view',
+    route: APP_ROUTES.accounts,
     branchScoped: true,
-    status: 'planned',
     backend: ['chart_of_accounts', 'journal_entries', 'treasury_accounts', 'bank_reconciliations'],
     actions: [
       { key: 'journal_post', labelAr: 'ترحيل قيد', labelEn: 'Post journal', permission: 'accounting.journal.post', backend: ['post_manual_journal'] },
       { key: 'treasury_transfer', labelAr: 'تحويل خزينة', labelEn: 'Treasury transfer', permission: 'accounting.treasury.transfer', backend: ['process_transfer'] },
       { key: 'reconcile', labelAr: 'تسوية بنكية', labelEn: 'Bank reconcile', permission: 'accounting.reconciliation.manage', backend: ['create_bank_reconciliation', 'complete_bank_reconciliation'] },
     ],
-  },
-  {
+  }),
+  moduleDefinition({
     key: 'reports',
     labelAr: 'التقارير',
     labelEn: 'Reports',
     descriptionAr: 'تقارير موحدة جدولية مع فلاتر وطباعة وتصدير.',
     descriptionEn: 'Unified table-first reports with filters, print and export.',
-    legacyViewPermission: 'reports.view',
-    targetViewPermission: 'reports.view',
+    viewPermission: 'reports.view',
+    route: APP_ROUTES.reports,
     branchScoped: true,
-    status: 'planned',
     backend: ['sales', 'inventory_ledger', 'journal_entries', 'financial report RPCs'],
     actions: [
       { key: 'print', labelAr: 'طباعة', labelEn: 'Print', permission: 'reports.print', backend: ['report result'] },
       { key: 'export', labelAr: 'تصدير', labelEn: 'Export', permission: 'reports.export', backend: ['report result'] },
     ],
-  },
-  {
+  }),
+  moduleDefinition({
     key: 'admin',
     labelAr: 'الإدارة والصلاحيات',
     labelEn: 'Administration',
     descriptionAr: 'المستخدمون والفروع والأدوار والصلاحيات والإعدادات والتدقيق.',
     descriptionEn: 'Users, branches, roles, permissions, settings and audit.',
-    legacyViewPermission: 'users.view',
-    targetViewPermission: 'admin.view',
+    viewPermission: 'users.view',
+    route: APP_ROUTES.users,
     branchScoped: false,
-    status: 'planned',
     backend: ['users', 'roles', 'branches', 'user_branch_access', 'audit_log', 'settings'],
     actions: [
       { key: 'user_create', labelAr: 'إضافة مستخدم', labelEn: 'Create user', permission: 'users.create', backend: ['create_user'] },
@@ -244,7 +250,7 @@ export const V2_MODULES: V2ModuleDefinition[] = [
       { key: 'permissions', labelAr: 'إدارة الصلاحيات', labelEn: 'Manage permissions', permission: 'roles.permissions.manage', backend: ['roles', 'guard_role_permissions'] },
       { key: 'audit', labelAr: 'سجل العمليات', labelEn: 'Audit log', permission: 'audit.view', backend: ['get_audit_trail'] },
     ],
-  },
+  }),
 ];
 
 export function getV2Module(key: V2ModuleKey): V2ModuleDefinition {
