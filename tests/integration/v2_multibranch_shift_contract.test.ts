@@ -22,6 +22,7 @@ describe.skipIf(skip)('V2 multi-branch shift contract', () => {
   const branchC = randomUUID();
   const userId = randomUUID();
   const role = `v2_shift_${randomUUID().slice(0, 8)}`;
+  let shiftId = '';
 
   async function asUser<T>(fn: () => Promise<T>): Promise<T> {
     await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
@@ -51,7 +52,7 @@ describe.skipIf(skip)('V2 multi-branch shift contract', () => {
     );
     await client.query(
       `INSERT INTO public.roles (role, name_ar, name_en, permissions, scope, is_active)
-       VALUES ($1, 'V2 shift user', 'V2 shift user', '["pos.sell","shifts.view","shifts.open","shifts.close"]'::jsonb, 'global', true)`,
+       VALUES ($1, 'V2 shift user', 'V2 shift user', '["pos.sell","shifts.view","shifts.open"]'::jsonb, 'global', true)`,
       [role],
     );
     await client.query(`ALTER TABLE public.users DISABLE TRIGGER trg_users_role_guard`);
@@ -79,6 +80,7 @@ describe.skipIf(skip)('V2 multi-branch shift contract', () => {
     ));
     expect(opened).toMatchObject({ success: true, branch_id: branchB });
     expect(opened.shift_id).toBeTruthy();
+    shiftId = opened.shift_id || '';
   });
 
   it('returns the same open shift regardless of the selected UI branch', async () => {
@@ -101,5 +103,29 @@ describe.skipIf(skip)('V2 multi-branch shift contract', () => {
       [branchC, 0],
     ));
     expect(denied).toMatchObject({ success: false, error: 'BRANCH_MISMATCH' });
+  });
+
+  it('does not let the shift owner close without shifts.close', async () => {
+    const denied = await asUser(() => rpc(
+      `SELECT public.close_shift($1, $2, $3) AS r`,
+      [shiftId, 100, 'no close permission'],
+    ));
+    expect(denied).toMatchObject({ success: false, error: 'SHIFT_CLOSE_DENIED' });
+  });
+
+  it('closes the own shift after shifts.close is explicitly granted', async () => {
+    await client.query(
+      `UPDATE public.roles
+       SET permissions = permissions || '["shifts.close"]'::jsonb
+       WHERE role = $1`,
+      [role],
+    );
+
+    const closed = await asUser(() => rpc(
+      `SELECT public.close_shift($1, $2, $3) AS r`,
+      [shiftId, 100, 'authorized close'],
+    ));
+    expect(closed.success).toBe(true);
+    expect(closed.shift_id).toBe(shiftId);
   });
 });
