@@ -11,6 +11,7 @@ type ApprovalResult = {
   error?: string;
   request_id?: string;
   status?: string;
+  self_override?: boolean;
 };
 
 describe.skipIf(skip)('cashier / manager approval E2E', () => {
@@ -104,15 +105,36 @@ describe.skipIf(skip)('cashier / manager approval E2E', () => {
     expect(row.rows[0]).toMatchObject({ status: 'pending', approver_id: null });
   });
 
-  it('forbids self-approval even when the requester has review permission', async (ctx) => {
+  it('requires explicit approvals.override for manager self-approval', async (ctx) => {
     if (!impersonationAvailable) return ctx.skip();
 
-    const created = await request(ids.users.branch_manager, 'open_drawer', 'shift', ids.shiftA);
-    expect(created.success).toBe(true);
+    await client.query(`
+      UPDATE public.roles
+      SET permissions = permissions - 'approvals.override'
+      WHERE role = 'branch_manager'
+    `);
 
-    const selfDecision = await decide(ids.users.branch_manager, created.request_id!, true);
-    expect(selfDecision.success).toBe(false);
-    expect(selfDecision.error).toBe('SELF_APPROVAL_FORBIDDEN');
+    const withoutOverride = await request(ids.users.branch_manager, 'open_drawer', 'shift', ids.shiftA);
+    expect(withoutOverride.success).toBe(true);
+
+    const forbidden = await decide(ids.users.branch_manager, withoutOverride.request_id!, true);
+    expect(forbidden.success).toBe(false);
+    expect(forbidden.error).toBe('SELF_APPROVAL_FORBIDDEN');
+
+    await client.query(`
+      UPDATE public.roles
+      SET permissions = CASE
+        WHEN permissions ? 'approvals.override' THEN permissions
+        ELSE permissions || '["approvals.override"]'::jsonb
+      END
+      WHERE role = 'branch_manager'
+    `);
+
+    const withOverride = await request(ids.users.branch_manager, 'open_drawer', 'shift', ids.shiftA);
+    expect(withOverride.success).toBe(true);
+
+    const approved = await decide(ids.users.branch_manager, withOverride.request_id!, true);
+    expect(approved).toMatchObject({ success: true, status: 'approved', self_override: true });
   });
 
   it('records requester and manager audit events with the correct branch', async (ctx) => {
