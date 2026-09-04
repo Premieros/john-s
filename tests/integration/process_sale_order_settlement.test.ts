@@ -29,6 +29,23 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
     return r.rows[0].id;
   }
 
+  async function insertOrderItem(orderId: string): Promise<void> {
+    await client.query(
+      `INSERT INTO public.order_items
+         (order_id, product_id, product_name, unit_name, quantity, unit_price, discount_amount, bonus_quantity, total)
+       VALUES ($1, $2, '045 C1 Product', 'piece', 1, 100, 0, 0, 100)`,
+      [orderId, productId],
+    );
+  }
+
+  async function sendToKitchen(orderId: string) {
+    const res = await client.query<{ r: { success: boolean; error?: string; detail?: string; items_sent_count?: number } }>(
+      `SELECT public.send_to_kitchen($1) AS r`,
+      [orderId],
+    );
+    return res.rows[0].r;
+  }
+
   async function settle(invoiceNumber: string, orderId: string | null, opts: { tableId?: string | null } = {}) {
     const res = await client.query<{ r: { success: boolean; error?: string; sale_id?: string; detail?: string } }>(
       `SELECT public.process_sale($1, $2, $3, NULL, NULL, 100, 0, 'amount', 0, 0, 100, 100, 'cash', 'completed',
@@ -48,7 +65,7 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
 
   async function batchQty(): Promise<number> {
     const r = await client.query<{ q: string }>(
-      `SELECT quantity::text AS q FROM public.inventory_unit_batches WHERE unit_id = $1 AND warehouse_id = $2`,
+      `SELECT COALESCE(SUM(quantity), 0)::text AS q FROM public.inventory_unit_batches WHERE unit_id = $1 AND warehouse_id = $2`,
       [unitId, warehouseId],
     );
     return Number(r.rows[0].q);
@@ -61,7 +78,7 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
 
     await client.query(`INSERT INTO public.branches (id, name) VALUES ($1, $2)`, [branchId, '045 C1 Branch']);
     await client.query(
-      `INSERT INTO public.warehouses (id, name, branch_id, is_active) VALUES ($1, $2, $3, true)`,
+      `INSERT INTO public.warehouses (id, name, branch_id, is_active, is_default) VALUES ($1, $2, $3, true, true)`,
       [warehouseId, '045 C1 Warehouse', branchId],
     );
     await client.query(
@@ -116,7 +133,13 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
 
   it('pays a held takeaway order (table_id NULL)', async () => {
     const orderId = await insertOrder('held', { tableId: null, orderType: 'takeaway' });
+    await insertOrderItem(orderId);
     const before = await batchQty();
+
+    const sent = await sendToKitchen(orderId);
+    expect(sent.success, JSON.stringify(sent)).toBe(true);
+    expect(sent.items_sent_count).toBe(1);
+    expect(await batchQty()).toBe(before - 1);
 
     const r = await settle(`045-TAK-${Date.now()}`, orderId);
     expect(r.success).toBe(true);
@@ -133,12 +156,18 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
     );
     expect(sale.rows[0].order_type).toBe('takeaway');
     expect(sale.rows[0].table_id).toBeNull();
+    // Payment consumes the kitchen snapshot; it must not deduct stock twice.
     expect(await batchQty()).toBe(before - 1);
   });
 
   it('rejects a second payment of the same order WITHOUT writing a sale', async () => {
     const orderId = await insertOrder('held', { tableId: null, orderType: 'takeaway' });
+    await insertOrderItem(orderId);
     const beforeQty = await batchQty();
+
+    const sent = await sendToKitchen(orderId);
+    expect(sent.success, JSON.stringify(sent)).toBe(true);
+    expect(await batchQty()).toBe(beforeQty - 1);
 
     const first = await settle(`045-DBL-${Date.now()}`, orderId);
     expect(first.success).toBe(true);
@@ -167,7 +196,7 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
 
     const r = await settle(prefix, foreignOrderId);
     expect(r.success).toBe(false);
-    expect(r.error).toBe('ORDER_NOT_FOUND');
+    expect(r.error).toBe('BRANCH_MISMATCH');
     expect(await saleCount(prefix)).toBe(saleCountBefore);
 
     const order = await client.query(`SELECT status, payment_status FROM public.orders WHERE id = $1`, [foreignOrderId]);
@@ -177,7 +206,11 @@ describe.skipIf(skip)('process_sale linked-order settlement (045 C1)', () => {
 
   it('frees the table when settling a held dine-in order', async () => {
     const orderId = await insertOrder('held', { tableId, orderType: 'dine_in' });
+    await insertOrderItem(orderId);
     await client.query(`UPDATE public.dining_tables SET status = 'occupied' WHERE id = $1`, [tableId]);
+
+    const sent = await sendToKitchen(orderId);
+    expect(sent.success, JSON.stringify(sent)).toBe(true);
 
     const r = await settle(`045-DIN-${Date.now()}`, orderId, { tableId });
     expect(r.success).toBe(true);
