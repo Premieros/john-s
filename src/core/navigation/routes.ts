@@ -9,6 +9,7 @@ export const APP_ROUTES = {
   subscription: '/subscription',
   subscriptions: '/subscriptions',
   superAdmin: '/super-admin',
+  frontendV2: '/v2',
   pos: '/pos',
   operationsCenter: '/operations',
   inventoryCenter: '/inventory-center',
