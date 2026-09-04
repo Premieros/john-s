@@ -18,6 +18,7 @@ export interface PosPermissions {
   canRefund: boolean;
   canTransferOrder: boolean;
   canSplitOrder: boolean;
+  canOpenShift: boolean;
   canCloseShift: boolean;
   canPrint: boolean;
   canChangeBranch: boolean;
@@ -48,6 +49,7 @@ export function usePosPermissions(): PosPermissions {
     canRefund: can('pos.refund'),
     canTransferOrder: can('pos.transfer_order'),
     canSplitOrder: can('pos.split_order'),
+    canOpenShift: can('shifts.open'),
     canCloseShift: can('shifts.close'),
     canPrint: can('sales.print'),
     canChangeBranch: can('pos.change_branch'),

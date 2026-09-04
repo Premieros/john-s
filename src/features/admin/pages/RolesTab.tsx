@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, Save, Trash2, ShieldCheck, Search, CheckCheck } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useToast } from '@/components/Toast';
@@ -10,7 +10,7 @@ import { Input, Select } from '@/components/Input';
 import { Modal } from '@/components/Modal';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { logAudit } from '@/lib/audit';
-import { ALL_PERMISSIONS, PERMISSION_GROUPS, PERMISSION_LABELS, isAdminRole, ROLE_META, type Permission } from '@/lib/permissions';
+import { ALL_PERMISSIONS, PERMISSION_GROUPS, PERMISSION_LABELS, ROLE_META, type Permission } from '@/lib/permissions';
 import type { Role } from '@/lib/types';
 
 export function RolesTab() {
@@ -118,7 +118,7 @@ export function RolesTab() {
   const currentRole = selectedRole || roles[0] || '';
   const currentDef = rolesList.find((r) => r.role === currentRole);
   const currentSystem = !!ROLE_META[currentRole as Role];
-  const currentAdmin = isAdminRole(currentRole as Role);
+  const currentPlatformAdmin = currentRole === 'super_admin';
   const currentCustom = !!currentRole && !currentSystem;
   const currentPermissions = drafts[currentRole] ?? rolePermissionsMap[currentRole] ?? [];
 
@@ -156,7 +156,7 @@ export function RolesTab() {
               <ShieldCheck className="w-5 h-5 text-brand-600 dark:text-brand-400" /> {t('rolesTab')}
             </h3>
             <p className="mt-1 text-sm text-ui-subtle">
-              {isAr ? 'اختر الدور ثم فعّل ما يحتاجه فقط. جميع صلاحيات النظام متاحة هنا في مكان واحد.' : 'Choose a role, then enable only what it needs. Every system permission is managed here.'}
+              {isAr ? 'اسم الدور للتنظيم فقط؛ الصلاحيات المحددة هنا هي التي تتحكم فعليًا في الوصول. سوبر أدمن فقط خارج هذه المصفوفة.' : 'Role names are organizational labels; the permissions selected here control real access. Only Super Admin is outside this matrix.'}
             </p>
           </div>
           <Button size="sm" onClick={() => setCreating(true)}><Plus className="w-4 h-4" /> {isAr ? 'دور جديد' : 'New role'}</Button>
@@ -169,6 +169,7 @@ export function RolesTab() {
             const def = rolesList.find((r) => r.role === role);
             const count = (drafts[role] ?? rolePermissionsMap[role] ?? []).length;
             const active = role === currentRole;
+            const platformAdmin = role === 'super_admin';
             return (
               <button
                 key={role}
@@ -178,7 +179,7 @@ export function RolesTab() {
               >
                 <span className="block text-sm font-semibold">{roleMeta[role]?.[lang] || role}</span>
                 <span className="block text-[11px] text-ui-subtle mt-0.5">
-                  {isAdminRole(role as Role) ? (isAr ? 'وصول كامل' : 'Full access') : `${count}/${ALL_PERMISSIONS.length}`}
+                  {platformAdmin ? (isAr ? 'وصول منصة كامل' : 'Full platform access') : `${count}/${ALL_PERMISSIONS.length}`}
                   {def?.scope === 'branch' ? ` · ${isAr ? 'فرع' : 'Branch'}` : ''}
                 </span>
               </button>
@@ -200,11 +201,11 @@ export function RolesTab() {
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-xs text-ui-subtle"><code>{currentRole}</code> · {currentAdmin ? ALL_PERMISSIONS.length : currentPermissions.length} / {ALL_PERMISSIONS.length} {isAr ? 'صلاحية' : 'permissions'}</p>
+              <p className="mt-1 text-xs text-ui-subtle"><code>{currentRole}</code> · {currentPlatformAdmin ? ALL_PERMISSIONS.length : currentPermissions.length} / {ALL_PERMISSIONS.length} {isAr ? 'صلاحية' : 'permissions'}</p>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              {!currentAdmin && (
+              {!currentPlatformAdmin && (
                 <>
                   <Button size="sm" variant="outline" onClick={() => setAll(currentRole, true)}><CheckCheck className="w-4 h-4" /> {t('all')}</Button>
                   <Button size="sm" variant="outline" onClick={() => setAll(currentRole, false)}>{t('none')}</Button>
@@ -217,9 +218,9 @@ export function RolesTab() {
             </div>
           </div>
 
-          {currentAdmin ? (
+          {currentPlatformAdmin ? (
             <div className="rounded-xl border border-brand-200 bg-brand-50/70 p-4 text-sm text-brand-800 dark:border-brand-900 dark:bg-brand-950/20 dark:text-brand-300">
-              {isAr ? 'هذا دور إداري كامل الصلاحيات ولا يمكن تقييده من شاشة الصلاحيات.' : 'This is a full-access administrative role and cannot be restricted here.'}
+              {isAr ? 'سوبر أدمن هو دور المنصة الوحيد الذي يملك تجاوزًا كاملًا، ولا يتم تقييده من مصفوفة الصلاحيات.' : 'Super Admin is the only platform role with an implicit full-access bypass and is not restricted by the permission matrix.'}
             </div>
           ) : (
             <>
@@ -286,7 +287,7 @@ export function RolesTab() {
           <Input label={isAr ? 'الاسم (عربي)' : 'Name (Arabic)'} value={createForm.name_ar} onChange={(e) => setCreateForm({ ...createForm, name_ar: e.target.value })} />
           <Input label={isAr ? 'الاسم (إنجليزي)' : 'Name (English)'} value={createForm.name_en} onChange={(e) => setCreateForm({ ...createForm, name_en: e.target.value })} />
           <Select label={isAr ? 'النطاق' : 'Scope'} value={createForm.scope} onChange={(e) => setCreateForm({ ...createForm, scope: e.target.value as RoleScope })}>
-            <option value="global">{isAr ? 'عام (كل الفروع)' : 'Global (all branches)'}</option>
+            <option value="global">{isAr ? 'عام (كل الفروع الممنوحة)' : 'Global (all granted branches)'}</option>
             <option value="branch">{isAr ? 'فرع محدد' : 'Branch-specific'}</option>
           </Select>
           {createForm.scope === 'branch' && (

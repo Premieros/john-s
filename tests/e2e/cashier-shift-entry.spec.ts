@@ -69,7 +69,16 @@ async function mockCashierBackend(page: Page) {
     });
   });
   await page.route(`${SUPABASE_ORIGIN}/rest/v1/roles**`, async (route) => {
-    return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        role: 'cashier',
+        name: 'Cashier',
+        permissions: ['dashboard.view', 'pos.sell', 'shifts.view', 'shifts.open'],
+        is_system: true,
+      }]),
+    });
   });
   await page.route(`${SUPABASE_ORIGIN}/rest/v1/branches**`, async (route) => {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: BRANCH_ID, name: 'E2E Branch', name_en: 'E2E Branch', is_active: true }]) });

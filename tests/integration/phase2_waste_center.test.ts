@@ -12,11 +12,13 @@ describe.skipIf(skip)('Phase 2 — waste center', () => {
   const whId = randomUUID();
   const catId = randomUUID();
   const rmId = randomUUID();
+  const adminUser = randomUUID();
+  const adminRole = `phase2_waste_${randomUUID().slice(0, 8)}`;
   let wasteId: string;
 
   async function asAdmin<T>(fn: () => Promise<T>): Promise<T> {
-    await client.query(`SELECT set_config('app.user_id', $1, true)`, [randomUUID()]);
-    await client.query(`SET LOCAL ROLE service_role`);
+    await client.query(`SELECT set_config('app.user_id', $1, true)`, [adminUser]);
+    await client.query(`SET LOCAL ROLE authenticated`);
     await client.query(`SAVEPOINT phase2_waste_admin`);
     try {
       const result = await fn();
@@ -55,6 +57,16 @@ describe.skipIf(skip)('Phase 2 — waste center', () => {
     await client.query('BEGIN');
     await client.query(`ALTER TABLE public.users DISABLE TRIGGER trg_users_role_guard`);
     await client.query(`INSERT INTO public.branches (id, name) VALUES ($1, 'Phase2 Test')`, [branchId]);
+    await client.query(
+      `INSERT INTO public.roles (role, name_ar, name_en, permissions, scope, is_active)
+       VALUES ($1, 'Phase2 waste approver', 'Phase2 waste approver', '["production.waste"]'::jsonb, 'global', true)`,
+      [adminRole],
+    );
+    await client.query(
+      `INSERT INTO public.users (id, email, full_name, role, branch_id, is_active)
+       VALUES ($1, $2, 'Phase2 Waste Approver', $3, $4, true)`,
+      [adminUser, `${randomUUID()}@test.local`, adminRole, branchId],
+    );
     await client.query(`INSERT INTO public.warehouses (id, name, branch_id) VALUES ($1, 'WH', $2)`, [whId, branchId]);
     await client.query(`INSERT INTO public.raw_materials (id, code, name, min_stock, default_cost, is_active, branch_id) VALUES ($1, 'RM-W', 'Flour', 0, 10, true, $2)`, [rmId, branchId]);
     await client.query(`INSERT INTO public.waste_categories (id, name, name_en) VALUES ($1, 'Test Waste', 'Test Waste')`, [catId]);

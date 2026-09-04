@@ -8,6 +8,9 @@ import { APP_ROUTES } from '@/core/navigation/routes';
 
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then(m => ({ default: m.LoginPage })));
 const DashboardPage = lazy(() => import('../features/dashboard/pages/DashboardEnhancedPage').then(m => ({ default: m.DashboardEnhancedPage })));
+const V2HomePage = lazy(() => import('../v2/pages/V2HomePage').then(m => ({ default: m.V2HomePage })));
+const V2PosPage = lazy(() => import('../v2/pages/V2PosPage').then(m => ({ default: m.V2PosPage })));
+const V2ShiftsPage = lazy(() => import('../v2/pages/V2ShiftsPage').then(m => ({ default: m.V2ShiftsPage })));
 const OperationsCenterPage = lazy(() => import('../features/operations/pages/OperationsCenterPage').then(m => ({ default: m.OperationsCenterPage })));
 const InventoryCenterPage = lazy(() => import('../features/inventory/pages/InventoryCenterPage').then(m => ({ default: m.InventoryCenterPage })));
 const ProcurementCenterPage = lazy(() => import('../features/trade/pages/ProcurementCenterPage').then(m => ({ default: m.ProcurementCenterPage })));
@@ -51,6 +54,7 @@ const JournalPage = lazy(() => import('../features/accounting/pages/JournalPage'
 const TreasuryPage = lazy(() => import('../features/accounting/pages/TreasuryPage').then(m => ({ default: m.TreasuryPage })));
 const ReconciliationPage = lazy(() => import('../features/accounting/pages/ReconciliationPage').then(m => ({ default: m.ReconciliationPage })));
 const UsersPage = lazy(() => import('../features/admin/pages/UsersPage').then(m => ({ default: m.UsersPage })));
+const ApprovalCenterPage = lazy(() => import('../features/admin/pages/ApprovalCenterPage').then(m => ({ default: m.ApprovalCenterPage })));
 const AuditLogPage = lazy(() => import('../features/reporting/pages/AuditLogPage').then(m => ({ default: m.AuditLogPage })));
 const SettingsControlCenterPage = lazy(() => import('../features/admin/pages/SettingsControlCenterPage').then(m => ({ default: m.SettingsControlCenterPage })));
 const SuperAdminConsolePage = lazy(() => import('../features/admin/pages/SuperAdminConsolePage').then(m => ({ default: m.SuperAdminConsolePage })));
@@ -73,42 +77,19 @@ function NoAccessPage() {
 }
 
 function resolveLandingRoute(can: (permission: Permission) => boolean, role?: string | null): string | null {
-  // Keep the dashboard as the default whenever the user is allowed to see it.
-  // Only users without dashboard access fall through to their first permitted workspace.
   if (can('dashboard.view')) return APP_ROUTES.dashboard;
   if (role === 'cashier' && can('pos.sell')) return APP_ROUTES.pos;
-
   const candidates: Array<[Permission, string]> = [
-    ['pos.sell', APP_ROUTES.pos],
-    ['pos.kds_view', APP_ROUTES.kitchenDisplay],
-    ['floor_plan.view', APP_ROUTES.floorPlan],
-    ['products.view', APP_ROUTES.products],
-    ['categories.view', APP_ROUTES.categories],
-    ['components.view', APP_ROUTES.components],
-    ['raw_materials.view', APP_ROUTES.rawMaterials],
-    ['recipes.view', APP_ROUTES.recipes],
-    ['inventory.view', APP_ROUTES.inventory],
-    ['warehouses.view', APP_ROUTES.warehouses],
-    ['inventory.transfers', APP_ROUTES.transfers],
-    ['inventory.ledger.view', APP_ROUTES.inventoryLedger],
-    ['purchases.view', APP_ROUTES.purchases],
-    ['customers.view', APP_ROUTES.customers],
-    ['suppliers.view', APP_ROUTES.suppliers],
-    ['expenses.view', APP_ROUTES.expenses],
-    ['sales.view', APP_ROUTES.sales],
-    ['shifts.view', APP_ROUTES.shifts],
-    ['reports.view', APP_ROUTES.reports],
-    ['reports.financial', APP_ROUTES.financialReports],
-    ['accounts.view', APP_ROUTES.accounts],
-    ['users.view', APP_ROUTES.users],
-    ['audit.view', APP_ROUTES.auditLog],
-    ['branches.manage', APP_ROUTES.branches],
-    ['settings.manage', APP_ROUTES.settings],
+    ['pos.sell', APP_ROUTES.pos], ['pos.kds_view', APP_ROUTES.kitchenDisplay], ['floor_plan.view', APP_ROUTES.floorPlan],
+    ['products.view', APP_ROUTES.products], ['categories.view', APP_ROUTES.categories], ['components.view', APP_ROUTES.components],
+    ['raw_materials.view', APP_ROUTES.rawMaterials], ['recipes.view', APP_ROUTES.recipes], ['inventory.view', APP_ROUTES.inventory],
+    ['warehouses.view', APP_ROUTES.warehouses], ['inventory.transfers', APP_ROUTES.transfers], ['inventory.ledger.view', APP_ROUTES.inventoryLedger],
+    ['purchases.view', APP_ROUTES.purchases], ['customers.view', APP_ROUTES.customers], ['suppliers.view', APP_ROUTES.suppliers],
+    ['expenses.view', APP_ROUTES.expenses], ['sales.view', APP_ROUTES.sales], ['shifts.view', APP_ROUTES.shifts],
+    ['reports.view', APP_ROUTES.reports], ['reports.financial', APP_ROUTES.financialReports], ['accounts.view', APP_ROUTES.accounts],
+    ['users.view', APP_ROUTES.users], ['audit.view', APP_ROUTES.auditLog], ['branches.manage', APP_ROUTES.branches], ['settings.manage', APP_ROUTES.settings],
   ];
-
-  for (const [permission, route] of candidates) {
-    if (can(permission)) return route;
-  }
+  for (const [permission, route] of candidates) if (can(permission)) return route;
   return null;
 }
 
@@ -119,7 +100,6 @@ function ProtectedRoute({ children, permission, fullscreen, superAdminOnly = fal
   if (loading || rolesLoading) return <PageLoader />;
   if (!session) return <Navigate to={APP_ROUTES.login} replace />;
   if (!user) return <PageLoader />;
-
   const landingRoute = resolveLandingRoute(can, user.role);
   if (superAdminOnly && user.role !== 'super_admin') return landingRoute ? <Navigate to={landingRoute} replace /> : <NoAccessPage />;
   if (ownerOnly && !isAdminRole(user.role)) return landingRoute ? <Navigate to={landingRoute} replace /> : <NoAccessPage />;
@@ -159,6 +139,9 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.register} element={<Navigate to={APP_ROUTES.login} replace />} />
         <Route path={APP_ROUTES.subscription} element={<DefaultRoute />} />
         <Route path={APP_ROUTES.subscriptions} element={<Navigate to={APP_ROUTES.superAdmin} replace />} />
+        <Route path={APP_ROUTES.frontendV2} element={<ProtectedRoute fullscreen><V2HomePage /></ProtectedRoute>} />
+        <Route path={`${APP_ROUTES.frontendV2}/pos`} element={<ProtectedRoute permission="pos.sell" fullscreen><V2PosPage /></ProtectedRoute>} />
+        <Route path={`${APP_ROUTES.frontendV2}/shifts`} element={<ProtectedRoute permission="shifts.view" fullscreen><V2ShiftsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.dashboard} element={<ProtectedRoute permission="dashboard.view"><DashboardPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.operationsCenter} element={<ProtectedRoute permission="dashboard.view"><OperationsCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryCenter} element={<ProtectedRoute permission="inventory.view"><InventoryCenterPage /></ProtectedRoute>} />
@@ -211,6 +194,7 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.reconciliation} element={<ProtectedRoute permission="accounts.view"><ReconciliationPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.users} element={<ProtectedRoute permission="users.view"><UsersPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.employees} element={<ProtectedRoute permission="users.view"><Navigate to={APP_ROUTES.users} replace /></ProtectedRoute>} />
+        <Route path={APP_ROUTES.approvals} element={<ProtectedRoute permission="settings.manage"><ApprovalCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.auditLog} element={<ProtectedRoute permission="audit.view"><AuditLogPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.settings} element={<ProtectedRoute permission="settings.manage"><SettingsControlCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.superAdmin} element={<ProtectedRoute superAdminOnly><SuperAdminConsolePage /></ProtectedRoute>} />

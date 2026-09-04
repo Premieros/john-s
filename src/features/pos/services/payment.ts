@@ -143,9 +143,27 @@ export async function nextInvoiceNumber(): Promise<string | null> {
   return `INV-${dateStr}-${rand}`;
 }
 
-export async function fetchBranchWarehouseId(branchId: string): Promise<string | null> {
+export async function fetchBranchWarehouseId(branchId: string, orderId?: string | null): Promise<string | null> {
   try {
-    const { data } = await supabase.from('warehouses').select('id').eq('branch_id', branchId).eq('is_active', true);
+    if (orderId) {
+      const { data: order } = await supabase
+        .from('orders')
+        .select('inventory_warehouse_id')
+        .eq('id', orderId)
+        .eq('branch_id', branchId)
+        .maybeSingle();
+      const orderWarehouseId = (order as { inventory_warehouse_id?: string | null } | null)?.inventory_warehouse_id;
+      if (orderWarehouseId) return orderWarehouseId;
+    }
+
+    const { data } = await supabase
+      .from('warehouses')
+      .select('id,is_default,created_at')
+      .eq('branch_id', branchId)
+      .eq('is_active', true)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
     const rows = (data as { id: string }[] | null) || [];
     return rows.length > 0 ? rows[0].id : null;
   } catch {

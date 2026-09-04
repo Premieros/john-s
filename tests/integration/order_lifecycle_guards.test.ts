@@ -42,7 +42,7 @@ describe.skipIf(skip)('order-lifecycle guards (047 H1/H3/H4/M9/L2)', () => {
     client = openDb(dbUrl!); await client.connect(); await client.query('BEGIN'); await client.query(`ALTER TABLE public.users DISABLE TRIGGER trg_users_role_guard`);
     await client.query(`INSERT INTO public.organizations (id, name, slug) VALUES ($1, $2, $3)`, [orgId, '047 Org', `047-${randomUUID().slice(0, 8)}`]);
     await client.query(`INSERT INTO public.branches (id, name, organization_id) VALUES ($1, $2, $3)`, [branchId, '047 Branch', orgId]);
-    await client.query(`INSERT INTO public.warehouses (id, name, branch_id, is_active) VALUES ($1, $2, $3, true)`, [whId, '047 WH', branchId]);
+    await client.query(`INSERT INTO public.warehouses (id, name, branch_id, is_active, is_default) VALUES ($1, $2, $3, true, true)`, [whId, '047 WH', branchId]);
     await client.query(`INSERT INTO public.products (id, name, branch_id, sale_price, cost_price, is_active) VALUES ($1, $2, $3, 100, 50, true)`, [prodId, '047 Product', branchId]);
     await client.query(`INSERT INTO public.inventory_units (id, code, name, unit_type, branch_id, cost_price, sale_price, is_active) VALUES ($1, $2, $3, 'ready', $4, 50, 100, true)`, [unitId, `047-${randomUUID()}`, '047 Unit', branchId]);
     await client.query(`INSERT INTO public.product_unit_links (product_id, unit_id, quantity) VALUES ($1, $2, 1)`, [prodId, unitId]);
@@ -60,11 +60,24 @@ describe.skipIf(skip)('order-lifecycle guards (047 H1/H3/H4/M9/L2)', () => {
   it('process_sale stores guest_count on the sale (M9)', async () => { const t = await makeTable(); const res = await settle(`INV-${randomUUID()}`, { tableId: t, orderId: null, orderType: 'dine_in', guestCount: 6 }); expect(res.success).toBe(true); const sale = await client.query(`SELECT guest_count FROM public.sales WHERE id = $1`, [res.sale_id]); expect(sale.rows[0].guest_count).toBe(6); });
   it('process_sale does NOT free a table that still has another open order (H4)', async () => {
     const t = await makeTable();
+    const first = await client.query<{ id: string }>(`INSERT INTO public.orders (order_number, branch_id, order_type, status, table_id, subtotal, discount_amount, tax_amount, total) VALUES ($1, $2, 'dine_in', 'open', $3, 100, 0, 0, 100) RETURNING id`, [`ORD-${randomUUID()}`, branchId, t]);
     await client.query(`INSERT INTO public.orders (order_number, branch_id, order_type, status, table_id, subtotal, discount_amount, tax_amount, total) VALUES ($1, $2, 'dine_in', 'open', $3, 100, 0, 0, 100)`, [`ORD-${randomUUID()}`, branchId, t]);
-    await client.query(`INSERT INTO public.orders (order_number, branch_id, order_type, status, table_id, subtotal, discount_amount, tax_amount, total) VALUES ($1, $2, 'dine_in', 'open', $3, 100, 0, 0, 100)`, [`ORD-${randomUUID()}`, branchId, t]);
+    await client.query(
+      `INSERT INTO public.order_items
+         (order_id, product_id, unit_name, quantity, unit_price, total)
+       VALUES ($1, $2, 'piece', 1, 100, 100)`,
+      [first.rows[0].id, prodId],
+    );
     await client.query(`UPDATE public.dining_tables SET status = 'occupied' WHERE id = $1`, [t]);
-    const toSettle = await client.query(`SELECT id FROM public.orders WHERE table_id = $1 AND status = 'open' LIMIT 1`, [t]);
-    const res = await settle(`INV-${randomUUID()}`, { tableId: t, orderId: toSettle.rows[0].id, orderType: 'dine_in' });
+
+    const sent = await asUser(async () => {
+      const r = await client.query(`SELECT public.send_to_kitchen($1) AS r`, [first.rows[0].id]);
+      return r.rows[0].r;
+    });
+    expect(sent.success, JSON.stringify(sent)).toBe(true);
+    expect(sent.items_sent_count).toBe(1);
+
+    const res = await settle(`INV-${randomUUID()}`, { tableId: t, orderId: first.rows[0].id, orderType: 'dine_in' });
     expect(res.success).toBe(true); expect(await tableStatus(t)).toBe('occupied');
   });
   it('CHECK constraints reject impossible status/type values (L2)', async () => {

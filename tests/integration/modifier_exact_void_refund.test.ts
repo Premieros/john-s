@@ -22,7 +22,7 @@ afterAll(async () => {
 });
 
 describe('modifier exact-line lifecycle contracts', () => {
-  it('targets kitchen void by order_item_id and never inventory', async () => {
+  it('targets kitchen void by order_item_id and restores its exact inventory effects', async () => {
     if (!canRun) return;
     const result = await client.query(`
       SELECT pg_get_functiondef(
@@ -32,11 +32,11 @@ describe('modifier exact-line lifecycle contracts', () => {
     const def = String(result.rows[0].def);
     expect(def).toContain('oi.id = p_order_item_id');
     expect(def).toContain("s.order_item_id = oi.id");
-    expect(def).toContain("'inventory_changed', false");
+    expect(def).toContain('_restore_kitchen_inventory_for_void');
+    expect(def).toContain("'inventory_changed'");
     expect(def).toContain('consume_manager_approval');
     expect(def).not.toContain('inventory_batches');
     expect(def).not.toContain('inventory_unit_batches');
-    expect(def).not.toContain('_raw_add(');
   });
 
   it('makes exact-line void available to authenticated clients without exposing internal helpers', async () => {

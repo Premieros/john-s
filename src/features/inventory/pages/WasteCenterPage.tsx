@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Check, X, BarChart3 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useToast } from '@/components/Toast';
@@ -20,15 +20,25 @@ const WASTE_TYPES = [
   { value: 'damaged', ar: 'تالف', en: 'Damaged' },
 ] as const;
 
+type ProductOption = { id: string; name: string; name_en?: string | null; sale_price?: number | null; cost_price?: number | null };
+
 interface WasteForm {
   waste_category_id: string;
   waste_type: string;
+  product_id: string;
   quantity: number;
   unit_cost: number;
   reason: string;
 }
 
-const EMPTY_FORM: WasteForm = { waste_category_id: '', waste_type: 'raw_material', quantity: 1, unit_cost: 0, reason: '' };
+const EMPTY_FORM: WasteForm = {
+  waste_category_id: '',
+  waste_type: 'finished_good',
+  product_id: '',
+  quantity: 1,
+  unit_cost: 0,
+  reason: '',
+};
 
 export function WasteCenterPage() {
   const { lang } = useLanguage();
@@ -39,6 +49,7 @@ export function WasteCenterPage() {
 
   const [entries, setEntries] = useState<WasteEntry[]>([]);
   const [categories, setCategories] = useState<WasteCategory[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -49,29 +60,60 @@ export function WasteCenterPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [catRes, entryRes] = await Promise.all([
+      const productQuery = supabase
+        .from('products')
+        .select('id,name,name_en,sale_price,cost_price')
+        .eq('is_active', true)
+        .order('name');
+      if (branchFilter) productQuery.eq('branch_id', branchFilter);
+
+      const entryQuery = supabase
+        .from('waste_entries')
+        .select('*, waste_category:waste_categories(*), product:products(id,name,name_en)')
+        .order('created_at', { ascending: false });
+      if (branchFilter) entryQuery.eq('branch_id', branchFilter);
+
+      const [catRes, productRes, entryRes] = await Promise.all([
         supabase.from('waste_categories').select('*').eq('is_active', true).order('name'),
-        supabase.from('waste_entries').select('*, waste_category:waste_categories(*)').order('created_at', { ascending: false }),
+        productQuery,
+        entryQuery,
       ]);
       if (catRes.error) throw catRes.error;
+      if (productRes.error) throw productRes.error;
       if (entryRes.error) throw entryRes.error;
       setCategories(catRes.data ?? []);
+      setProducts((productRes.data ?? []) as ProductOption[]);
       setEntries((entryRes.data ?? []) as unknown as WasteEntry[]);
-    } catch (err) { show(ar ? 'خطأ في التحميل' : 'Load error: ' + String((err as Error).message ?? err), 'error'); }
-    finally { setLoading(false); }
-  }, [ar, show]);
+    } catch (err) {
+      show((ar ? 'خطأ في التحميل: ' : 'Load error: ') + String((err as Error).message ?? err), 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [ar, branchFilter, show]);
 
   useEffect(() => { void load(); }, [load]);
 
-  const filtered = entries.filter(e => {
+  const filtered = useMemo(() => entries.filter(e => {
     if (filterType && e.waste_type !== filterType) return false;
     if (filterStatus && e.status !== filterStatus) return false;
     return true;
-  });
+  }), [entries, filterStatus, filterType]);
+
+  const productRequired = ['finished_good', 'production', 'expired', 'damaged'].includes(form.waste_type);
 
   const handleCreate = async () => {
-    if (!form.waste_category_id || form.quantity <= 0) { show(ar ? 'أكمل الحقول المطلوبة' : 'Fill required fields', 'error'); return; }
-    if (!branchFilter) { show(ar ? 'اختر الفرع أولاً' : 'Select a branch first', 'error'); return; }
+    if (!form.waste_category_id || form.quantity <= 0) {
+      show(ar ? 'أكمل الحقول المطلوبة' : 'Fill required fields', 'error');
+      return;
+    }
+    if (productRequired && !form.product_id) {
+      show(ar ? 'اختر المنتج المراد تسجيل هالك له' : 'Select the wasted product', 'error');
+      return;
+    }
+    if (!branchFilter) {
+      show(ar ? 'اختر الفرع أولاً' : 'Select a branch first', 'error');
+      return;
+    }
     try {
       const { error } = await supabase.rpc('create_waste_entry', {
         p_branch_id: branchFilter,
@@ -80,33 +122,36 @@ export function WasteCenterPage() {
         p_quantity: form.quantity,
         p_unit_cost: form.unit_cost,
         p_reason: form.reason || null,
+        p_product_id: form.product_id || null,
       });
       if (error) throw error;
-      show(ar ? 'تم التسجيل' : 'Recorded', 'success');
+      show(ar ? 'تم تسجيل الهالك' : 'Waste recorded', 'success');
       setShowForm(false);
       setForm(EMPTY_FORM);
       void load();
-    } catch (err) { show(String((err as Error).message ?? err), 'error'); }
+    } catch (err) {
+      show(String((err as Error).message ?? err), 'error');
+    }
   };
 
   const handleApprove = async (id: string, approve: boolean) => {
+    let rejectionReason: string | null = null;
     if (!approve) {
-      const reason = prompt(ar ? 'سبب الرفض:' : 'Rejection reason:');
-      if (reason === null) return;
-      try {
-        const { error } = await supabase.rpc('approve_waste', { p_waste_id: id, p_approve: false, p_rejection_reason: reason || null });
-        if (error) throw error;
-        show(ar ? 'تم الرفض' : 'Rejected', 'success');
-        void load();
-      } catch (err) { show(String((err as Error).message ?? err), 'error'); }
-      return;
+      rejectionReason = prompt(ar ? 'سبب الرفض:' : 'Rejection reason:');
+      if (rejectionReason === null) return;
     }
     try {
-      const { error } = await supabase.rpc('approve_waste', { p_waste_id: id, p_approve: true });
+      const { error } = await supabase.rpc('approve_waste', {
+        p_waste_id: id,
+        p_approve: approve,
+        ...(approve ? {} : { p_rejection_reason: rejectionReason || null }),
+      });
       if (error) throw error;
-      show(ar ? 'تم الاعتماد' : 'Approved', 'success');
+      show(approve ? (ar ? 'تم الاعتماد' : 'Approved') : (ar ? 'تم الرفض' : 'Rejected'), 'success');
       void load();
-    } catch (err) { show(String((err as Error).message ?? err), 'error'); }
+    } catch (err) {
+      show(String((err as Error).message ?? err), 'error');
+    }
   };
 
   const typeLabel = (v: string) => WASTE_TYPES.find(w => w.value === v)?.[ar ? 'ar' : 'en'] ?? v;
@@ -115,30 +160,35 @@ export function WasteCenterPage() {
   const baseColumns: Column<WasteEntry>[] = [
     { key: 'created_at', header: ar ? 'التاريخ' : 'Date', render: r => new Date(r.created_at).toLocaleDateString() },
     { key: 'waste_type', header: ar ? 'النوع' : 'Type', render: r => typeLabel(r.waste_type) },
-    { key: 'waste_category', header: ar ? 'الفئة' : 'Category', render: r => { const cat = (r as unknown as { waste_category?: { name?: string } }).waste_category; return cat?.name ?? '-'; } },
+    { key: 'product', header: ar ? 'المنتج' : 'Product', render: r => {
+      const product = (r as unknown as { product?: { name?: string; name_en?: string } }).product;
+      return product?.name || product?.name_en || '-';
+    } },
+    { key: 'waste_category', header: ar ? 'الفئة' : 'Category', render: r => {
+      const cat = (r as unknown as { waste_category?: { name?: string } }).waste_category;
+      return cat?.name ?? '-';
+    } },
     { key: 'quantity', header: ar ? 'الكمية' : 'Qty' },
-    { key: 'unit_cost', header: ar ? 'تكلفة الوحدة' : 'Unit Cost', render: r => r.unit_cost.toLocaleString() },
-    { key: 'total_cost', header: ar ? 'الإجمالي' : 'Total', render: r => r.total_cost.toLocaleString() },
+    { key: 'unit_cost', header: ar ? 'تكلفة الوحدة' : 'Unit Cost', render: r => Number(r.unit_cost || 0).toLocaleString() },
+    { key: 'total_cost', header: ar ? 'الإجمالي' : 'Total', render: r => Number(r.total_cost || 0).toLocaleString() },
     { key: 'reason', header: ar ? 'السبب' : 'Reason', render: r => r.reason ?? '-' },
     { key: 'status', header: ar ? 'الحالة' : 'Status', render: r => <span className={`font-bold ${statusColor(r.status)}`}>{r.status === 'approved' ? (ar ? 'معتمد' : 'Approved') : r.status === 'rejected' ? (ar ? 'مرفوض' : 'Rejected') : (ar ? 'قيد المراجعة' : 'Pending')}</span> },
   ];
 
   const columns: Column<WasteEntry>[] = can('production.waste')
     ? [...baseColumns, {
-        key: 'actions',
-        header: ar ? 'إجراءات' : 'Actions',
-        render: (r: WasteEntry) => r.status === 'pending' ? (
-          <div className="flex gap-1">
-            <button onClick={() => void handleApprove(r.id, true)} className="text-ui-success hover:text-ui-success" title={ar ? 'اعتماد' : 'Approve'}><Check className="h-4 w-4" /></button>
-            <button onClick={() => void handleApprove(r.id, false)} className="text-ui-danger hover:text-ui-danger" title={ar ? 'رفض' : 'Reject'}><X className="h-4 w-4" /></button>
-          </div>
-        ) : null,
-      }]
+      key: 'actions', header: ar ? 'إجراءات' : 'Actions', render: (r: WasteEntry) => r.status === 'pending' ? (
+        <div className="flex gap-1">
+          <button onClick={() => void handleApprove(r.id, true)} className="text-ui-success" title={ar ? 'اعتماد' : 'Approve'}><Check className="h-4 w-4" /></button>
+          <button onClick={() => void handleApprove(r.id, false)} className="text-ui-danger" title={ar ? 'رفض' : 'Reject'}><X className="h-4 w-4" /></button>
+        </div>
+      ) : null,
+    }]
     : baseColumns;
 
   return (
     <DesignSurface testId="waste-center">
-      <DesignPageHeader title={ar ? 'مركز الهالك' : 'Waste Center'} subtitle={ar ? 'تسجيل ومراجعة هالك المواد والمنتجات والإنتاج' : 'Record and review waste for materials, products and production.'} />
+      <DesignPageHeader title={ar ? 'مركز الهالك' : 'Waste Center'} subtitle={ar ? 'تسجيل ومراجعة هالك المنتجات والمواد والإنتاج' : 'Record and review product, material and production waste.'} />
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           {can('production.waste') && <Button onClick={() => setShowForm(true)}><Plus className="h-4 w-4" /> {ar ? 'تسجيل هالك' : 'Record Waste'}</Button>}
@@ -164,11 +214,20 @@ export function WasteCenterPage() {
             <option value="">{ar ? 'اختر...' : 'Select...'}</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
-          <Select label={ar ? 'النوع' : 'Type'} value={form.waste_type} onChange={e => setForm(f => ({ ...f, waste_type: e.target.value }))}>
+          <Select label={ar ? 'النوع' : 'Type'} value={form.waste_type} onChange={e => setForm(f => ({ ...f, waste_type: e.target.value, product_id: '' }))}>
             {WASTE_TYPES.map(wt => <option key={wt.value} value={wt.value}>{ar ? wt.ar : wt.en}</option>)}
           </Select>
-          <Input label={ar ? 'الكمية' : 'Quantity'} type="number" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: +e.target.value }))} />
-          <Input label={ar ? 'تكلفة الوحدة' : 'Unit Cost'} type="number" value={form.unit_cost} onChange={e => setForm(f => ({ ...f, unit_cost: +e.target.value }))} />
+          {productRequired && (
+            <Select label={ar ? 'المنتج' : 'Product'} value={form.product_id} onChange={e => {
+              const product = products.find(p => p.id === e.target.value);
+              setForm(f => ({ ...f, product_id: e.target.value, unit_cost: Number(product?.cost_price || 0) }));
+            }}>
+              <option value="">{ar ? 'اختر المنتج...' : 'Select product...'}</option>
+              {products.map(p => <option key={p.id} value={p.id}>{ar ? p.name : (p.name_en || p.name)}</option>)}
+            </Select>
+          )}
+          <Input label={ar ? 'الكمية' : 'Quantity'} type="number" min={0.001} step="0.001" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: +e.target.value }))} />
+          <Input label={ar ? 'تكلفة الوحدة' : 'Unit Cost'} type="number" min={0} step="0.01" value={form.unit_cost} onChange={e => setForm(f => ({ ...f, unit_cost: +e.target.value }))} />
           <Textarea label={ar ? 'السبب' : 'Reason'} value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} />
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => setShowForm(false)}>{ar ? 'إلغاء' : 'Cancel'}</Button>
@@ -192,7 +251,7 @@ function WasteReport({ ar, branchFilter }: { ar: boolean; branchFilter: string |
         const { data, error } = await supabase.rpc('get_waste_report', { p_branch_id: branchFilter, p_from_date: from, p_to_date: to });
         if (error) throw error;
         setRows((data ?? []) as Record<string, unknown>[]);
-      } catch { /* report is optional, fail silently */ }
+      } catch { /* optional report */ }
       setLoading(false);
     })();
   }, [branchFilter]);

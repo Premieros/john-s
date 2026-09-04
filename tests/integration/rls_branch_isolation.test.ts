@@ -882,8 +882,10 @@ describe.skipIf(skip)('RLS branch isolation', () => {
     t('guard_role_permissions: branch managers cannot mint admin-only roles (044)', async () => {
       const ins = (perms: string) =>
         `INSERT INTO public.roles (role, name_ar, name_en, permissions) VALUES ('${uniq('RG')}', 'X', 'Y', '${perms}'::jsonb)`;
-      // bm is blocked by RLS regardless of the trigger (roles INSERT is admin-only).
-      await runProbe(client, 'roles INSERT bm with settings.manage', bmId(), ins('["settings.manage"]'), 'denied');
+      // Earlier in this suite the branch manager receives settings.manage, so
+      // assigning it is valid; escalation to an unowned permission is not.
+      await runProbe(client, 'roles INSERT bm with owned settings.manage', bmId(), ins('["settings.manage"]'), 'ok');
+      await runProbe(client, 'roles INSERT bm with unowned audit.view', bmId(), ins('["audit.view"]'), 'denied');
       // admin can create a normal role carrying granular perms.
       await runProbe(client, 'roles INSERT admin plain', adminId(), ins('["pos.sell"]'), 'ok');
     });

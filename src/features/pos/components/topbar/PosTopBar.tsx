@@ -109,8 +109,10 @@ export function PosTopBar({
     };
   }, [refreshPending, triggerSync]);
 
+  const canManageCurrentShift = activeShift ? perms.canCloseShift : perms.canOpenShift;
+
   const openShiftManagement = () => {
-    if (!perms.canCloseShift) return;
+    if (!canManageCurrentShift) return;
     if (activeShift && onOpenShiftModal) {
       onOpenShiftModal();
       return;
@@ -194,7 +196,7 @@ export function PosTopBar({
         {now.toLocaleTimeString(isAr ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
       </div>
 
-      {perms.canCloseShift && isCashier && shiftChecked && (
+      {canManageCurrentShift && isCashier && shiftChecked && (
         <button
           data-testid="pos-shift-button"
           onClick={openShiftManagement}
@@ -226,7 +228,7 @@ export function PosTopBar({
               {t('activeOrders')}
               {counts.activeOrders > 0 && <span className="ms-auto rounded-full bg-ui-primary px-2 py-0.5 text-[10px] text-ui-primary-fg">{counts.activeOrders}</span>}
             </button>
-            {perms.canCloseShift && (
+            {canManageCurrentShift && (
               <button
                 onClick={() => { openShiftManagement(); setMore(false); }}
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold hover:bg-ui-page-alt"

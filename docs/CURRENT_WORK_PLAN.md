@@ -1,375 +1,284 @@
-# CURRENT WORK PLAN — john-s
+# CURRENT WORK PLAN — john-s / Frontend V2
 
-> **Source of Truth** لأي نموذج أو مطور يكمل العمل. اقرأ هذا الملف أولًا. لا تعِد فحص المشروع كله ولا تفتح عملًا مغلقًا بدون Regression مثبت.
+> **Source of Truth لأي نموذج أو مطور يكمل العمل. اقرأ هذا الملف أولًا.**
+>
+> السجل التنفيذي التفصيلي: [`docs/FRONTEND_V2_REBUILD_LOG.md`](./FRONTEND_V2_REBUILD_LOG.md)
 
-آخر تحديث: **2026-09-03 — Africa/Cairo**
+آخر تحديث: **2026-09-04 — Africa/Cairo**
 
 ---
 
-## 1) الحالة الحالية — اقرأ هذا أولًا
+## 1) الحالة الحالية
 
-- Repository: `Premieros/john-s`
-- Branch: `main`
+- Repository: `Premieros/johna-s`
+- Production branch: `main`
+- Production baseline عند بدء V2: `4e63ce21597958dc9ee9852ca2ff00e4e14c86a3`
+- **فرع التطوير الوحيد:** `development/frontend-v2`
+- Draft PR الوحيد للتطوير: **#6 — `feat: rebuild frontend v2 from database contract`**
+- آخر HEAD قبل تحديث هذا السجل: `c7f6d7276b934e9d5f3114e270edbff139fab322`
 - Supabase Production: `azzdesuowpdcoflmyezn`
-- آخر HEAD وظيفي مُتحقق بالكامل: `5d03994fdc7924d32b1b09e3f0dece7baf10e0f8`
-- Verify: run `33775430230` / #419 ✅
-  - lint ✅
-  - typecheck ✅
-  - test suites typecheck ✅
-  - unit ✅
-  - build ✅
-  - Fresh DB / canonical migrations ✅
-  - schema verification ✅
-  - integration + security/RLS ✅
-  - Browser Smoke ✅
-- Deploy لنفس الـHEAD: run `33775430308` / #421 ✅
-  - Production API parity gate ✅
+- PR #3 وPR #5 مغلقان/superseded؛ لا يضاف عليهما تطوير جديد.
+- لا يوجد Merge إلى `main` ولا Production migration من PR #6 حتى هذا التحديث.
 
-آخر ما أُغلق في POS:
-- Tables-first landing يعمل على الهاتف/التابلت/الديسكتوب ويعرض مباشرة: Quick Order / Delivery / Drive Thru / Active Orders.
-- زر New Order يرجع إلى منطقة الطاولات بدل Landing مكرر.
-- Bottom POS Navigation القديم محذوف بالكامل مع spacing/import/component remnants المرتبطة به.
-- Top Action Bar أصبح authoritative للإجراءات العامة العاملة: Customer / Merge-Transfer / Print / Hold / Kitchen / Pay.
-- لوحة السلة لم تعد تكرر Kitchen / Print / Hold / Pay / Customer؛ أبقِ Discount وسلوك Split/Void السياقيين للصنف المحدد.
-- زر مسح الطلب الكامل الملتبس أزيل من Top Action Bar ومن رأس السلة؛ Void يظل مرتبطًا بالصنف المحدد.
-- Browser Smoke بعد هذا التنظيم أخضر.
-- manager approval للعمليات الهيكلية أصبح مغطى باختبار single-use صريح: Pending → approve → execute → consumed؛ إعادة نفس العملية لا تعيد استخدام الموافقة بل تنشئ طلب موافقة جديدًا ولا تنفذ mutation ثانية.
-- Split Payment داخل Checkout كان موجودًا وظيفيًا بالفعل؛ أُغلقت فجوة التغطية باختبار integration مستقل يثبت Cash + Card، تسجيل `sale_payments` و`shift_operations`، خصم المخزون مرة واحدة فقط، ورفض mismatch بلا Sale أو خصم مخزون.
-- لا يوجد أي تغيير جديد في Inventory/KDS/RLS بسبب تعديلات Top Action Bar أو اختبارات single-use / Split Payment.
-- تم اكتشاف Production drift أثناء فحص ما قبل تسليم الفرع وإغلاقه بتطبيق migrations التشغيلية الثلاث المفقودة:
-  - `20260903154937 transfer_unsent_order_item`
-  - `20260903154940 split_payment_accounting`
-  - `20260903154945 pos_structural_actions_manager_approval`
-- تم إصلاح Reports الذي كان يطلب العمود غير الموجود `warehouses.name_en`.
-- تم تحديث `supabase/api-contract.json` وإضافة `gen-contract --check` إلى Verify وإعادة Production parity gate إلى Deploy لمنع نشر واجهة أحدث من قاعدة الإنتاج.
-- تم توحيد ضريبة الفرع إلى **14%** حسب قرار المستخدم، وتعيين مخزن الفرع الوحيد كمخزن افتراضي.
-- Production rollback tests نجحت دون ترك بيانات: فتح وردية، بيع نقدي، Cash+Card split payment، إغلاق وردية بفارق صفر، وSplit order؛ وبعد التراجع بقيت المبيعات والورديات التجريبية = صفر.
-
-### تنبيه جاهزية تشغيلية قبل التسليم
-
-- النظام البرمجي وقاعدة Production متطابقان ومتحققان، لكن بيانات افتتاح المخزون ليست جاهزة للبيع الكامل بعد.
-- من أصل 335 منتجًا نشطًا، منتج واحد فقط كان قابلًا للبيع وقت الفحص (`Water`) و334 غير متاحة بسبب غياب أرصدة الوحدات/الخامات/المنتجات الجاهزة.
-- توجد 8 منتجات نشطة بسعر بيع صفري/غير صالح وتحتاج أسعارًا حقيقية قبل الافتتاح.
-- لا تدخل كميات أو تكاليف افتراضية. المطلوب جرد فعلي واعتماد أسعار الافتتاح أثناء التدريب قبل أول بيع حقيقي.
-
-> لا تعتبر أي migration تشغيلية جديدة جاهزة لـProduction لمجرد نجاح Deploy للواجهة. أي migration جديدة مستقبلًا لا تُطبق على Production إلا بعد Verify كامل أخضر بما فيه Browser Smoke.
+الخطة السابقة محفوظة في Git history. لا يعاد فتح عمل مغلق بدون Regression مثبت.
 
 ---
 
-## 2) العمل النشط الآن — الأولوية الحالية
+## 2) القرار المعماري الملزم — Branch Access + Permission First
 
-### A. أمان الدخول ومنع تسريب كاش مستخدم سابق — مغلق بالاختبارات الحالية ✅
+نبني **Frontend V2 من الصفر** فوق الـBackend/Database الحالية باعتبارها Source of Truth، مع إبقاء الواجهة القديمة مؤقتًا حتى اكتمال واستقرار V2.
 
-Regression السابق من الحساب `sayed3la2@gmail.com` كان Client-side وليس RLS:
-- Auth session وحده لا يكفي للدخول؛ يجب وجود Profile نشط فعلي في `public.users`.
-- fallback user/local super-admin behavior أُلغي.
-- لا يتم الثقة في profile محلي قديم بدل profile الخادم.
-- POS offline cache مفصول حسب المستخدم/الفرع ولا يُحمّل catalog بدون branch/user context صحيح.
-- regression coverage موجودة ضمن البوابات الحالية.
+### 2.1 قاعدة الفروع
 
-**لا تُضعف RLS بسبب هذا العيب؛ RLS في Production كان يمنع القراءة كما يجب. لا تعِد فتح هذا البند بدون Regression مثبت.**
+1. المستخدم يعمل على **أي فرع لديه Access فعلي عليه**؛ لا يتم حبسه في `users.branch_id` فقط.
+2. مصدر Branch Access هو `user_may_access_branch()` والـRLS، مع `user_branch_access` والفـرع الأساسي كـlegacy/primary grant حيث يلزم.
+3. اختيار فرع في الواجهة لا يمنح صلاحية؛ الخادم/RLS هما المرجع النهائي.
+4. وجود Permission لا يسمح بالعمل خارج الفروع المخولة، ووجود Branch Access لا يسمح بتنفيذ Action بدون Permission المطلوبة.
 
-### B. إعادة تدفق شاشة البيع POS — مغلق في baseline الحالي ✅
+### 2.2 قاعدة الصلاحيات
 
-العقد المطبق:
-1. دخول `/pos` يبدأ من **منطقة الطاولات**، وليس من شاشة منتجات مزدحمة.
-2. Header منطقة البداية يعرض مباشرة:
-   - طلب سريع
-   - Delivery
-   - Drive Thru / Car
-   - Active Orders
-3. الضغط على طاولة فارغة يبدأ طلب الطاولة ثم يفتح المنتجات.
-4. الطاولة المشغولة تستأنف طلبها الحالي.
-5. بعد فتح الطلب تظهر شاشة المنتجات + السلة + **Top Action Bar واضح**.
-6. Bottom Navigation القديم retired ومحذوف ولا يجب إعادته.
-7. لا تكرر نفس الإجراءات العامة داخل السلة.
+1. **الصلاحيات هي الأساس. الأدوار أصبحت Labels/Templates وليست سلطة Authorization مستقلة.**
+2. إذا كانت للمستخدم Permission فعالة لميزة/إجراء، **لا يجوز حجبها بسبب اسم دوره**.
+3. Role name لا يمنح ولا يمنع Action في V2 إذا توجد Permission صريحة مناسبة.
+4. `owner` ليس Global Admin ولا implicit admin.
+5. **Super Admin فقط** هو الـimplicit/platform admin ذو Full Access غير القابل للاختزال بمصفوفة الأدوار العادية.
+6. كل المستخدمين الآخرين — بما فيهم `owner` و`branch_manager` وأي Role مخصص — يعتمد وصولهم على Permissions الفعلية + Branch Access.
+7. أي Action حساس يحتاج Server-side permission check؛ إخفاء/إظهار الزر في React ليس حماية.
+8. عند تعذر تحميل Permission map لغير Super Admin يكون السلوك **fail closed**؛ لا fallback تلقائي إلى Default Role permissions.
+9. تعديل/إنشاء Role template لا يسمح للمستخدم بمنح Permission لا يملكها هو، إلا Super Admin.
 
-Top Action Bar الحالي:
-- Kitchen / إرسال للمطبخ
-- Print
-- Merge / Transfer
-- Add Customer
-- Hold
-- Pay
+> ملاحظة تنفيذية: التخزين الحالي للصلاحيات الفعالة يعتمد أساسًا على `roles.permissions` المرتبطة بالمستخدم. إذا أضيف لاحقًا Direct User Permission Override فيجب دمجه في نفس Effective Permission resolver بحيث يظل اسم الدور غير قادر على حجب Permission ممنوحة للمستخدم.
 
-إجراءات السلة السياقية:
-- Discount
-- Split للصنف/الكمية المحددة
-- Void/Remove للصنف المحدد
+### 2.3 قواعد عامة
 
-**ممنوع إضافة زر شكلي بدون backend فعلي.**
-
-### C. Split / Merge / Transfer بموافقة المدير — العقد مغلق ومثبت ✅
-
-Backend-first. للكاشير:
-- يبدأ العملية فتظل Pending.
-- المدير/المصرح له يوافق.
-- التنفيذ يحدث بعد الموافقة فقط.
-- الموافقة تُستهلك مرة واحدة.
-- replay لنفس العملية بعد `consumed` يحتاج approval request جديدًا ولا ينفذ mutation ثانية.
-
-قواعد مثبتة ولا تُغيّر:
-- لا خصم مخزون بسبب Split/Merge/Transfer.
-- لا إعادة إرسال KDS بسبب هذه العمليات.
-- لا تزوير أو إعادة كتابة تاريخ kitchen sends.
-- Branch isolation server-side.
-- العمليات الذرية عبر RPCs وليس تحديثات client مباشرة.
-- السطر المرسل للمطبخ لا يُعاد re-parent عبر Split بطريقة تكسر traceability.
-
-### D. Split Payment داخل الدفع فقط — مغلق ومثبت ✅
-
-العقد الحالي المثبت:
-- Split Payment ليس Split الطلب.
-- يظهر فقط داخل Checkout/Payment.
-- يدعم توزيع الإجمالي بين طرق مسموحة مثل Cash + Card/Visa.
-- مجموع الأجزاء يجب أن يساوي إجمالي الفاتورة بالضبط.
-- كل جزء يُسجل في مساره المالي الصحيح عبر `sale_payments` وبنود الوردية/التحصيل المرتبطة به.
-- حقيقة البيع وخصم المخزون تمر من `_process_sale_core` مرة واحدة فقط.
-- لا تقسيم دفع Offline؛ المسار الحالي يرفضه صراحة بدل تحويله إلى outbox عادي.
-- لم يُضف RPC أو migration جديد لهذه المرحلة لأن backend الحالي كان يغطي العقد بالفعل؛ أُضيف اختبار التغطية الضروري فقط.
-
-إثبات Fresh DB في Verify #417:
-- Cash + Card ناجحان ويُسجلان كجزأين ماليين.
-- المخزون ينخفض مرة واحدة فقط.
-- mismatch بين مجموع وسائل الدفع وإجمالي البيع لا ينشئ Sale ولا يخصم مخزونًا.
-- integration + security/RLS + Browser Smoke كلها خضراء.
-
-### E. قبل تطبيق أي عمل تشغيلي جديد على Production
-
-بالترتيب:
-1. Verify كامل أخضر بما فيه Browser Smoke.
-2. مراجعة عدم وجود regression في KDS/inventory/refund/accounting.
-3. تطبيق migrations الجديدة فقط إذا كان العمل الجديد أضاف migrations فعلية ومطلوبة.
-4. تحقق Production محدود وآمن.
-5. تحديث هذا السجل بالـHEAD وrun/migration النهائيين.
+- لا نعيد بناء قاعدة البيانات من الصفر.
+- لا نحذف Legacy DB إلا بعد dependency proof + migration + regression.
+- لا زر شكلي: كل Action يحتاج Backend حقيقي + Permission + حالات UI + اختبار.
+- العربية RTL هي الأساس، الإنجليزية LTR.
+- الحسابات والمخزون والأسعار الحساسة authoritative من الخادم.
+- لا Production migration من PR #6 بدون طلب صريح وبعد Verify مناسب.
 
 ---
 
-## 3) عقد POS الثابت — Split ≠ Split Payment
+## 3) Production DB snapshot — قراءة فقط
 
-### 3.1 Split — فصل صنف/كمية من الطلب
+فحص 2026-09-04:
 
-مثال: الطلب يحتوي 2 Burger؛ يمكن اختيار 1 فقط وفصله.
+- 100 public tables
+- 243 public functions
+- 331 RLS policies
+- 2 active branches
+- 8 active users
+- 335 active products
+- 2 active warehouses
 
-الوجهات المسموحة:
-- طلب سريع جديد مستقل.
-- طاولة فارغة → إنشاء طلب جديد عليها.
-- طاولة مشغولة → إضافة الجزء المفصول إلى طلبها المفتوح.
+التصنيف:
 
-للكاشير:
-- ينشئ طلب الموافقة.
-- لا تتغير الطلبات فعليًا قبل موافقة المدير.
-- بعد approve تُنفذ العملية وتُستهلك الموافقة مرة واحدة.
-- consumed approval لا يمكن استخدامها مرة ثانية؛ replay يحتاج request جديدًا.
+- **Canonical:** users/roles/branches/user_branch_access، POS/orders/KDS/sales/shifts، catalog/modifiers، inventory/units/counts/transfers، procurement، waste/approvals، accounting/treasury/reports.
+- **Legacy/Compatibility:** subscriptions وبعض raw-material/recipes/production paths القديمة/الهجينة؛ لا تُعرض تلقائيًا في V2.
+- **Hardening backlog:** overloads وSECURITY DEFINER/search_path تُراجع فقط عندما تدخل في مسار V2 الفعلي.
 
-KDS/Inventory:
-- Split لا يخصم مخزونًا.
-- Split لا ينشئ Kitchen Send جديدًا لمجرد نقل السطر.
-- إذا كان السطر مرسلًا للمطبخ، يجب الحفاظ على تاريخ وهوية الإرسال؛ لا تُنفذ طريقة تكسر traceability.
-
-### 3.2 Merge — دمج الطلبات
-
-- دمج طلب كامل في طلب آخر.
-- للكاشير يحتاج موافقة مدير قبل التنفيذ.
-- بعد النجاح يُفرغ/يغلق المصدر حسب العقد التنفيذي.
-- لا خصم مخزون جديد.
-- لا Kitchen resend.
-
-### 3.3 Transfer — نقل طلب كامل
-
-- نقل الطلب من طاولة إلى أخرى.
-- للكاشير يحتاج موافقة مدير.
-- حافظ على نفس `order_id` عند نقل الطلب الكامل متى كان ذلك هو المسار المعتمد، لحماية KDS والتاريخ التشغيلي.
-- لا خصم مخزون ولا resend.
-
-### 3.4 Split Payment — تقسيم وسائل الدفع
-
-- يظهر في شاشة الدفع فقط.
-- يدعم توزيع الإجمالي بين طرق مسموحة مثل Cash + Card/Visa.
-- مجموع الأجزاء = إجمالي الفاتورة بالضبط.
-- كل جزء يُسجل في مساره المالي الصحيح.
-- `_process_sale_core` / المسار المركزي يظل مسؤولًا عن حقيقة البيع وخصم المخزون مرة واحدة.
+لا يعاد تشكيل Production أثناء بناء V2 بدون Migration/Verify مستقلين.
 
 ---
 
-## 4) ثوابت معمارية — لا تغيّرها
+## 4) ما تم فعليًا حتى آخر HEAD
 
-- `send_to_kitchen` لا يخصم المخزون؛ هو state/snapshot فقط.
-- `process_sale` هو نقطة خصم المخزون مرة واحدة فقط.
-- Refund يعكس exact inventory path الذي خصمه البيع.
-- الأسعار والإجماليات وModifier component deltas authoritative من الخادم.
-- لا تضعف/تحذف/تتخطى RLS أو الاختبارات.
-- Branch isolation دائمًا server-side.
-- Public registration مغلق.
-- Sensitive cashier actions تحتاج permission أو manager approval.
-- لا expose لـinternal/security/accounting/inventory helpers للعميل لمجرد إنجاح اختبار.
+### Foundation ✅
+
+- App Shell RTL-first جديد.
+- Sidebar قابل للطي + mobile drawer.
+- V2 branch context من الفروع التي تسمح بها RLS، وليس `users.branch_id` وحده.
+- Capability registry يربط Modules/Actions بالـBackend.
+- `/v2` Home/status surface.
+- `useV2Can()` لقراءة permission strings من DB-backed permissions.
+
+### Permission-first / Branch Access ✅ من ناحية التنفيذ الأساسي
+
+Migration الأساسية:
+`20260904046000_permission_first_roles_branch_access.sql`
+
+تم:
+
+- `can_permission()` أصبح Super Admin-only implicit bypass؛ باقي المستخدمين يعتمدون على DB-backed permissions.
+- `user_may_access_branch()` أصبح يعتمد Super Admin أو `user_branch_access` أو primary branch grant، بدون org/role-name global bypass.
+- `owner` لم يعد implicit/global admin في المسارات التي تم تحويلها.
+- `is_pos_admin()` تم استبداله بـ`is_platform_admin()` في مسارات V2 الحساسة التي مستها migration.
+- `create_user` / `delete_user` / `update_user_password` أصبحت `users.manage` + branch scope بدل Role-name admin gates.
+- إدارة `user_branch_access` أصبحت permission-based + branch-scoped.
+- Role rows أصبحت templates/labels؛ guard يمنع منح Permission أعلى من صلاحيات المانح، وSuper Admin فقط هو الاستثناء.
+- Frontend permission resolver أصبح fail-closed لغير Super Admin إذا لم توجد DB permission map.
+- Permission Matrix لا تعتبر `owner` immutable full-access role؛ Super Admin فقط immutable full-access.
+- `UsersPage` أصبحت تعتمد `users.manage` وتتعامل مع الفروع المخولة بدل الفرع الأساسي فقط.
+- Unit tests القديمة الخاصة بـPermission definitions تم تحديثها في `c7f6d727...` لتطابق العقد الجديد.
+
+### POS V2 — منفذ جزئيًا
+
+موجود فعليًا:
+
+- `/v2/pos`.
+- Table-first للصالة + Takeaway + Delivery + Drive Thru.
+- تحميل منتجات/تصنيفات/طاولات/طلبات مفتوحة حسب الفرع.
+- Cart وكميات وحذف.
+- Modifiers المطلوبة min/max.
+- عرض availability الفعلي.
+- إنشاء Order عبر `create_order`.
+- تعديل/استئناف Order عبر `update_order`.
+- Multi-branch POS contract يستخدم `user_may_access_branch`.
+- **Send to Kitchen داخل POS V2 مربوط فعليًا** بـ`pos.send_kitchen` و`send_to_kitchen` canonical RPC.
+- kitchen delta-send محفوظ؛ لا يعيد إرسال الكميات السابقة.
+
+غير مكتمل بعد:
+
+- Payment / Split Payment.
+- Discount / void / cancel / transfer / split UI والـapproval flows التابعة لها.
+- Receipt print/reprint.
+- **قرار المستخدم: خصم المخزون عند Send to Kitchen. هذا القرار لم يُثبت كمنفذ في الـRPC الحالي بعد، لأن العقد الحالي في HEAD يسجل KDS delta فقط؛ يلزم تنفيذ/اختبار هذا التغيير قبل اعتباره مكتملًا.**
+
+### Shifts / Closing V2 ✅ للربط الحالي
+
+- `/v2/shifts` مربوط بالـRoute والـSidebar.
+- فتح الشفت permission-based + branch-access-based.
+- المستخدم متعدد الفروع يستطيع امتلاك شفت مفتوح واحد فقط عبر الفروع المصرح بها.
+- Header يقرأ الشفت المفتوح عبر فروع المستخدم ويعرض الانتقال للفرع الصحيح.
+- فتح الشفت: `shifts.open`.
+- إغلاق الشفت الشخصي: `shifts.close`.
+- إدارة شفت مستخدم آخر: `shifts.manage`.
+- لا bypass باسم `branch_manager`.
+- تقارير user/shift/day closing مربوطة بالـRPCs الموجودة.
+
+### Unified Approval Center — منفذ جزئيًا
+
+تم:
+
+- Queue موحدة: manager approvals + waste + stock counts + warehouse transfers.
+- `decide_operational_approval` يوجه القرار إلى RPC الحقيقي لكل نوع.
+- self-approval يحتاج `approvals.override` صراحة.
+- الصفوف تعتمد `required_permission` بدل hard-code لاسم Role.
+- approve/reject للهالك والجرد والتحويلات hardened مع Branch Access.
+
+متبقي:
+
+- route visibility النهائي حسب مجموعة Permissions الاعتماد الفعلية بدل أي Gate عام قديم.
+- assigned-manager / policy configuration الكامل لكل نوع Action.
+
+### Waste Center ✅ للـfixes الحالية
+
+- تحميل/اختيار المنتجات حسب الفرع.
+- `p_product_id` يرسل إلى `create_waste_entry`.
+- Integration بمستخدم حقيقي وصلاحية `production.waste` بدل service-role bypass.
+- النوع canonical للاختبار `finished_good`.
+
+---
+
+## 5) CI — آخر حالة مثبتة
+
+### Verify #543 — checkpoint أخضر قبل Permission-first refactor
+
+Run: `33850444754`
+Head: `8c819f67ecef4012ca4cca4fb43da92475116d22`
+
+- API contract ✅
+- lint ✅
+- typecheck ✅
+- typecheck:all ✅
+- unit ✅
+- build ✅
+- canonical migrations: 200/200 ✅
+- schema ✅
+- Integration/Security/RLS: 444/444 ✅
+- Browser Smoke: 50 passed / 5 known legacy selector failures.
+
+### Verify #559 — آخر Run على Permission-first HEAD
+
+Run: `33866122650`
+Head: `c7f6d7276b934e9d5f3114e270edbff139fab322`
+
+Frontend job ✅ بالكامل:
+
+- API contract ✅
+- lint ✅
+- typecheck ✅
+- typecheck:all ✅
+- unit ✅
+- build ✅
+
+DB job:
+
+- Fresh DB/container setup ✅
+- canonical migrations ✅
+- schema verification ✅
+- integration/security/RLS step ❌
+- Browser Smoke لم يبدأ لأنه skipped بعد DB failure.
+
+**لا يُفترض سبب فشل Integration من اسم الـrun فقط. يجب قراءة failing assertions/logs ثم إصلاح الاختبارات القديمة إذا كانت تخالف العقد الجديد، أو إصلاح الكود إذا ظهر Regression حقيقي. ممنوع إضعاف RLS أو إعادة owner implicit admin لإخضرار الاختبار.**
+
+---
+
+## 6) المتبقي — الترتيب الصحيح الآن
+
+### أولوية 0 — إغلاق Permission-first regression gate
+
+1. تحديد الاختبارات الفاشلة داخل Integration/Security/RLS في Verify #559.
+2. تصنيف كل Failure:
+   - stale test يتوقع `owner/admin role bypass` أو fallback قديم → تحديث Test فقط إلى العقد الجديد.
+   - Regression حقيقي في Branch Access/Permission server-side → إصلاح الكود/المigration بدون إضعاف العزل.
+3. إعادة Verify حتى Fresh DB + Integration/Security/RLS أخضر.
+4. تشغيل Browser Smoke بعد فتح الـDB gate.
+5. تحديث السجل بالنتيجة الجديدة.
+
+### ثم استكمال V2
+
+6. Approval Center visibility/policies النهائية Permission-first.
+7. تنفيذ قرار **خصم المخزون عند Send to Kitchen** مع idempotent delta inventory effects واختبارات تمنع الخصم المكرر.
+8. Payment + Split Payment باستخدام RPCs الرسمية.
+9. POS structural actions + approval flow + print/reprint.
+10. Waste V2 final UX/regression.
+11. Inventory / warehouses / counts / transfers.
+12. Catalog / products / modifiers.
+13. Procurement / suppliers.
+14. Sales / customers / refunds.
+15. Accounting / treasury / reconciliation.
+16. Unified table-first Reports.
+17. Users / Roles / granular Permission Matrix / Settings / Audit final UX.
+18. إذا كان المطلوب **Direct per-user permission overrides** مستقلًا عن Role template، إضافته لاحقًا إلى Effective Permission resolver + UI + RLS/tests بدون تغيير قاعدة أن Role label شكلي.
+19. قبل الدمج النهائي: إغلاق known Browser helper regression بإصلاح Test-only المثبت أو إثبات بديله.
+20. Final Verify كامل ثم فقط يصبح PR #6 مرشحًا للدمج.
+
+---
+
+## 7) Definition of Done لأي شاشة
+
+لا تعتبر الشاشة مكتملة حتى:
+
+- Queries/Mutations حقيقية وتعمل فعليًا.
+- كل زر يعمل أو لا يظهر.
+- loading/empty/error/success states.
+- branch scope صحيح عبر `user_may_access_branch`/RLS.
+- Permission هي gate الوظيفية؛ Role label لا يحجب Permission فعالة.
+- UI permission + server permission للعمليات الحساسة.
+- RTL/LTR + desktop/tablet/mobile.
+- unit/contract tests.
+- integration test لأي DB mutation.
+- browser smoke للمسار الأساسي أو توثيق Regression legacy مثبت لا يخص الشاشة قبل الدمج.
+- لا regression على KDS/inventory/accounting.
+
+---
+
+## 8) ثوابت لا تُفتح بدون قرار/Regression مثبت
+
+- **Super Admin فقط** implicit full-access/platform admin.
+- `owner` و`branch_manager` وأي Role آخر ليسوا admin bypass.
+- Role name = label/template؛ Permissions + Branch Access = authorization.
+- المستخدم يستطيع العمل على كل فرع مخول له، وليس الفرع الأساسي فقط.
+- لا Permission تمنح وصولًا لفرع غير مخول، ولا Role label يحجب Permission فعالة داخل فرع مخول.
+- Split Payment ≠ Split Order.
+- Split/Merge/Transfer لا يسبب stock deduction أو KDS resend إلا إذا عُرّف عقد صريح لذلك.
+- الأسعار والإجماليات الحساسة authoritative من الخادم.
+- لا RLS bypass.
+- public registration ليس مسار إنشاء مستخدم عادي.
 - لا Demo/Seed tools في Production UI.
-- Financial Visibility هي read-side فقط؛ stock/accounting/write truth تعمل على 100% من الحقيقة.
-- حذف الفرع هو Hard Delete، وليس deactivate/soft delete.
-- لا تغيّر KDS أو inventory behavior لمجرد تعديل UI.
+- لا حسابات مالية مستقلة في client بدل RPCs الرسمية.
+- قرار خصم المخزون عند `send_to_kitchen` **مطلوب لكنه لا يعتبر منفذًا حتى يضاف effect idempotent ويجتاز الاختبارات**.
 
----
-
-## 5) Production baseline المغلق — ملخص فقط
-
-### 5.1 Product Components + Modifiers ✅
-
-- `product_components` = BOM للتكلفة النظرية، وليس مسار الخصم التشغيلي المباشر.
-- الخصم التشغيلي عبر `product_unit_links` / recipes / modifier inventory effects.
-- Modifier pricing server-side.
-- KDS يحتفظ بالـmodifier snapshot.
-- `send_to_kitchen` لا يخصم.
-- sale يخصم base + modifier deltas مرة واحدة.
-- Refund يعيد exact sale-item inventory snapshot نسبيًا.
-- اختبارات lifecycle/void/refund موجودة وخضراء على Fresh DB.
-
-### 5.2 KDS ✅
-
-- modern KDS يعتمد على `order_kitchen_sends.order_item_id`.
-- legacy compatibility للطلبات القديمة الفارغة فقط.
-- Kitchen panel داخل POS يعرض فقط ما أُرسل للمطبخ.
-- لا تعِد unsent active orders إلى Kitchen panel.
-
-Production migrations الأساسية:
-- `20260902154339 accounting_kds_station_assignments`
-- `20260902154358 kds_queue_legacy_compat`
-- `20260902154420 kds_empty_legacy_order_compat`
-- `20260902194308 kitchen_station_editor_context`
-
-### 5.3 Financial Visibility ✅
-
-- `owner` فقط يرى 100% من التاريخ المالي ضمن نطاقه.
-- غير owner: recent N days = 100%، والقديم deterministic percentage.
-- Production defaults: 7 أيام / 30%.
-- الحقيقة التشغيلية والمحاسبية لا تدخل في sampling.
-
-### 5.4 Hard Delete / Branch selector ✅
-
-- `delete_branch_cascade(uuid)` محمي.
-- يحذف بيانات الفرع ومستخدمي Auth التابعين وفق العقد الحالي.
-- ghost branch القديم كان Cache في الواجهة؛ Production نفسه لا يحتوي الفرع المحذوف.
-- branch cache يُبطل بعد create/update/delete.
-
-### 5.5 50 طاولة افتراضية ✅
-
-- كل فرع يحصل على `طاولة 01` → `طاولة 50`، سعة 4، layout 10×5.
-- يمكن إضافة طاولات 51+.
-- لا تُحذف الطاولات المخصصة الموجودة.
-- Production الحالي تحقق سابقًا من 50 طاولة نشطة في فرع نادي سموحة.
-
-Production migration:
-- `20260903062933 default_50_dining_tables`
-
-### 5.6 Product Images ✅
-
-- `products.image_url` مستخدم للصورة الحقيقية.
-- Storage bucket: `product-images`.
-- الرفع محمي بالفرع و`products.manage`.
-- fallback images تقريبية في الواجهة فقط ولا تكتب بيانات وهمية في المنتج.
-
-Production migration:
-- `20260903070945 product_image_storage`
-
-### 5.7 Reports / Costing / Permissions UI ✅
-
-- Reports بدون charts مكررة؛ selector/filters موحدة.
-- Costing يحافظ على COGS / Net Sales الصحيح.
-- Roles/Permissions UI grouped وقابل للإدارة بدون إضعاف backend permissions.
-
----
-
-## 6) Production Acceptance السابق — ملخص
-
-تم سابقًا إنشاء فروع QA ومستخدمي Auth حقيقيين ثم حذفهم بالكامل.
-
-تم التحقق من:
-- شراء → مخزون → طلب → Kitchen → بيع ضمن حدود أدوات Production.
-- `send_to_kitchen`: no deduction.
-- sale: FIFO/single deduction.
-- KDS snapshot صحيح.
-- branch isolation الأساسي.
-- Dining Area permissions.
-- Hard Delete وتنظيف Auth.
-- modifiers + inventory effects.
-
-حدود مهمة:
-- بعض العمليات المالية الحقيقية مثل refund/shift close أو payment retest تم منعها بأداة safety في بعض جلسات Production؛ لم يتم تجاوز الحماية. التغطية المكافئة موجودة في Fresh DB integration tests حيث ذُكر ذلك.
-
----
-
-## 7) لا تُعد فتح هذه الأعمال بدون Regression مثبت
-
-- Auth profile/cache hardening.
-- Tables-first POS landing + direct Quick/Delivery/Drive Thru/Active Orders.
-- authoritative POS Top Action Bar + retired Bottom Navigation.
-- Split/Merge/Transfer manager approval + single-use approval replay protection.
-- Split Payment داخل Checkout + atomic accounting/single stock deduction coverage.
-- KDS exact sends + legacy compatibility.
-- Product Modifiers authoritative pricing/inventory effects.
-- exact sale-item inventory snapshots / partial refund.
-- exact sent-item void / mutation guards.
-- open-order modifier immutability.
-- accounting/treasury baseline.
-- hybrid deduction/refund.
-- Financial Visibility + admin controls.
-- Hard Delete.
-- Costing COGS/Net Sales.
-- Reports de-duplication.
-- Roles/Permissions UI.
-- 50 default tables.
-- product image storage.
-- branch selector stale-cache fix.
-
-> لا يوجد بند POS مفتوح حاليًا في هذه المرحلة. افتح عملًا جديدًا فقط بطلب صريح جديد أو Regression مثبت.
-
----
-
-## 8) ما لا يجب فعله مستقبلًا
-
-- لا تستخدم React/CSS كحماية مالية أو صلاحيات.
-- لا تجعل Auth session بلا `public.users` profile صالح يُنشئ مستخدمًا افتراضيًا.
-- لا تستخدم offline cache من مستخدم/فرع سابق عند غياب branch/user context الصحيح.
-- لا تغير `process_sale` أو inventory deduction بسبب visibility أو UI.
-- لا تعرض sampling financial policy للمستخدم المقيد.
-- لا تمنح Super Admin full commercial history تلقائيًا لمجرد دوره التقني.
-- لا تجعل current stock أو posting logic يعمل على sample.
-- لا تعِد Bottom POS navigation القديم.
-- لا تضع Split Payment في شريط Split الخاص بالأصناف.
-- لا تنفذ cashier Split/Merge/Transfer قبل manager approval.
-- لا تسمح بإعادة استخدام approval status `consumed` لتنفيذ mutation ثانية.
-- لا تعِد Hard Delete إلى soft delete.
-
----
-
-## 9) تعريف النجاح للمرحلة الحالية
-
-المتحقق بالفعل ✅:
-- Auth profile/cache regression مغلق ومغطى باختبار.
-- `/pos` يبدأ بالطاولات + quick order actions في header.
-- اختيار طاولة/طلب يفتح products workspace.
-- Top Action Bar واضح ويحتوي فقط إجراءات عامة عاملة بلا تكرار داخل السلة.
-- Split item/quantity يعمل بموافقة المدير ضمن العقد الحالي.
-- Merge وTransfer يعملان بموافقة المدير.
-- approvals single-use ومغطاة باختبار replay صريح.
-- Split Payment يعمل داخل Checkout فقط، يوزع وسائل الدفع ماليًا، ويرفض mismatch.
-- البيع المقسم يخصم المخزون مرة واحدة فقط عبر المسار المركزي.
-- لا inventory deduction بسبب Split/Merge/Transfer.
-- لا KDS resend/trace corruption بسبب Split/Merge/Transfer.
-- lint/typecheck/unit/build ✅
-- Fresh DB/schema/integration/security/RLS ✅
-- Browser Smoke ✅
-- Deploy لنفس الـHEAD ✅
-
-**مرحلة POS البرمجية مغلقة بالكامل ✅، وجاهزية التشغيل التجاري معلقة فقط على إدخال الجرد والأسعار الحقيقية.**
-
-المigrations التشغيلية المطلوبة لتدفق POS مطبقة على Production، وبوابة Production parity أصبحت جزءًا إلزاميًا من Deploy.
-
----
-
-## 10) Next exact step
-
-1. اعتبر HEAD `5d03994fdc7924d32b1b09e3f0dece7baf10e0f8` + Verify `33775430230` / #419 + Deploy `33775430308` / #421 baseline البرمجي المغلق.
-2. قبل أول بيع حقيقي: أدخل الجرد الافتتاحي الفعلي بوحداته وتكاليفه في مخزن الفرع.
-3. صحح أسعار المنتجات الثمانية ذات السعر الصفري واعتمد قائمة الأسعار مع المستأجر.
-4. نفّذ أثناء التدريب فاتورة Cash وفاتورة Card وفاتورة Split Payment ثم Refund وإغلاق وردية، وراجع التقرير المطبوع مقابل النقدية الفعلية.
-5. لا تُعد فحص المشروع كاملًا ولا تفتح بندًا مغلقًا بدون Regression مثبت.
+> أي مطور أو نموذج يكمل: اقرأ هذا الملف ثم `docs/FRONTEND_V2_REBUILD_LOG.md`، أعد قراءة HEAD/PR #6 أولًا، ولا تنشئ فرع تطوير إضافي.

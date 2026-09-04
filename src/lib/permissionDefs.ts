@@ -4,10 +4,10 @@ export type { Role };
 
 /**
  * Pure enterprise permission model — dotted `module.action` permissions.
- * Admins (super_admin / owner) implicitly have every permission.
- * Non-admin roles resolve permissions from the DB-backed `roles` table
- * (exposed through RolesContext) and fall back to DEFAULT_ROLE_PERMISSIONS
- * while the table is still loading or unavailable.
+ * Super Admin is the only implicit platform-wide role. Every other role,
+ * including owner, resolves permissions from the DB-backed `roles` table.
+ * DEFAULT_ROLE_PERMISSIONS are templates/reference defaults only; they are not
+ * an authorization fallback when the role matrix cannot be loaded.
  */
 
 export type Permission =
@@ -46,6 +46,7 @@ export type Permission =
   | 'reports.costing'
   | 'accounts.view' | 'accounts.manage'
   | 'shifts.view' | 'shifts.open' | 'shifts.close' | 'shifts.manage'
+  | 'approvals.review' | 'approvals.override'
   | 'users.view' | 'users.manage'
   | 'audit.view'
   | 'settings.manage'
@@ -87,6 +88,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'reports.costing',
   'accounts.view', 'accounts.manage',
   'shifts.view', 'shifts.open', 'shifts.close', 'shifts.manage',
+  'approvals.review', 'approvals.override',
   'users.view', 'users.manage',
   'audit.view',
   'settings.manage',
@@ -168,6 +170,8 @@ export const PERMISSION_LABELS: Record<Permission, { ar: string; en: string }> =
   'shifts.open': { ar: 'فتح شيفت', en: 'Open Shift' },
   'shifts.close': { ar: 'إغلاق شيفت', en: 'Close Shift' },
   'shifts.manage': { ar: 'إدارة كل الشيفتات', en: 'Manage All Shifts' },
+  'approvals.review': { ar: 'مراجعة واعتماد الطلبات', en: 'Review & Decide Approvals' },
+  'approvals.override': { ar: 'تجاوز منع الموافقة الذاتية', en: 'Self-Approval Override' },
   'users.view': { ar: 'عرض المستخدمين', en: 'View Users' },
   'users.manage': { ar: 'إدارة المستخدمين', en: 'Manage Users' },
   'audit.view': { ar: 'عرض سجل العمليات', en: 'View Audit Log' },
@@ -208,6 +212,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   { key: 'expenses', ar: 'المصروفات', en: 'Expenses', permissions: ['expenses.view', 'expenses.manage', 'expenses.print'] },
   { key: 'accounts', ar: 'المحاسبة', en: 'Accounting', permissions: ['accounts.view', 'accounts.manage'] },
   { key: 'shifts', ar: 'الشيفتات', en: 'Shifts', permissions: ['shifts.view', 'shifts.open', 'shifts.close', 'shifts.manage'] },
+  { key: 'approvals', ar: 'الموافقات', en: 'Approvals', permissions: ['approvals.review', 'approvals.override'] },
   { key: 'reports', ar: 'التقارير', en: 'Reports', permissions: ['reports.view', 'reports.financial', 'reports.costing', 'reports.print', 'reports.export'] },
   { key: 'admin', ar: 'الإدارة', en: 'Administration', permissions: ['users.view', 'users.manage', 'audit.view', 'settings.manage', 'branches.manage'] },
 ];
@@ -235,6 +240,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'reports.view', 'reports.financial', 'reports.costing', 'reports.print', 'reports.export',
     'accounts.view', 'accounts.manage',
     'shifts.view', 'shifts.open', 'shifts.close', 'shifts.manage',
+    'approvals.review', 'approvals.override',
     'users.view', 'users.manage',
     'settings.manage',
   ],
@@ -308,8 +314,9 @@ export const ROLE_META: Record<Role, { ar: string; en: string }> = {
   production_manager: { ar: 'مدير إنتاج', en: 'Production Manager' },
 };
 
+/** Super Admin is the only platform-wide implicit role. */
 export function isAdminRole(role?: Role | null): boolean {
-  return role === 'super_admin' || role === 'owner';
+  return role === 'super_admin';
 }
 
 export function hasPermission(
@@ -318,7 +325,7 @@ export function hasPermission(
   permission: Permission
 ): boolean {
   if (!role) return false;
-  if (isAdminRole(role)) return true;
-  const list = rolePermissionsMap?.[role] ?? DEFAULT_ROLE_PERMISSIONS[role];
-  return list?.includes(permission) ?? false;
+  if (role === 'super_admin') return true;
+  const list = rolePermissionsMap?.[role] ?? [];
+  return list.includes(permission);
 }

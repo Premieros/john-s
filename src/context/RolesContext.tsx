@@ -2,7 +2,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import {
-  DEFAULT_ROLE_PERMISSIONS,
   ROLE_META,
   type Permission,
   type Role,
@@ -79,6 +78,10 @@ export function RolesProvider({ children }: { children: ReactNode }) {
         is_active: row.is_active ?? true,
       }));
       setRolesList(list);
+    } else {
+      // Permission resolution is deliberately fail-closed. Role names are only
+      // labels/templates; losing the roles table must never grant fallback power.
+      setRolesList([]);
     }
     setLoading(false);
   }, [session]);
@@ -90,11 +93,6 @@ export function RolesProvider({ children }: { children: ReactNode }) {
   const rolePermissionsMap = useMemo(() => {
     const map: Record<string, Permission[]> = {};
     for (const def of rolesList) map[def.role] = def.permissions;
-    if (Object.keys(map).length === 0) {
-      for (const role of Object.keys(DEFAULT_ROLE_PERMISSIONS) as Role[]) {
-        map[role] = DEFAULT_ROLE_PERMISSIONS[role];
-      }
-    }
     return map;
   }, [rolesList]);
 
