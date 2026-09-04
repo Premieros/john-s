@@ -87,6 +87,6 @@ describe.skipIf(skip)('V2 POS kitchen permission contract', () => {
 
   it('keeps branch isolation even with kitchen-send permission', async () => {
     const denied = await asUser(userId, () => send(orderB));
-    expect(denied).toMatchObject({ success: false, error: 'BRANCH_DENIED' });
+    expect(denied).toMatchObject({ success: false, error: 'BRANCH_MISMATCH' });
   });
 });
