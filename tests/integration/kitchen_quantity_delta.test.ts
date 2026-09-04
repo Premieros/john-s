@@ -175,6 +175,10 @@ describe.skipIf(skip)('KDS quantity delta sends', () => {
     expect(delta.items_sent_count).toBe(1);
     expect(Number(delta.sent[0].quantity)).toBe(2);
     expect(Number(delta.sent[0].current_quantity)).toBe(4);
-    expect(Number((await client.query(`SELECT quantity FROM public.inventory_batches WHERE product_id=$1 AND warehouse_id=$2`, [productId, warehouseId])).rows[0].quantity)).toBe(beforeVoid - 1);
+    const aggregateAfterDelta = await client.query(
+      `SELECT COALESCE(SUM(quantity),0)::numeric AS quantity FROM public.inventory_batches WHERE product_id=$1 AND warehouse_id=$2`,
+      [productId, warehouseId],
+    );
+    expect(Number(aggregateAfterDelta.rows[0].quantity)).toBe(beforeVoid - 1);
   });
 });
