@@ -15,7 +15,15 @@ describe.skipIf(skip)('send_to_kitchen + order_kitchen_sends (048)', () => {
   async function createOrder(items = itemJson([{ product_id: prodA, quantity: 1 }])) { const t = await makeTable(); return asUser(async () => { const res = await client.query(`SELECT public.create_order($1, 'dine_in', $2, NULL, 2, NULL, $3::jsonb, 100, 0, 'amount', 0, 100, $4) AS r`, [branchId, t, items, cashierId]); return res.rows[0].r; }); }
   async function sendToKitchen(orderId: string) { return asUser(async () => { const res = await client.query(`SELECT public.send_to_kitchen($1) AS r`, [orderId]); return res.rows[0].r; }); }
   async function sendRows(orderId: string): Promise<number> { return (await client.query(`SELECT count(*)::int AS c FROM public.order_kitchen_sends WHERE order_id = $1`, [orderId])).rows[0].c; }
-  async function batchQty(unitId = unitA): Promise<number> { return Number((await client.query(`SELECT quantity FROM public.inventory_unit_batches WHERE unit_id = $1 AND warehouse_id = $2`, [unitId, whId])).rows[0].quantity); }
+  async function batchQty(unitId = unitA): Promise<number> {
+    const r = await client.query<{ quantity: string }>(
+      `SELECT COALESCE(SUM(quantity), 0)::text AS quantity
+         FROM public.inventory_unit_batches
+        WHERE unit_id = $1 AND warehouse_id = $2`,
+      [unitId, whId],
+    );
+    return Number(r.rows[0]?.quantity || 0);
+  }
 
   const orgId = randomUUID();
   beforeAll(async () => {
