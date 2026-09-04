@@ -234,8 +234,8 @@ function V2ShiftsContent() {
 
   const summaryCards = (report: RpcResult | null) => {
     if (!report) return null;
-    const values = [
-      [isAr ? 'الفواتير' : 'Invoices', report.invoice_count ?? 0],
+    const values: Array<[string, string | number]> = [
+      [isAr ? 'الفواتير' : 'Invoices', Number(report.invoice_count ?? 0)],
       [isAr ? 'إجمالي المبيعات' : 'Gross sales', money(report.gross_sales, locale)],
       [isAr ? 'الخصومات' : 'Discounts', money(report.discounts, locale)],
       [isAr ? 'صافي المبيعات' : 'Net sales', money(report.net_sales, locale)],
@@ -243,7 +243,7 @@ function V2ShiftsContent() {
       [isAr ? 'بطاقات' : 'Card', money(report.card_sales, locale)],
       [isAr ? 'مرتجعات' : 'Refunds', money(report.refunded_amount, locale)],
     ];
-    return <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{values.map(([label, value]) => <div key={String(label)} className="rounded-xl border border-ui-border bg-ui-page-alt p-3"><div className="text-xs text-ui-muted">{label}</div><div className="mt-1 text-lg font-black tabular-nums">{String(value)}</div></div>)}</div>;
+    return <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{values.map(([label, value]) => <div key={label} className="rounded-xl border border-ui-border bg-ui-page-alt p-3"><div className="text-xs text-ui-muted">{label}</div><div className="mt-1 text-lg font-black tabular-nums">{String(value)}</div></div>)}</div>;
   };
 
   return (
