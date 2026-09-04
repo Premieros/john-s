@@ -9,8 +9,9 @@ import { useToast } from '@/components/Toast';
 import { useLanguage } from '@/context/LanguageContext';
 import { useBranches } from '@/hooks/useBranches';
 import { useBranchFilter } from '@/lib/useBranchFilter';
-import { useCan, isAdminRole } from '@/lib/permissions';
+import { isAdminRole } from '@/lib/permissions';
 import { useAuth } from '@/context/AuthContext';
+import { useV2Can } from '@/v2/core/useV2Can';
 
 type QueueItem = {
   source_type: 'manager_approval' | 'waste' | 'stock_count' | 'warehouse_transfer';
@@ -35,7 +36,7 @@ export function ApprovalCenterPage() {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
   const { user } = useAuth();
-  const can = useCan();
+  const v2Can = useV2Can();
   const { branches } = useBranches();
   const activeBranch = useBranchFilter();
   const { show } = useToast();
@@ -57,14 +58,7 @@ export function ApprovalCenterPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const mayDecide = (row: QueueItem) => {
-    if (admin) return true;
-    if (row.required_permission === 'approvals.review') return can('settings.manage') || user?.role === 'branch_manager';
-    if (row.required_permission === 'production.waste') return can('production.waste');
-    if (row.required_permission === 'inventory.manage') return can('inventory.manage');
-    if (row.required_permission === 'inventory.transfers.approve') return can('inventory.transfers.approve');
-    return false;
-  };
+  const mayDecide = (row: QueueItem) => admin || v2Can(row.required_permission);
 
   const decide = async (row: QueueItem, approve: boolean) => {
     let reason: string | null = null;
