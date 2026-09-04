@@ -62,7 +62,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
   { id: 'reports', route: APP_ROUTES.reports, icon: 'reports', labelKey: 'reports', permission: 'reports.view', group: 'finance' },
   { id: 'super-admin', route: APP_ROUTES.superAdmin, icon: 'superAdmin', labelKey: 'superAdmin', permission: 'settings.manage', group: 'admin', superAdminOnly: true },
   { id: 'users', route: APP_ROUTES.users, icon: 'users', labelKey: 'users', permission: 'users.view', group: 'admin' },
-  { id: 'approvals', route: APP_ROUTES.approvals, icon: 'settings', labelKey: 'settings', label: { ar: 'مركز الموافقات', en: 'Approval Center' }, group: 'admin' },
+  { id: 'approvals', route: APP_ROUTES.approvals, icon: 'settings', labelKey: 'settings', label: { ar: 'مركز الموافقات', en: 'Approval Center' }, permission: 'settings.manage', group: 'admin' },
   { id: 'kitchen-stations', route: APP_ROUTES.kitchenStations, icon: 'kitchenStations', labelKey: 'kitchenStations', permission: 'settings.manage', group: 'admin' },
   { id: 'audit-log', route: APP_ROUTES.auditLog, icon: 'auditLog', labelKey: 'auditLog', permission: 'audit.view', group: 'admin' },
   { id: 'settings', route: APP_ROUTES.settings, icon: 'settings', labelKey: 'settings', permission: 'settings.manage', group: 'admin' },
