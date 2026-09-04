@@ -56,6 +56,9 @@ async function clearOfflineReadCache(): Promise<void> {
 export function SessionProfileGuard({ children }: { children: ReactNode }) {
   const { session, user, signOut } = useAuth();
   const checkedUserIdRef = useRef<string | null>(null);
+  const signOutRef = useRef(signOut);
+
+  useEffect(() => { signOutRef.current = signOut; }, [signOut]);
 
   useEffect(() => {
     const sessionUserId = session?.user?.id ?? null;
@@ -79,7 +82,7 @@ export function SessionProfileGuard({ children }: { children: ReactNode }) {
         checkedUserIdRef.current = null;
         await clearOfflineReadCache();
         try { localStorage.removeItem(VERIFIED_PROFILE_KEY); } catch { /* ignore storage errors */ }
-        await signOut();
+        await signOutRef.current();
         return;
       }
 
@@ -92,7 +95,7 @@ export function SessionProfileGuard({ children }: { children: ReactNode }) {
     })();
 
     return () => { cancelled = true; };
-  }, [session?.user?.id, user?.id, signOut]);
+  }, [session?.user?.id, user?.id]);
 
   // AuthContext already validates the application profile before exposing `user`.
   // This guard is a background revalidation/cache-isolation layer only; it must
