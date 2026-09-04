@@ -30,6 +30,17 @@ describe.skipIf(skip)('V2 permission-first roles and branch access', () => {
     }
   }
 
+  async function expectDbError(userId: string, fn: () => Promise<unknown>, pattern: RegExp): Promise<void> {
+    const savepoint = `v2_permission_error_${randomUUID().replace(/-/g, '')}`;
+    await client.query(`SAVEPOINT ${savepoint}`);
+    try {
+      await expect(asUser(userId, fn)).rejects.toThrow(pattern);
+    } finally {
+      await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`).catch(() => {});
+      await client.query(`RELEASE SAVEPOINT ${savepoint}`).catch(() => {});
+    }
+  }
+
   beforeAll(async () => {
     client = openDb(dbUrl!);
     await client.connect();
@@ -139,19 +150,19 @@ describe.skipIf(skip)('V2 permission-first roles and branch access', () => {
   });
 
   it('prevents a role editor from granting a permission they do not own', async () => {
-    await expect(asUser(managerId, async () => {
+    await expectDbError(managerId, async () => {
       await client.query(
         `INSERT INTO public.roles (role, name_ar, name_en, permissions, scope, is_active)
          VALUES ($1, 'تصعيد ممنوع', 'Denied escalation', '["accounts.manage"]'::jsonb, 'global', true)`,
         [`v2_denied_${randomUUID().slice(0, 8)}`],
       );
-    })).rejects.toThrow(/cannot grant permission accounts\.manage|PERMISSION_DENIED/i);
+    }, /cannot grant permission accounts\.manage|PERMISSION_DENIED/i);
   });
 
   it('prevents assigning a role that contains permissions the caller lacks', async () => {
-    await expect(asUser(managerId, async () => {
+    await expectDbError(managerId, async () => {
       await client.query(`UPDATE public.users SET role = $1 WHERE id = $2`, [escalatedRole, targetId]);
-    })).rejects.toThrow(/cannot assign role containing permission accounts\.manage|PERMISSION_DENIED/i);
+    }, /cannot assign role containing permission accounts\.manage|PERMISSION_DENIED/i);
   });
 
   it('keeps Super Admin as the only platform-wide exception', async () => {

@@ -145,7 +145,9 @@ export async function seedRlsFixture(client: pg.Client): Promise<RlsIds> {
 
   ids.users = {
     super_admin: await user('su@rls.test', 'Super', 'super_admin', null),
-    owner: await user('ow@rls.test', 'Owner', 'owner', null),
+    // Owner is a permission-bearing tenant role, not a platform-wide bypass.
+    // Give it the same real primary-branch scope as a provisioned tenant.
+    owner: await user('ow@rls.test', 'Owner', 'owner', ids.branchA),
     branch_manager: await user('bm@rls.test', 'Branch Mgr', 'branch_manager', ids.branchA),
     cashier: await user('ca@rls.test', 'Cashier A', 'cashier', ids.branchA),
     cashier_b: await user('cb@rls.test', 'Cashier B', 'cashier', ids.branchB),
