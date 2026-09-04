@@ -135,7 +135,9 @@ describe.skipIf(skip)('ready-product sale deduction with legacy recipe', () => {
          ORDER BY target_type`,
         [sale[0].r.sale_id],
       );
-      expect(effects).toEqual([{ target_type: 'product', quantity: '1.0000' }]);
+      expect(effects).toHaveLength(1);
+      expect(effects[0].target_type).toBe('product');
+      expect(Number(effects[0].quantity)).toBe(1);
     });
   });
 });
