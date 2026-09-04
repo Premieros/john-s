@@ -21,13 +21,7 @@ export interface MenuItemConfig {
 }
 
 export const MENU_GROUPS: Record<MenuGroup, { ar: string; en: string }> = {
-  main: { ar: 'الرئيسية', en: 'Main' },
-  catalog: { ar: 'الكتالوج والوصفات', en: 'Catalog & Recipes' },
-  operations: { ar: 'العمليات', en: 'Operations' },
-  centers: { ar: 'مراكز الإدارة', en: 'Management Centers' },
-  people: { ar: 'الأطراف', en: 'People' },
-  finance: { ar: 'المالية', en: 'Finance' },
-  admin: { ar: 'الإدارة', en: 'Admin' },
+  main: { ar: 'الرئيسية', en: 'Main' }, catalog: { ar: 'الكتالوج والوصفات', en: 'Catalog & Recipes' }, operations: { ar: 'العمليات', en: 'Operations' }, centers: { ar: 'مراكز الإدارة', en: 'Management Centers' }, people: { ar: 'الأطراف', en: 'People' }, finance: { ar: 'المالية', en: 'Finance' }, admin: { ar: 'الإدارة', en: 'Admin' },
 };
 
 export const MENU_ITEMS: MenuItemConfig[] = [
@@ -39,7 +33,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
   { id: 'procurement-center', route: APP_ROUTES.procurementCenter, icon: 'purchases', labelKey: 'purchases', permission: 'purchases.view', group: 'centers' },
   { id: 'waste-center', route: APP_ROUTES.wasteCenter, icon: 'wasteCenter', labelKey: 'wasteCenter', permission: 'waste.view', group: 'centers' },
   { id: 'products', route: APP_ROUTES.products, icon: 'products', labelKey: 'products', permission: 'products.view', group: 'catalog' },
-  { id: 'product-modifiers', route: APP_ROUTES.productModifiers, icon: 'productModifiers', labelKey: 'products', label: { ar: 'موديفاير المنتجات', en: 'Product Modifiers' }, permission: 'products.manage', group: 'catalog' },
+  { id: 'product-modifiers', route: APP_ROUTES.productModifiers, icon: 'productModifiers', labelKey: 'products', label: { ar: 'موديفاير المنتجات', en: 'Product Modifiers' }, permission: 'products.modifiers.manage', group: 'catalog' },
   { id: 'recipes', route: APP_ROUTES.recipes, icon: 'recipes', labelKey: 'recipes', permission: 'recipes.view', group: 'catalog' },
   { id: 'raw-materials', route: APP_ROUTES.rawMaterials, icon: 'rawMaterials', labelKey: 'rawMaterials', permission: 'raw_materials.view', group: 'catalog' },
   { id: 'categories', route: APP_ROUTES.categories, icon: 'categories', labelKey: 'categories', permission: 'categories.view', group: 'catalog' },
