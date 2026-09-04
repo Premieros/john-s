@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Car, Check, ChefHat, Minus, PackageOpen, Plus, RefreshCw, Search, ShoppingBag, ShoppingCart, Store, Trash2, Truck, UsersRound, UtensilsCrossed, X } from 'lucide-react';
+import { ArrowRight, Car, Check, ChefHat, Minus, PackageOpen, Plus, RefreshCw, Search, Send, ShoppingBag, ShoppingCart, Store, Trash2, Truck, UsersRound, UtensilsCrossed, X } from 'lucide-react';
 import { supabase } from '@/api';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useCan } from '@/lib/permissions';
 import { V2AppShell } from '@/v2/components/V2AppShell';
 import { V2BranchProvider, useV2Branch } from '@/v2/context/V2BranchContext';
+import { useV2Can } from '@/v2/core/useV2Can';
 
 type OrderType = 'dine_in' | 'takeaway' | 'delivery' | 'drive_thru';
 
@@ -43,6 +44,9 @@ type DraftContext = {
   existingOrderNumber: string | null;
 };
 
+type SavedOrder = { orderId: string; orderNumber: string | null };
+type KitchenSendResult = { success?: boolean; error?: string; detail?: string; items_sent_count?: number; all_sent?: boolean };
+
 const EMPTY_DRAFT: DraftContext = { orderType: 'takeaway', tableId: null, guestCount: null, existingOrderId: null, existingOrderNumber: null };
 
 function makeCartKey(productId: string, optionIds: string[]): string {
@@ -54,6 +58,7 @@ function V2PosContent() {
   const isAr = lang === 'ar';
   const { user } = useAuth();
   const can = useCan();
+  const v2Can = useV2Can();
   const { selectedBranchId, selectedBranch } = useV2Branch();
 
   const [products, setProducts] = useState<ProductRow[]>([]);
@@ -67,6 +72,7 @@ function V2PosContent() {
   const [stock, setStock] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [sendingKitchen, setSendingKitchen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -252,11 +258,11 @@ function V2PosContent() {
       .sort((a, b) => Number((stock[b.id] ?? 0) > 0) - Number((stock[a.id] ?? 0) > 0));
   }, [products, categoryId, search, stock]);
 
-  const saveOrder = async () => {
-    if (!selectedBranchId || !user?.id || cart.length === 0 || saving) return;
+  const saveOrder = async (): Promise<SavedOrder | null> => {
+    if (!selectedBranchId || !user?.id || cart.length === 0 || saving) return null;
     if (!can('pos.sell')) {
       setError(isAr ? 'لا توجد صلاحية إنشاء طلب' : 'Missing POS sell permission');
-      return;
+      return null;
     }
     setSaving(true);
     setError(null);
@@ -292,6 +298,9 @@ function V2PosContent() {
       if (result.error) throw result.error;
       const payload = result.data as { success?: boolean; error?: string; detail?: string; order_id?: string; order_number?: string } | null;
       if (!payload?.success) throw new Error(payload?.detail || payload?.error || 'ORDER_SAVE_FAILED');
+      const orderId = payload.order_id || draft.existingOrderId;
+      if (!orderId) throw new Error('ORDER_ID_MISSING');
+      const orderNumber = payload.order_number || draft.existingOrderNumber || null;
       setSuccess(draft.existingOrderId
         ? (isAr ? `تم تحديث الطلب ${draft.existingOrderNumber || ''}` : `Order ${draft.existingOrderNumber || ''} updated`)
         : (isAr ? `تم إنشاء الطلب ${payload.order_number || ''}` : `Order ${payload.order_number || ''} created`));
@@ -299,10 +308,42 @@ function V2PosContent() {
       if (!draft.existingOrderId && payload.order_id) {
         setDraft((current) => ({ ...current, existingOrderId: payload.order_id || null, existingOrderNumber: payload.order_number || null }));
       }
+      return { orderId, orderNumber };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const canSendKitchen = v2Can('pos.send_kitchen');
+
+  const sendToKitchen = async () => {
+    if (!user?.id || cart.length === 0 || saving || sendingKitchen) return;
+    if (!canSendKitchen) {
+      setError(isAr ? 'لا توجد صلاحية إرسال الطلب للمطبخ' : 'Missing kitchen-send permission');
+      return;
+    }
+    setSendingKitchen(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const saved = await saveOrder();
+      if (!saved) return;
+      const result = await supabase.rpc('send_to_kitchen', { p_order_id: saved.orderId, p_sent_by: user.id });
+      if (result.error) throw result.error;
+      const payload = result.data as KitchenSendResult | null;
+      if (!payload?.success) throw new Error(payload?.detail || payload?.error || 'KITCHEN_SEND_FAILED');
+      const count = Number(payload.items_sent_count || 0);
+      setSuccess(count > 0
+        ? (isAr ? `تم حفظ الطلب وإرسال ${count} بند للمطبخ` : `Order saved and ${count} item${count === 1 ? '' : 's'} sent to kitchen`)
+        : (isAr ? 'تم حفظ الطلب ولا توجد إضافات جديدة للإرسال للمطبخ' : 'Order saved; there are no new kitchen changes to send'));
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setSaving(false);
+      setSendingKitchen(false);
     }
   };
 
@@ -386,7 +427,7 @@ function V2PosContent() {
                 {cart.map((line) => <div key={line.key} className="rounded-2xl border border-ui-border bg-ui-page-alt p-3"><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><div className="truncate font-black">{isAr ? line.product.name : line.product.name_en || line.product.name}</div>{line.modifierOptionIds.length > 0 && <div className="mt-1 text-xs text-ui-muted">{line.modifierOptionIds.map((id) => { const option = modifierOptions.find((item) => item.id === id); return option ? (isAr ? option.name : option.name_en || option.name) : ''; }).filter(Boolean).join(' · ')}</div>}<div className="mt-1 text-sm font-bold text-ui-primary">{(line.unitPrice * line.quantity).toLocaleString(isAr ? 'ar-EG' : 'en-US')}</div></div><button type="button" onClick={() => setCart((current) => current.filter((item) => item.key !== line.key))} className="rounded-lg p-1.5 text-ui-danger hover:bg-ui-danger-soft" aria-label={isAr ? 'حذف' : 'Delete'}><Trash2 className="h-4 w-4" /></button></div><div className="mt-3 flex items-center gap-2"><button type="button" onClick={() => changeQty(line.key, -1)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-ui-border"><Minus className="h-4 w-4" /></button><span className="min-w-8 text-center font-black tabular-nums">{line.quantity}</span><button type="button" onClick={() => changeQty(line.key, 1)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-ui-border"><Plus className="h-4 w-4" /></button></div></div>)}
                 {cart.length === 0 && <div className="flex min-h-52 flex-col items-center justify-center text-center text-ui-muted"><ShoppingCart className="mb-3 h-9 w-9 text-ui-subtle" /><div className="font-bold">{isAr ? 'أضف المنتجات للطلب' : 'Add products to the order'}</div><div className="mt-1 text-xs">{isAr ? 'لا يتم إنشاء سجل Order فارغ.' : 'No empty order record is created.'}</div></div>}
               </div>
-              <div className="border-t border-ui-border p-4"><div className="mb-3 flex items-center justify-between"><span className="text-sm text-ui-muted">{isAr ? 'الإجمالي المبدئي' : 'Draft subtotal'}</span><span className="text-xl font-black">{cartSubtotal.toLocaleString(isAr ? 'ar-EG' : 'en-US')}</span></div><button type="button" onClick={() => void saveOrder()} disabled={cart.length === 0 || saving} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-ui-primary px-4 font-black text-white disabled:opacity-50"><Store className="h-5 w-5" />{saving ? (isAr ? 'جاري الحفظ...' : 'Saving...') : draft.existingOrderId ? (isAr ? 'حفظ تعديلات الطلب' : 'Save order changes') : (isAr ? 'إنشاء الطلب' : 'Create order')}</button><div className="mt-2 text-center text-[11px] text-ui-subtle">{isAr ? 'السعر والضريبة يعاد احتسابهما Server-side عند الحفظ.' : 'Price and tax are recalculated server-side when saved.'}</div></div>
+              <div className="border-t border-ui-border p-4"><div className="mb-3 flex items-center justify-between"><span className="text-sm text-ui-muted">{isAr ? 'الإجمالي المبدئي' : 'Draft subtotal'}</span><span className="text-xl font-black">{cartSubtotal.toLocaleString(isAr ? 'ar-EG' : 'en-US')}</span></div><div className={`grid gap-2 ${canSendKitchen ? 'sm:grid-cols-2' : ''}`}><button type="button" onClick={() => void saveOrder()} disabled={cart.length === 0 || saving || sendingKitchen} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-ui-primary px-4 font-black text-white disabled:opacity-50"><Store className="h-5 w-5" />{saving ? (isAr ? 'جاري الحفظ...' : 'Saving...') : draft.existingOrderId ? (isAr ? 'حفظ تعديلات الطلب' : 'Save order changes') : (isAr ? 'إنشاء الطلب' : 'Create order')}</button>{canSendKitchen && <button type="button" data-testid="v2-pos-send-kitchen" onClick={() => void sendToKitchen()} disabled={cart.length === 0 || saving || sendingKitchen} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-ui-primary bg-ui-primary-soft px-4 font-black text-ui-primary disabled:opacity-50"><Send className="h-5 w-5" />{sendingKitchen ? (isAr ? 'جاري الإرسال...' : 'Sending...') : (isAr ? 'حفظ وإرسال للمطبخ' : 'Save & send to kitchen')}</button>}</div><div className="mt-2 text-center text-[11px] text-ui-subtle">{isAr ? 'يُحفظ الطلب أولًا، والإرسال للمطبخ يرسل التغييرات الجديدة فقط. لا يتم خصم المخزون هنا.' : 'The order is saved first; kitchen send transmits only new changes. Inventory is not deducted here.'}</div></div>
             </aside>
           </div>
         )}
