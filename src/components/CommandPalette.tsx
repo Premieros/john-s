@@ -6,6 +6,8 @@ import { useLanguage } from '@/context/LanguageContext';
 import { MENU_ITEMS } from '@/core/navigation/menu.config';
 import { isAdminRole, useCan } from '@/lib/permissions';
 
+const OPEN_COMMAND_PALETTE_EVENT = 'premier:open-command-palette';
+
 /**
  * Command palette deliberately derives from MENU_ITEMS only.
  * Keeping a second hand-written route/permission list here previously caused
@@ -30,8 +32,13 @@ export function CommandPalette() {
       }
       if (event.key === 'Escape') setOpen(false);
     };
+    const onOpen = () => setOpen(true);
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener(OPEN_COMMAND_PALETTE_EVENT, onOpen);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener(OPEN_COMMAND_PALETTE_EVENT, onOpen);
+    };
   }, []);
 
   useEffect(() => {
@@ -90,28 +97,36 @@ export function CommandPalette() {
             <X className="h-4 w-4" />
           </button>
         </div>
-
         <div className="max-h-[55vh] overflow-y-auto p-2">
           {items.length === 0 ? (
             <div className="p-8 text-center text-sm text-ui-muted">{ar ? 'لا توجد شاشة مطابقة أو مسموح بها.' : 'No matching allowed workspace.'}</div>
           ) : items.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              onMouseEnter={() => setSelectedIndex(index)}
-              onClick={() => choose(index)}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start transition ${index === selectedIndex ? 'bg-ui-primary-soft text-ui-primary' : 'text-ui-text hover:bg-ui-page-alt'}`}
-            >
+            <button key={item.id} type="button" onMouseEnter={() => setSelectedIndex(index)} onClick={() => choose(index)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-start transition ${index === selectedIndex ? 'bg-ui-primary-soft text-ui-primary' : 'text-ui-text hover:bg-ui-page-alt'}`}>
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-ui-page-alt"><Package className="h-4 w-4" /></span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-semibold">{item.labelKey}</span>
-                <span className="block truncate text-xs text-ui-muted">{item.route}</span>
-              </span>
+              <span className="min-w-0 flex-1"><span className="block truncate font-semibold">{item.labelKey}</span><span className="block truncate text-xs text-ui-muted">{item.route}</span></span>
               {item.permission && <span className="hidden text-[10px] text-ui-subtle sm:block">{item.permission}</span>}
             </button>
           ))}
         </div>
       </div>
     </div>
+  );
+}
+
+export function CommandPaletteTrigger() {
+  const { lang } = useLanguage();
+  const ar = lang === 'ar';
+  return (
+    <button
+      type="button"
+      onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
+      className="hidden h-9 items-center gap-2 rounded-xl border border-ui-border bg-ui-surface px-2.5 text-xs font-semibold text-ui-muted transition hover:bg-ui-page-alt hover:text-ui-text md:flex"
+      aria-label={ar ? 'فتح البحث السريع' : 'Open command search'}
+      title={ar ? 'بحث سريع (Ctrl+K)' : 'Quick search (Ctrl+K)'}
+    >
+      <Search className="h-4 w-4" />
+      <span>{ar ? 'بحث' : 'Search'}</span>
+      <kbd className="rounded border border-ui-border bg-ui-page-alt px-1.5 py-0.5 text-[10px] text-ui-subtle">Ctrl K</kbd>
+    </button>
   );
 }
