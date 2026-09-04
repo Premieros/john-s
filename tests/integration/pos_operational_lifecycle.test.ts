@@ -150,7 +150,7 @@ describe.skipIf(skip)('POS operational lifecycle release gate', () => {
     const sent = await rpc(ids.users.cashier, `SELECT public.send_to_kitchen($1) AS r`, [orderId]);
     expect(sent.success).toBe(true);
     expect(sent.items_sent_count).toBe(1);
-    expect(await batchQty()).toBe(stockBeforeKds); // KDS is state/snapshot only.
+    expect(await batchQty()).toBe(stockBeforeKds - 1); // Kitchen send is the stock boundary.
 
     const invoice = `LIFE-${Date.now()}-${randomUUID().slice(0, 8)}`;
     const sale = await rpc(
@@ -192,7 +192,7 @@ describe.skipIf(skip)('POS operational lifecycle release gate', () => {
     expect(Number(settled.rows[0].paid_amount)).toBe(20);
     expect(settled.rows[0].status).toBe('completed');
     expect(settled.rows[0].order_status).toBe('completed');
-    expect(await batchQty()).toBe(stockBeforeKds - 1); // sale deducts exactly once.
+    expect(await batchQty()).toBe(stockBeforeKds - 1); // Payment does not deduct a second time.
 
     const saleItem = await client.query<{ id: string; quantity: string; total: string }>(
       `SELECT id, quantity::text, total::text FROM public.sale_items WHERE sale_id = $1 LIMIT 1`,

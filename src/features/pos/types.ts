@@ -36,9 +36,13 @@ export interface KitchenSendResult {
   table_name?: string | null;
   order_type?: string | null;
   guest_count?: number | null;
+  warehouse_id?: string | null;
   sent?: KitchenSendItem[];
   items_sent_count?: number;
   all_sent?: boolean;
+  inventory_deducted?: boolean;
+  product_id?: string | null;
+  product_name?: string | null;
   error?: string;
   detail?: string;
 }

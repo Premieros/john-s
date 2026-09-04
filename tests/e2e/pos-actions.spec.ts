@@ -72,6 +72,9 @@ async function addProduct(page: Page) {
   const addButton = page.getByRole('button', { name: /E2E Burger/i });
   await expect(addButton).toBeEnabled({ timeout: 10000 });
   await addButton.click({ timeout: 10000 });
+  const productDialog = page.getByRole('dialog');
+  await expect(productDialog).toBeVisible({ timeout: 10000 });
+  await productDialog.getByRole('button', { name: /^(إضافة|Add)$/i }).click();
   await expect(page.getByTestId(`pos-cart-qty-${PRODUCT_ID}`)).toHaveText('1', { timeout: 10000 });
 }
 

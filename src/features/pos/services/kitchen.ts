@@ -3,7 +3,7 @@ import { rpc } from '@/api/rpc';
 import { printKitchenStationsLocally, suppressNextKitchenBrowserPopup } from './localPrintAgent';
 
 // In-flight locks prevent rapid duplicate clicks. The server remains the
-// authoritative idempotency boundary and send_to_kitchen is state/snapshot only.
+// authoritative idempotency and inventory-deduction boundary.
 const activeSendLocks = new Set<string>();
 
 /**
@@ -32,8 +32,8 @@ function withKitchenInstructions(item: KitchenSendItem): KitchenSendItem {
  * Send the persisted order to KDS.
  *
  * Hard rules:
- * - This client service never deducts/restores inventory.
- * - The server decides station_code and delta quantity.
+ * - The client never mutates inventory directly.
+ * - The server deducts only the positive kitchen delta and decides station_code.
  * - If the local Windows print agent successfully prints every station, the
  *   legacy browser kitchen-print popup is suppressed once. If the agent is not
  *   installed/configured, the existing browser print remains the fallback.
@@ -60,10 +60,14 @@ export async function sendOrderToKitchen(p: {
       table_name?: string | null;
       order_type?: string | null;
       guest_count?: number | null;
+      warehouse_id?: string | null;
       sent?: KitchenSendItem[];
       items_sent_count?: number;
       items_processed?: number;
       all_sent?: boolean;
+      inventory_deducted?: boolean;
+      product_id?: string | null;
+      product_name?: string | null;
     }>('send_to_kitchen', {
       p_order_id: orderId,
       p_sent_by: p.p_sent_by || null,

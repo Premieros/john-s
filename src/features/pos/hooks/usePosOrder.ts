@@ -32,6 +32,7 @@ export interface UsePosOrderInput {
   activeShift: ActiveShiftInfo | null;
   products: Product[];
   stockMap: Record<string, number>;
+  onInventoryChanged?: () => void;
 }
 
 interface PersistResult {
@@ -45,7 +46,7 @@ const EMPTY_CART: CartItem[] = [];
 const VALID_PAYMENT_METHODS: PosPaymentMethod[] = ['cash', 'card', 'transfer', 'credit'];
 
 export function usePosOrder(input: UsePosOrderInput) {
-  const { branchId, branchName, orderId, customers, effSettings, isCashier, activeShift, stockMap } = input;
+  const { branchId, branchName, orderId, customers, effSettings, isCashier, activeShift, stockMap, onInventoryChanged } = input;
   const { t, lang } = useLanguage();
   const isAr = lang === 'ar';
   const { user } = useAuth();
@@ -562,10 +563,12 @@ export function usePosOrder(input: UsePosOrderInput) {
       const cancelNote = `[إلغاء مطبخ: ${voidQuantity} × ${item.product.name} - السبب: ${reason}]`;
       setOrderNotes((prev) => (prev ? `${prev}\n${cancelNote}` : cancelNote));
 
+      if (result.inventory_changed) onInventoryChanged?.();
+
       show(
         isAr
-          ? `تم إلغاء الصنف (${item.product.name}) بدون أي تعديل على المخزون`
-          : `Item voided without changing inventory`,
+          ? `تم إلغاء الصنف (${item.product.name}) وإرجاع كميته المخصومة للمخزون`
+          : `Item voided and its deducted quantity was restored to inventory`,
         'success'
       );
       return true;
@@ -573,7 +576,7 @@ export function usePosOrder(input: UsePosOrderInput) {
       show(err instanceof Error ? err.message : 'Failed to void item', 'error');
       return false;
     }
-  }, [activeOrderId, cart, isAr, show]);
+  }, [activeOrderId, cart, isAr, onInventoryChanged, show]);
 
   const persistCart = useCallback(async (status: 'open' | 'held'): Promise<PersistResult> => {
     if (!branchId) { show(t('selectBranchFirst'), 'error'); return { ok: false, orderId: null, orderNumber: null }; }
@@ -677,6 +680,7 @@ export function usePosOrder(input: UsePosOrderInput) {
       setKitchenSentItems(res.sent || []);
       const sentCount = res.items_sent_count || 0;
       if (sentCount > 0) {
+        onInventoryChanged?.();
         show(`${t('sendToKitchen')} (${sentCount})`, 'success');
         if (effSettings) {
           const html = buildKitchenTicketHtml({
@@ -697,7 +701,7 @@ export function usePosOrder(input: UsePosOrderInput) {
     } finally {
       setKitchenSending(false);
     }
-  }, [cart.length, completing, orderLoading, kitchenSending, branchId, orderType, tableId, activeOrderNumber, persistCart, effSettings, activeTable, guestCount, t, isAr, show]);
+  }, [cart.length, completing, orderLoading, kitchenSending, branchId, orderType, tableId, activeOrderNumber, persistCart, effSettings, activeTable, guestCount, t, isAr, onInventoryChanged, show]);
 
   const printKitchenTicket = useCallback(() => {
     if (cart.length === 0 || !effSettings) return;
@@ -723,12 +727,17 @@ export function usePosOrder(input: UsePosOrderInput) {
     }
     setCompleting(true);
     try {
-      for (const item of cart) {
-        const stock = getStock(item.product.id);
-        if (stock < item.quantity) { show(`${item.product.name}: ${t('insufficientStock')} (${stock})`, 'error'); return false; }
+      // A linked order has already crossed the authoritative kitchen boundary.
+      // The server verifies that every delta was sent and reuses those effects.
+      // Only a direct, unpersisted sale still needs the pre-deduction client check.
+      if (!activeOrderId) {
+        for (const item of cart) {
+          const stock = getStock(item.product.id);
+          if (stock < item.quantity) { show(`${item.product.name}: ${t('insufficientStock')} (${stock})`, 'error'); return false; }
+        }
       }
 
-      const warehouseId = await fetchBranchWarehouseId(branchId);
+      const warehouseId = await fetchBranchWarehouseId(branchId, activeOrderId);
       const invoiceNumber = (await nextInvoiceNumber()) || `INV-${Date.now()}`;
       const itemsPayload = cartToItems(cart);
       const paidAmountToUse = paymentMethod === 'credit' ? 0 : paidAmount || total;

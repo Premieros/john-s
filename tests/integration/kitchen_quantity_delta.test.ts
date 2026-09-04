@@ -10,6 +10,7 @@ describe.skipIf(skip)('KDS quantity delta sends', () => {
   let client: pg.Client;
   const orgId = randomUUID();
   const branchId = randomUUID();
+  const warehouseId = randomUUID();
   const productId = randomUUID();
   const cashierId = randomUUID();
 
@@ -48,7 +49,10 @@ describe.skipIf(skip)('KDS quantity delta sends', () => {
     await client.query(`ALTER TABLE public.users DISABLE TRIGGER trg_users_role_guard`);
     await client.query(`INSERT INTO public.organizations(id,name,slug) VALUES($1,$2,$3)`, [orgId, 'KDS Delta Org', `kds-delta-${randomUUID().slice(0, 8)}`]);
     await client.query(`INSERT INTO public.branches(id,name,organization_id) VALUES($1,$2,$3)`, [branchId, 'KDS Delta Branch', orgId]);
+    await client.query(`INSERT INTO public.warehouses(id,name,branch_id,is_active,is_default) VALUES($1,$2,$3,true,true)`, [warehouseId, 'KDS Delta Warehouse', branchId]);
     await client.query(`INSERT INTO public.products(id,name,branch_id,sale_price,cost_price,is_active) VALUES($1,$2,$3,100,50,true)`, [productId, 'KDS Delta Product', branchId]);
+    await client.query(`INSERT INTO public.inventory_batches(product_id,warehouse_id,branch_id,quantity,unit_cost) VALUES($1,$2,$3,30,50)`, [productId, warehouseId, branchId]);
+    await client.query(`INSERT INTO public.inventory(product_id,warehouse_id,branch_id,quantity) VALUES($1,$2,$3,30)`, [productId, warehouseId, branchId]);
     await client.query(`INSERT INTO public.users(id,email,full_name,role,branch_id,is_active) VALUES($1,$2,$3,'cashier',$4,true)`, [cashierId, `kds-delta-${randomUUID()}@test.local`, 'Delta Cashier', branchId]);
     await client.query(`INSERT INTO public.organization_members(organization_id,user_id,membership_role,is_active) VALUES($1,$2,'member',true)`, [orgId, cashierId]);
     await client.query(`INSERT INTO public.shifts(branch_id,cashier_id,opening_amount,status) VALUES($1,$2,0,'open')`, [branchId, cashierId]);
@@ -77,6 +81,8 @@ describe.skipIf(skip)('KDS quantity delta sends', () => {
     expect(first.success).toBe(true);
     expect(first.items_sent_count).toBe(1);
     expect(Number(first.sent[0].quantity)).toBe(1);
+    const afterFirst = Number((await client.query(`SELECT quantity FROM public.inventory_batches WHERE product_id=$1 AND warehouse_id=$2`, [productId, warehouseId])).rows[0].quantity);
+    expect(afterFirst).toBe(29);
     const itemId = String(first.sent[0].order_item_id);
 
     const firstSnapshot = await client.query(
@@ -108,6 +114,8 @@ describe.skipIf(skip)('KDS quantity delta sends', () => {
     expect(String(delta.sent[0].order_item_id)).toBe(itemId);
     expect(Number(delta.sent[0].quantity)).toBe(2);
     expect(Number(delta.sent[0].current_quantity)).toBe(3);
+    const afterDelta = Number((await client.query(`SELECT quantity FROM public.inventory_batches WHERE product_id=$1 AND warehouse_id=$2`, [productId, warehouseId])).rows[0].quantity);
+    expect(afterDelta).toBe(27);
 
     const snapshot = await client.query(
       `SELECT count(*)::int AS rows,max(sent_quantity)::numeric AS sent_quantity FROM public.order_kitchen_sends WHERE order_id=$1`,
@@ -120,6 +128,7 @@ describe.skipIf(skip)('KDS quantity delta sends', () => {
     expect(noOp.success).toBe(true);
     expect(noOp.items_sent_count).toBe(0);
     expect(noOp.all_sent).toBe(true);
+    expect(Number((await client.query(`SELECT quantity FROM public.inventory_batches WHERE product_id=$1 AND warehouse_id=$2`, [productId, warehouseId])).rows[0].quantity)).toBe(afterDelta);
   });
 
   it('reduces sent_quantity after a kitchen void so a later increase sends the correct net delta', async () => {
@@ -135,9 +144,12 @@ describe.skipIf(skip)('KDS quantity delta sends', () => {
     const first = await send(orderId);
     const itemId = String(first.sent[0].order_item_id);
     expect(Number(first.sent[0].quantity)).toBe(3);
+    const beforeVoid = Number((await client.query(`SELECT quantity FROM public.inventory_batches WHERE product_id=$1 AND warehouse_id=$2`, [productId, warehouseId])).rows[0].quantity);
 
     // Mirror the server-authorized partial void: reduce the line and insert the
     // void event. The AFTER INSERT trigger must reduce the net KDS quantity.
+    const restored = await client.query(`SELECT public._restore_kitchen_inventory_for_void($1,$2,1) AS r`, [orderId, itemId]);
+    expect(restored.rows[0].r.success).toBe(true);
     await client.query(`SELECT set_config('app.approved_sent_item_void','1',true)`);
     await client.query(`UPDATE public.order_items SET quantity=2,total=200 WHERE id=$1`, [itemId]);
     await client.query(
@@ -163,5 +175,6 @@ describe.skipIf(skip)('KDS quantity delta sends', () => {
     expect(delta.items_sent_count).toBe(1);
     expect(Number(delta.sent[0].quantity)).toBe(2);
     expect(Number(delta.sent[0].current_quantity)).toBe(4);
+    expect(Number((await client.query(`SELECT quantity FROM public.inventory_batches WHERE product_id=$1 AND warehouse_id=$2`, [productId, warehouseId])).rows[0].quantity)).toBe(beforeVoid - 1);
   });
 });

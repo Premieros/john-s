@@ -43,6 +43,12 @@ describe.skipIf(skip)('V2 POS kitchen permission contract', () => {
       [branchA, branchB],
     );
     await client.query(
+      `INSERT INTO public.warehouses (id, name, branch_id, is_active, is_default)
+       VALUES ($1, 'V2 POS A Warehouse', $2, true, true),
+              ($3, 'V2 POS B Warehouse', $4, true, true)`,
+      [randomUUID(), branchA, randomUUID(), branchB],
+    );
+    await client.query(
       `INSERT INTO public.roles (role, name_ar, name_en, permissions, scope, is_active)
        VALUES ($1, 'V2 order only', 'V2 order only', '["pos.sell"]'::jsonb, 'global', true)`,
       [role],

@@ -129,9 +129,12 @@ export function PosWorkspacePage() {
     }
     const { data: warehouses } = await supabase
       .from('warehouses')
-      .select('id')
+      .select('id,is_default,created_at')
       .eq('branch_id', branchId)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
     const warehouseId = ((warehouses || []) as { id: string }[])[0]?.id || null;
     if (!warehouseId) {
       setStockMap({});
@@ -153,6 +156,10 @@ export function PosWorkspacePage() {
     setStockMap(map);
   }, []);
 
+  const handleInventoryChanged = useCallback(() => {
+    if (effectiveBranch) void loadStock(effectiveBranch);
+  }, [effectiveBranch, loadStock]);
+
   const currentBranchName = branches.find((b) => b.id === effectiveBranch)?.name || effectiveBranch;
 
   const pos = usePosOrder({
@@ -165,22 +172,11 @@ export function PosWorkspacePage() {
     activeShift,
     products,
     stockMap,
+    onInventoryChanged: handleInventoryChanged,
   });
 
-  // What the cashier sees as available should be what remains after the current
-  // cart reservation, while stockMap stays the authoritative physical/sellable
-  // quantity used by validation and checkout.
-  const displayStockMap = useMemo(() => {
-    const remaining = { ...stockMap };
-    for (const item of pos.cart) {
-      remaining[item.product.id] = Math.max(0, (remaining[item.product.id] || 0) - item.quantity);
-    }
-    return remaining;
-  }, [stockMap, pos.cart]);
-  const displaySellableStock = displayStockMap;
-
-  // process_sale performs the real inventory deduction. Refresh immediately
-  // after a successful sale so the next order never sees a stale stock badge.
+  // Refresh after settlement as a second synchronization point. Kitchen send
+  // already owns the physical deduction and refreshes through the callback.
   useEffect(() => {
     if (pos.receiptSaleId && effectiveBranch) void loadStock(effectiveBranch);
   }, [pos.receiptSaleId, effectiveBranch, loadStock]);
@@ -201,18 +197,33 @@ export function PosWorkspacePage() {
   const activeOrderCreatedAt = useMemo(() => orders.find((o) => o.id === pos.activeOrderId)?.created_at || null, [orders, pos.activeOrderId]);
   const orderItemsForActive = useMemo(() => (pos.activeOrderId ? itemsByOrder[pos.activeOrderId] || [] : []), [pos.activeOrderId, itemsByOrder]);
   const kitchenSendsForActive = useMemo(() => (pos.activeOrderId ? kitchenSendsByOrder[pos.activeOrderId] || [] : []), [pos.activeOrderId, kitchenSendsByOrder]);
-  const sentItemIds = useMemo(() => new Set(kitchenSendsForActive.map((s) => s.order_item_id)), [kitchenSendsForActive]);
+
+  // stockMap already reflects quantities physically deducted at kitchen send.
+  // Project only the still-unsent part of the cart so sent quantities are not
+  // subtracted a second time from the availability shown to the cashier.
+  const displayStockMap = useMemo(() => {
+    const remaining = { ...stockMap };
+    for (const item of pos.cart) {
+      const lineKey = cartLineKey(item);
+      const orderItem = orderItemsForActive.find((oi) => orderItemLineKey(oi) === lineKey);
+      const send = orderItem ? kitchenSendsForActive.find((row) => row.order_item_id === orderItem.id) : null;
+      const unsentQuantity = Math.max(item.quantity - Number(send?.sent_quantity || 0), 0);
+      remaining[item.product.id] = Math.max(0, (remaining[item.product.id] || 0) - unsentQuantity);
+    }
+    return remaining;
+  }, [stockMap, pos.cart, orderItemsForActive, kitchenSendsForActive]);
+  const displaySellableStock = displayStockMap;
 
   const hasUnsentItems = useMemo(() => {
     if (pos.cart.length === 0) return false;
-    if (kitchenSendsForActive.length === 0) return true;
     return pos.cart.some((cItem) => {
       const lineKey = cartLineKey(cItem);
       const orderItem = orderItemsForActive.find((oi) => orderItemLineKey(oi) === lineKey);
       if (!orderItem) return true;
-      return !sentItemIds.has(orderItem.id);
+      const send = kitchenSendsForActive.find((row) => row.order_item_id === orderItem.id);
+      return Number(send?.sent_quantity || 0) < cItem.quantity;
     });
-  }, [pos.cart, kitchenSendsForActive, orderItemsForActive, sentItemIds]);
+  }, [pos.cart, kitchenSendsForActive, orderItemsForActive]);
 
   const handlePay = useCallback(() => {
     if (pos.cart.length === 0) return;

@@ -33,7 +33,7 @@ describe.skipIf(skip)('POS split payment atomicity', () => {
     return Number(result.rows[0]?.quantity || 0);
   };
 
-  const splitSale = async (invoice: string, payments: unknown[]): Promise<SplitSaleResult> => {
+  const splitSale = async (invoice: string, payments: unknown[], orderId: string | null = null): Promise<SplitSaleResult> => {
     const items = JSON.stringify([{
       product_id: productId,
       unit_name: 'piece',
@@ -65,10 +65,10 @@ describe.skipIf(skip)('POS split payment atomicity', () => {
          p_shift_id := $7,
          p_order_type := 'takeaway',
          p_table_id := NULL,
-         p_order_id := NULL,
+         p_order_id := $8,
          p_guest_count := NULL
        ) AS r`,
-      [invoice, ids.branchA, ids.whA, ids.users.cashier, JSON.stringify(payments), items, ids.shiftA],
+      [invoice, ids.branchA, ids.whA, ids.users.cashier, JSON.stringify(payments), items, ids.shiftA, orderId],
     );
     if (result.error) throw new Error(result.error);
     return (result.rows[0]?.r || {}) as SplitSaleResult;
@@ -168,6 +168,51 @@ describe.skipIf(skip)('POS split payment atomicity', () => {
     ]);
 
     expect(await batchQty()).toBe(9);
+  });
+
+  it('settles a kitchen-sent linked order without deducting inventory again', async (ctx) => {
+    if (!impersonationAvailable) return ctx.skip();
+
+    const items = JSON.stringify([{
+      product_id: productId,
+      unit_name: 'piece',
+      quantity: 1,
+      unit_price: 20,
+      discount_amount: 0,
+      bonus_quantity: 0,
+      total: 20,
+    }]);
+    const created = await runAsPersist(
+      client,
+      ids.users.cashier,
+      `SELECT public.create_order($1, 'takeaway', NULL, NULL, NULL, NULL, $2::jsonb, 20, 0, 'amount', 0, 20, $3) AS r`,
+      [ids.branchA, items, ids.users.cashier],
+    );
+    if (created.error) throw new Error(created.error);
+    const createdResult = created.rows[0].r as { success?: boolean; order_id?: string };
+    expect(createdResult.success, JSON.stringify(createdResult)).toBe(true);
+    const orderId = String(createdResult.order_id);
+    const beforeSend = await batchQty();
+
+    const sent = await runAsPersist(
+      client,
+      ids.users.cashier,
+      `SELECT public.send_to_kitchen($1) AS r`,
+      [orderId],
+    );
+    if (sent.error) throw new Error(sent.error);
+    const sentResult = sent.rows[0].r as { success?: boolean };
+    expect(sentResult.success, JSON.stringify(sentResult)).toBe(true);
+    expect(await batchQty()).toBe(beforeSend - 1);
+
+    const afterSend = await batchQty();
+    const result = await splitSale(
+      `SPLIT-KITCHEN-${Date.now()}-${randomUUID().slice(0, 8)}`,
+      [{ payment_method: 'cash', amount: 5 }, { payment_method: 'card', amount: 15 }],
+      orderId,
+    );
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(await batchQty()).toBe(afterSend);
   });
 
   it('rejects a tender total mismatch without creating a sale or deducting stock', async (ctx) => {

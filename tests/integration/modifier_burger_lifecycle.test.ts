@@ -126,7 +126,7 @@ describe.skipIf(skip)('Burger modifier transactional lifecycle', () => {
     await client.end();
   });
 
-  it('keeps KDS inventory-neutral, deducts exact Single/Double composition, and partially refunds the exact line', async (ctx) => {
+  it('deducts exact Single/Double composition at KDS send, settles once, and refunds the exact line', async (ctx) => {
     if (!impersonationAvailable) return ctx.skip();
 
     const open = await rpc(ids.users.cashier, `SELECT public.open_shift($1,0,$2) AS r`, [ids.branchA, 'Modifier burger gate']);
@@ -192,9 +192,9 @@ describe.skipIf(skip)('Burger modifier transactional lifecycle', () => {
     const sent = await rpc(ids.users.cashier, `SELECT public.send_to_kitchen($1) AS r`, [orderId]);
     expect(sent.success).toBe(true);
     expect(sent.items_sent_count).toBe(2);
-    expect(await unitQty(pattyUnit)).toBe(before.patty);
-    expect(await unitQty(cheeseUnit)).toBe(before.cheese);
-    expect(await unitQty(onionUnit)).toBe(before.onion);
+    expect(await unitQty(pattyUnit)).toBe(before.patty - 3);
+    expect(await unitQty(cheeseUnit)).toBe(before.cheese - 3);
+    expect(await unitQty(onionUnit)).toBe(before.onion - 1);
 
     const invoice = `MOD-${Date.now()}-${randomUUID().slice(0,8)}`;
     const sale = await rpc(
