@@ -10,6 +10,7 @@ const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then(m =
 const DashboardPage = lazy(() => import('../features/dashboard/pages/DashboardEnhancedPage').then(m => ({ default: m.DashboardEnhancedPage })));
 const V2HomePage = lazy(() => import('../v2/pages/V2HomePage').then(m => ({ default: m.V2HomePage })));
 const V2PosPage = lazy(() => import('../v2/pages/V2PosPage').then(m => ({ default: m.V2PosPage })));
+const V2ShiftsPage = lazy(() => import('../v2/pages/V2ShiftsPage').then(m => ({ default: m.V2ShiftsPage })));
 const OperationsCenterPage = lazy(() => import('../features/operations/pages/OperationsCenterPage').then(m => ({ default: m.OperationsCenterPage })));
 const InventoryCenterPage = lazy(() => import('../features/inventory/pages/InventoryCenterPage').then(m => ({ default: m.InventoryCenterPage })));
 const ProcurementCenterPage = lazy(() => import('../features/trade/pages/ProcurementCenterPage').then(m => ({ default: m.ProcurementCenterPage })));
@@ -140,6 +141,7 @@ export function AppRoutes() {
         <Route path={APP_ROUTES.subscriptions} element={<Navigate to={APP_ROUTES.superAdmin} replace />} />
         <Route path={APP_ROUTES.frontendV2} element={<ProtectedRoute fullscreen><V2HomePage /></ProtectedRoute>} />
         <Route path={`${APP_ROUTES.frontendV2}/pos`} element={<ProtectedRoute permission="pos.sell" fullscreen><V2PosPage /></ProtectedRoute>} />
+        <Route path={`${APP_ROUTES.frontendV2}/shifts`} element={<ProtectedRoute permission="shifts.view" fullscreen><V2ShiftsPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.dashboard} element={<ProtectedRoute permission="dashboard.view"><DashboardPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.operationsCenter} element={<ProtectedRoute permission="dashboard.view"><OperationsCenterPage /></ProtectedRoute>} />
         <Route path={APP_ROUTES.inventoryCenter} element={<ProtectedRoute permission="inventory.view"><InventoryCenterPage /></ProtectedRoute>} />
