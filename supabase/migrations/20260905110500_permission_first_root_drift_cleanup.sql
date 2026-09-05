@@ -24,25 +24,46 @@ WHERE COALESCE(permissions,'[]'::jsonb) ? 'inventory.transfers' AND NOT COALESCE
 UPDATE public.roles SET permissions = permissions || '["inventory.transfer.approve"]'::jsonb
 WHERE COALESCE(permissions,'[]'::jsonb) ? 'inventory.transfers.approve' AND NOT COALESCE(permissions,'[]'::jsonb) ? 'inventory.transfer.approve';
 
--- Collapse duplicate JSON-array values that may result from broad legacy grants.
 UPDATE public.roles r
 SET permissions = (
   SELECT COALESCE(jsonb_agg(v ORDER BY v), '[]'::jsonb)
   FROM (SELECT DISTINCT value AS v FROM jsonb_array_elements_text(COALESCE(r.permissions,'[]'::jsonb))) s
 );
 
--- Create the neutral replacement label with the owner's explicit permission
--- set, then move users/memberships and delete owner. No implicit privileges are
--- attached to manager.
+-- Create/merge the neutral replacement label with the owner's explicit grants.
 INSERT INTO public.roles (role, name_ar, name_en, permissions, scope, branch_id, is_active)
 SELECT 'manager', 'مدير', 'Manager', permissions, scope, branch_id, is_active
 FROM public.roles
 WHERE role='owner'
-ON CONFLICT (role) DO NOTHING;
+ON CONFLICT (role) DO UPDATE
+SET permissions = (
+  SELECT COALESCE(jsonb_agg(v ORDER BY v), '[]'::jsonb)
+  FROM (
+    SELECT DISTINCT value AS v
+    FROM jsonb_array_elements_text(COALESCE(public.roles.permissions,'[]'::jsonb) || COALESCE(EXCLUDED.permissions,'[]'::jsonb))
+  ) merged
+), is_active=true;
 
 UPDATE public.users SET role='manager' WHERE role='owner';
 UPDATE public.organization_members SET membership_role='admin' WHERE membership_role='owner';
 DELETE FROM public.roles WHERE role='owner';
+
+-- Compatibility hard-stop: old clients/fixtures cannot recreate the retired
+-- label. They are normalized to manager before the normal user guard executes.
+CREATE OR REPLACE FUNCTION public.normalize_retired_owner_role()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path=public,pg_temp
+AS $$
+BEGIN
+  IF NEW.role='owner' THEN NEW.role:='manager'; END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_00_normalize_retired_owner_role ON public.users;
+CREATE TRIGGER trg_00_normalize_retired_owner_role
+BEFORE INSERT OR UPDATE OF role ON public.users
+FOR EACH ROW EXECUTE FUNCTION public.normalize_retired_owner_role();
 
 -- Legacy aliases are not authorization capabilities after normalization.
 UPDATE public.roles
