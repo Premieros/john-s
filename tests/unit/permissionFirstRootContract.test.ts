@@ -41,12 +41,15 @@ describe('Permission-First root contract', () => {
     expect(baseMigration).toContain("AND u.role = 'super_admin'");
     expect(baseMigration).toContain('JOIN public.roles r ON r.role = u.role AND r.is_active = true');
     expect(baseMigration).toContain("COALESCE(r.permissions, '[]'::jsonb) ? p_permission");
+    expect(baseMigration).not.toContain("u.role IN ('super_admin', 'owner')");
   });
 
-  it('migrates owner away and fails closed on future authorization drift', () => {
-    expect(baseMigration).toContain("UPDATE public.users SET role = 'manager' WHERE role = 'owner';");
-    expect(baseMigration).toContain("UPDATE public.organization_members SET membership_role = 'admin' WHERE membership_role = 'owner';");
-    expect(runtimeMigration).toContain('PERMISSION_FIRST_DRIFT: owner users remain');
+  it('preserves owner as a normal permission-bearing label', () => {
+    expect(baseMigration).toContain('`owner` remains a valid tenant role label');
+    expect(baseMigration).not.toContain("UPDATE public.users SET role = 'manager' WHERE role = 'owner';");
+    expect(baseMigration).not.toContain("DELETE FROM public.roles WHERE role = 'owner';");
+    expect(runtimeMigration).not.toContain("PERMISSION_FIRST_DRIFT: owner users remain");
+    expect(runtimeMigration).not.toContain("n:=replace(n,'''owner'',','''manager'',');");
     expect(runtimeMigration).toContain('PERMISSION_FIRST_DRIFT: runtime authorization remains');
     expect(runtimeMigration).toContain('PERMISSION_FIRST_DRIFT: RLS authorization remains');
   });
@@ -58,5 +61,9 @@ describe('Permission-First root contract', () => {
     expect(runtimeMigration).toContain("public.can_permission(''approvals.override'')");
     expect(permissionDefs).toContain("'products.modifiers.manage'");
     expect(permissionDefs).not.toContain("| 'products.manage'");
+  });
+
+  it('keeps DB maintenance seeding outside end-user role authorization', () => {
+    expect(runtimeMigration).toContain('IF auth.uid() IS NULL THEN RETURN NEW; END IF;');
   });
 });
