@@ -1,20 +1,6 @@
 -- Permission-First root base.
 -- Roles are labels only. Super Admin is the only implicit bypass.
-
--- Preserve the existing owner permission selection under a neutral manager label,
--- then remove owner from users, memberships and role definitions.
-INSERT INTO public.roles (role, permissions, name_ar, name_en, scope, branch_id, is_active)
-SELECT 'manager', permissions,
-       COALESCE(NULLIF(name_ar, ''), 'مدير'),
-       COALESCE(NULLIF(name_en, ''), 'Manager'),
-       scope, branch_id, is_active
-FROM public.roles
-WHERE role = 'owner'
-ON CONFLICT (role) DO NOTHING;
-
-UPDATE public.users SET role = 'manager' WHERE role = 'owner';
-UPDATE public.organization_members SET membership_role = 'admin' WHERE membership_role = 'owner';
-DELETE FROM public.roles WHERE role = 'owner';
+-- `owner` remains a valid tenant role label; it has no implicit authorization.
 
 -- Legacy aliases are not authorization capabilities. Do not infer new grants
 -- from an old role or permission name.
