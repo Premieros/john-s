@@ -34,11 +34,12 @@ describe('Permission-First root contract', () => {
     expect(baseMigration).not.toContain("u.role IN ('super_admin', 'owner')");
   });
 
-  it('retires owner entirely and migrates it to a neutral label', () => {
-    expect(baseMigration).toContain("UPDATE public.users SET role='manager' WHERE role='owner';");
-    expect(baseMigration).toContain("UPDATE public.organization_members SET membership_role='admin' WHERE membership_role='owner';");
-    expect(baseMigration).toContain("DELETE FROM public.roles WHERE role='owner';");
-    expect(baseMigration).toContain("SELECT 'manager', 'مدير', 'Manager'");
+  it('keeps owner as an ordinary permission-driven role label', () => {
+    expect(baseMigration).toContain('`owner` remains a valid role label');
+    expect(baseMigration).not.toContain("UPDATE public.users SET role='manager' WHERE role='owner';");
+    expect(baseMigration).not.toContain("DELETE FROM public.roles WHERE role='owner';");
+    expect(baseMigration).not.toContain('normalize_retired_owner_role');
+    expect(baseMigration).not.toContain("u.role = 'owner'");
   });
 
   it('migrates explicit legacy grants before deleting their aliases', () => {
