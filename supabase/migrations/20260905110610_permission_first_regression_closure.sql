@@ -103,6 +103,48 @@ USING (
   )
 );
 
+-- Operational approval transitions must use the same canonical capability as
+-- the RPC they protect. Otherwise a valid secondary-branch approver can pass
+-- the RPC check and still be rejected by the BEFORE UPDATE policy trigger.
+CREATE OR REPLACE FUNCTION public.enforce_approval_policy_transition()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_scope text;
+  v_fallback text;
+  v_amount numeric := 0;
+BEGIN
+  IF auth.uid() IS NULL
+     OR NEW.status IS NOT DISTINCT FROM OLD.status
+     OR NEW.status NOT IN ('approved', 'rejected') THEN
+    RETURN NEW;
+  END IF;
+
+  IF TG_TABLE_NAME = 'waste_entries' THEN
+    v_scope := 'waste';
+    v_fallback := 'waste.approve';
+    v_amount := COALESCE(NEW.total_cost, 0);
+  ELSIF TG_TABLE_NAME = 'stock_counts' THEN
+    v_scope := 'stock_count';
+    v_fallback := 'inventory.count.approve';
+  ELSIF TG_TABLE_NAME = 'warehouse_transfers' THEN
+    v_scope := 'warehouse_transfer';
+    v_fallback := 'inventory.transfer.approve';
+  ELSE
+    RETURN NEW;
+  END IF;
+
+  IF NOT public.can_approve_by_policy(v_scope, NEW.branch_id, v_amount, v_fallback) THEN
+    RAISE EXCEPTION 'APPROVAL_POLICY_DENIED:%', v_scope;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.approve_stock_count(p_stock_count_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
