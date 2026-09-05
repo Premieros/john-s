@@ -1,8 +1,7 @@
 -- Permission-First root base.
 -- Roles are labels only. Super Admin is the only implicit bypass.
--- Retire the historical `owner` role completely. Existing owner users are
--- relabelled to `manager`; their authorization remains the explicit role
--- permission set, normalized from legacy permission keys below.
+-- `owner` remains a valid role label. It has no implicit authorization and
+-- receives capabilities only through the explicit permissions stored on its role row.
 
 -- Preserve explicitly selected legacy grants by translating them to their
 -- canonical capabilities before deleting the aliases. This is permission-key
@@ -29,37 +28,6 @@ SET permissions = (
   SELECT COALESCE(jsonb_agg(v ORDER BY v), '[]'::jsonb)
   FROM (SELECT DISTINCT value AS v FROM jsonb_array_elements_text(COALESCE(r.permissions,'[]'::jsonb))) s
 );
-
--- Create/merge the neutral replacement label with the owner's explicit grants.
-INSERT INTO public.roles (role, name_ar, name_en, permissions, scope, branch_id, is_active)
-SELECT 'manager', 'مدير', 'Manager', permissions, scope, branch_id, is_active
-FROM public.roles
-WHERE role='owner'
-ON CONFLICT (role) DO UPDATE
-SET permissions = (
-  SELECT COALESCE(jsonb_agg(v ORDER BY v), '[]'::jsonb)
-  FROM (
-    SELECT DISTINCT value AS v
-    FROM jsonb_array_elements_text(COALESCE(public.roles.permissions,'[]'::jsonb) || COALESCE(EXCLUDED.permissions,'[]'::jsonb))
-  ) merged
-), is_active=true;
-
-UPDATE public.users SET role='manager' WHERE role='owner';
-UPDATE public.organization_members SET membership_role='admin' WHERE membership_role='owner';
-DELETE FROM public.roles WHERE role='owner';
-
--- Old clients cannot recreate the retired role label.
-CREATE OR REPLACE FUNCTION public.normalize_retired_owner_role()
-RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
-BEGIN
-  IF NEW.role='owner' THEN NEW.role:='manager'; END IF;
-  RETURN NEW;
-END;
-$$;
-DROP TRIGGER IF EXISTS trg_00_normalize_retired_owner_role ON public.users;
-CREATE TRIGGER trg_00_normalize_retired_owner_role
-BEFORE INSERT OR UPDATE OF role ON public.users
-FOR EACH ROW EXECUTE FUNCTION public.normalize_retired_owner_role();
 
 -- Normalize future role-permission writes at the database boundary as well.
 -- Legacy names are assembled from fragments so the final runtime function
