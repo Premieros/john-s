@@ -52,8 +52,9 @@ $$;
 REVOKE ALL ON FUNCTION public.can_permission(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.can_permission(text) TO authenticated, service_role;
 
--- Rewrite the remaining legacy permission literals and role gates in final
--- runtime function definitions after all historical migrations have run.
+-- Rewrite the final runtime definitions after all historical migrations have
+-- run. Matching is whitespace-tolerant because pg_get_functiondef normalizes
+-- formatting; no role label may remain as an authorization capability.
 DO $$
 DECLARE r record; d text; n text;
 BEGIN
@@ -82,38 +83,83 @@ BEGIN
       n := replace(n, '''inventory.manage''', '''approvals.review''');
     END IF;
 
-    -- Owner is not an authorization identity. Preserve only the explicit
-    -- Super Admin exception where historical code had an admin list.
+    -- Owner is not an authorization identity. Historical paired admin lists
+    -- collapse to the sole implicit exception: super_admin.
     n := replace(n, 'NOT IN (''super_admin'', ''owner'')', '<> ''super_admin''');
     n := replace(n, 'NOT IN (''super_admin'',''owner'')', '<> ''super_admin''');
     n := replace(n, 'IN (''super_admin'', ''owner'')', '= ''super_admin''');
     n := replace(n, 'IN (''super_admin'',''owner'')', '= ''super_admin''');
 
-    -- Bank reconciliation: capability controls the operation; branch is scope.
+    -- Inventory adjustments.
+    IF r.proname IN ('adjust_stock','adjust_raw_stock') THEN
+      n := regexp_replace(n,
+        'IF[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+AND[[:space:]]+get_user_role\(\)[[:space:]]+NOT[[:space:]]+IN[[:space:]]*\(''warehouse_manager''[[:space:]]*,[[:space:]]*''branch_manager''\)[[:space:]]+THEN',
+        'IF NOT public.can_permission(''inventory.adjust'') THEN', 'gi');
+    END IF;
+
+    -- Bank reconciliation.
     IF r.proname IN ('add_statement_line','match_bank_line','complete_bank_reconciliation','create_bank_reconciliation') THEN
-      n := replace(n,
-        'IF get_user_role() NOT IN (''accountant'', ''branch_manager'') THEN',
-        'IF NOT public.can_permission(''accounting.reconciliation.manage'') THEN');
+      n := regexp_replace(n,
+        'IF[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+AND[[:space:]]+get_user_role\(\)[[:space:]]+NOT[[:space:]]+IN[[:space:]]*\(''accountant''[[:space:]]*,[[:space:]]*''branch_manager''\)[[:space:]]+THEN',
+        'IF NOT public.can_permission(''accounting.reconciliation.manage'') THEN', 'gi');
+    END IF;
+
+    -- Treasury / accounting / procurement / receivables.
+    IF r.proname = '_treasury_guard' THEN
+      n := regexp_replace(n,
+        'IF[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+AND[[:space:]]+get_user_role\(\)[[:space:]]+NOT[[:space:]]+IN[[:space:]]*\(''accountant''[[:space:]]*,[[:space:]]*''branch_manager''\)[[:space:]]+THEN',
+        'IF NOT public.can_permission(''accounting.treasury.transfer'') THEN', 'gi');
+    ELSIF r.proname = 'post_manual_journal' THEN
+      n := regexp_replace(n,
+        'IF[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+AND[[:space:]]+get_user_role\(\)[[:space:]]+NOT[[:space:]]+IN[[:space:]]*\(''accountant''[[:space:]]*,[[:space:]]*''branch_manager''\)[[:space:]]+THEN',
+        'IF NOT public.can_permission(''accounting.journal.post'') THEN', 'gi');
+    ELSIF r.proname = 'pay_supplier' THEN
+      n := regexp_replace(n,
+        'IF[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+AND[[:space:]]+get_user_role\(\)[[:space:]]+NOT[[:space:]]+IN[[:space:]]*\(''accountant''[[:space:]]*,[[:space:]]*''branch_manager''\)[[:space:]]+THEN',
+        'IF NOT public.can_permission(''procurement.payment.create'') THEN', 'gi');
+    ELSIF r.proname = 'receive_payment' THEN
+      n := regexp_replace(n,
+        'IF[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+AND[[:space:]]+get_user_role\(\)[[:space:]]+NOT[[:space:]]+IN[[:space:]]*\(''accountant''[[:space:]]*,[[:space:]]*''branch_manager''[[:space:]]*,[[:space:]]*''cashier''\)[[:space:]]+THEN',
+        'IF NOT public.can_permission(''sales.payment.receive'') THEN', 'gi');
+    ELSIF r.proname IN ('process_purchase','process_purchase_return') THEN
+      n := regexp_replace(n,
+        'IF[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+AND[[:space:]]+get_user_role\(\)[[:space:]]+NOT[[:space:]]+IN[[:space:]]*\(''warehouse_manager''[[:space:]]*,[[:space:]]*''branch_manager''\)[[:space:]]+THEN',
+        'IF NOT public.can_permission(''purchases.manage'') THEN', 'gi');
     END IF;
 
     -- Expense creation is never implied by accountant/manager labels.
     IF r.proname = 'process_expense' THEN
-      n := replace(n,
-        'IF NOT is_pos_admin() AND NOT can_permission(''expenses.manage'')\n       AND get_user_role() NOT IN (''branch_manager'', ''accountant'') THEN',
-        'IF NOT public.can_permission(''expenses.manage'') THEN');
+      n := regexp_replace(n,
+        'IF[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+AND[[:space:]]+NOT[[:space:]]+(public\.)?can_permission\(''expenses.manage''\)[[:space:]]+AND[[:space:]]+get_user_role\(\)[[:space:]]+NOT[[:space:]]+IN[[:space:]]*\(''branch_manager''[[:space:]]*,[[:space:]]*''accountant''\)[[:space:]]+THEN',
+        'IF NOT public.can_permission(''expenses.manage'') THEN', 'gi');
+    END IF;
+
+    -- Explicit approval bypass capability replaces the historical manager label.
+    IF r.proname IN ('authorize_open_drawer','change_sale_payment_method','force_close_shift') THEN
+      n := regexp_replace(n,
+        'IF[[:space:]]+NOT[[:space:]]+public\.is_pos_admin\(\)[[:space:]]+AND[[:space:]]+v_role[[:space:]]*<>[[:space:]]*''branch_manager''[[:space:]]+THEN',
+        'IF NOT public.can_permission(''approvals.override'') THEN', 'gi');
     END IF;
 
     -- Register/shift behavior is capability-based, not cashier-label based.
     IF r.proname = '_process_sale_core' THEN
-      n := replace(n,
-        'IF v_role = ''cashier'' AND NOT is_pos_admin() THEN',
-        'IF public.can_permission(''pos.payment.take'') AND NOT public.is_pos_admin() THEN');
+      n := regexp_replace(n,
+        'IF[[:space:]]+v_role[[:space:]]*=[[:space:]]*''cashier''[[:space:]]+AND[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+THEN',
+        'IF public.can_permission(''pos.payment.take'') AND NOT public.is_pos_admin() THEN', 'gi');
     END IF;
 
-    -- KDS assignment visibility: station admins are identified by capability.
+    -- KDS assignment visibility: station administration is a capability.
     IF r.proname IN ('get_kitchen_queue','get_my_kitchen_stations') THEN
-      n := replace(n, 'v_role IN(''super_admin'',''owner'',''branch_manager'')', 'public.can_permission(''settings.manage'')');
-      n := replace(n, 'v_role IN (''super_admin'', ''owner'', ''branch_manager'')', 'public.can_permission(''settings.manage'')');
+      n := regexp_replace(n,
+        'v_role[[:space:]]+IN[[:space:]]*\(''super_admin''[[:space:]]*,[[:space:]]*''owner''[[:space:]]*,[[:space:]]*''branch_manager''\)',
+        'public.can_permission(''settings.manage'')', 'gi');
+    END IF;
+
+    -- Modifier administration has its own canonical capability.
+    IF r.proname = 'get_product_modifiers_admin' THEN
+      n := regexp_replace(n,
+        'v_role[[:space:]]+NOT[[:space:]]+IN[[:space:]]*\(''super_admin''[[:space:]]*,[[:space:]]*''owner''[[:space:]]*,[[:space:]]*''branch_manager''\)',
+        'NOT public.can_permission(''products.modifiers.manage'')', 'gi');
     END IF;
 
     -- Tenant bootstrap no longer creates owner labels.
@@ -125,9 +171,9 @@ BEGIN
 
     -- Demo management is a settings capability plus branch scope.
     IF r.proname IN ('seed_demo_data','delete_demo_data') THEN
-      n := replace(n,
-        'IF NOT is_pos_admin() AND NOT (is_branch_manager() AND get_branch_id() = p_branch_id) THEN',
-        'IF NOT public.can_permission(''settings.manage'') OR NOT public.user_may_access_branch(p_branch_id) THEN');
+      n := regexp_replace(n,
+        'IF[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+AND[[:space:]]+NOT[[:space:]]*\((public\.)?is_branch_manager\(\)[[:space:]]+AND[[:space:]]+(public\.)?get_branch_id\(\)[[:space:]]*=[[:space:]]*p_branch_id\)[[:space:]]+THEN',
+        'IF NOT public.can_permission(''settings.manage'') OR NOT public.user_may_access_branch(p_branch_id) THEN', 'gi');
     END IF;
 
     IF n IS DISTINCT FROM d THEN EXECUTE n; END IF;
@@ -312,8 +358,9 @@ USING (user_id=auth.uid() OR (public.can_permission('settings.manage') AND publi
 -- is_branch_manager represented authorization by a label and must disappear.
 DROP FUNCTION IF EXISTS public.is_branch_manager();
 
--- Fail closed inside the migration. Dots are escaped so this inspects literal
--- permission keys rather than producing regex false positives.
+-- Fail closed inside the migration. Displaying a role label is allowed; only
+-- role comparisons/gates are forbidden. Exact legacy permission literals are
+-- checked separately to avoid matching canonical descendants.
 DO $$
 DECLARE v_count integer; v_objects text; v_policies text;
 BEGIN
@@ -338,17 +385,18 @@ BEGIN
     AND p.proname NOT IN ('is_pos_admin','guard_user_role_changes')
     AND (
       pg_get_functiondef(p.oid) ~ '''(pos\.sell|pos\.pay|pos\.split_order|pos\.transfer_order|products\.manage|inventory\.manage|inventory\.transfers|inventory\.transfers\.approve)'''
-      OR pg_get_functiondef(p.oid) ~ '(u\.|users\.|v_|NEW\.|OLD\.)?role[[:space:]]*(=|<>|IN|NOT IN)[[:space:]]*[^;\n]*(owner|branch_manager|accountant|warehouse_manager|cashier)'
-      OR pg_get_functiondef(p.oid) ~ 'get_user_role\(\)[[:space:]]*(=|<>|IN|NOT IN)'
-      OR pg_get_functiondef(p.oid) ~ 'membership_role[[:space:]]*[^;\n]*owner'
+      OR pg_get_functiondef(p.oid) ~ 'get_user_role\(\)[[:space:]]*(=|<>|IN[[:space:]]*\(|NOT[[:space:]]+IN[[:space:]]*\()'
+      OR pg_get_functiondef(p.oid) ~ 'v_role[[:space:]]*(=|<>|IN[[:space:]]*\(|NOT[[:space:]]+IN[[:space:]]*\()[^;\n]*(owner|branch_manager|accountant|warehouse_manager|cashier)'
+      OR pg_get_functiondef(p.oid) ~ '(u\.role|users\.role|NEW\.role|OLD\.role)[[:space:]]*(=|<>|IN[[:space:]]*\(|NOT[[:space:]]+IN[[:space:]]*\()[^;\n]*(owner|branch_manager|accountant|warehouse_manager|cashier)'
+      OR pg_get_functiondef(p.oid) ~ 'membership_role[[:space:]]*(=|<>|IN[[:space:]]*\(|NOT[[:space:]]+IN[[:space:]]*\()[^;\n]*owner'
     );
   IF v_objects IS NOT NULL THEN RAISE EXCEPTION 'PERMISSION_FIRST_DRIFT: runtime authorization remains: %',v_objects; END IF;
 
   SELECT string_agg(tablename||':'||policyname, ', ' ORDER BY tablename,policyname) INTO v_policies
   FROM pg_policies
   WHERE schemaname='public' AND (
-    COALESCE(qual,'') ~ '(is_branch_manager|owner|branch_manager|accountant|warehouse_manager|cashier|products\.manage|inventory\.manage|pos\.sell|pos\.pay)'
-    OR COALESCE(with_check,'') ~ '(is_branch_manager|owner|branch_manager|accountant|warehouse_manager|cashier|products\.manage|inventory\.manage|pos\.sell|pos\.pay)'
+    COALESCE(qual,'') ~ '(is_branch_manager|membership_role[^)]*owner|role[^)]*(owner|branch_manager|accountant|warehouse_manager|cashier)|products\.manage|inventory\.manage|pos\.sell|pos\.pay)'
+    OR COALESCE(with_check,'') ~ '(is_branch_manager|membership_role[^)]*owner|role[^)]*(owner|branch_manager|accountant|warehouse_manager|cashier)|products\.manage|inventory\.manage|pos\.sell|pos\.pay)'
   );
   IF v_policies IS NOT NULL THEN RAISE EXCEPTION 'PERMISSION_FIRST_DRIFT: RLS authorization remains: %',v_policies; END IF;
 END;
