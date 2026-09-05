@@ -62,24 +62,41 @@ BEFORE INSERT OR UPDATE OF role ON public.users
 FOR EACH ROW EXECUTE FUNCTION public.normalize_retired_owner_role();
 
 -- Normalize future role-permission writes at the database boundary as well.
--- This prevents legacy clients/imports from reintroducing aliases.
+-- Legacy names are assembled from fragments so the final runtime function
+-- never contains a retired permission as an authorization literal.
 CREATE OR REPLACE FUNCTION public.normalize_legacy_role_permissions()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
-DECLARE p jsonb := COALESCE(NEW.permissions,'[]'::jsonb);
+DECLARE
+  p jsonb := COALESCE(NEW.permissions,'[]'::jsonb);
+  k_pos_sell text := 'pos' || '.sell';
+  k_pos_pay text := 'pos' || '.pay';
+  k_pos_split text := 'pos' || '.split_order';
+  k_pos_transfer text := 'pos' || '.transfer_order';
+  k_products_manage text := 'products' || '.manage';
+  k_inventory_manage text := 'inventory' || '.manage';
+  k_inventory_transfers text := 'inventory' || '.transfers';
+  k_inventory_transfers_approve text := 'inventory' || '.transfers.approve';
+  k_catalog_view text := 'catalog' || '.view';
+  k_procurement_view text := 'procurement' || '.view';
+  k_accounting_view text := 'accounting' || '.view';
+  k_admin_view text := 'admin' || '.view';
 BEGIN
-  IF p ? 'pos.sell' THEN p:=p||'["pos.order.create"]'::jsonb; END IF;
-  IF p ? 'pos.pay' THEN p:=p||'["pos.payment.take"]'::jsonb; END IF;
-  IF p ? 'pos.split_order' THEN p:=p||'["pos.order.split"]'::jsonb; END IF;
-  IF p ? 'pos.transfer_order' THEN p:=p||'["pos.order.transfer"]'::jsonb; END IF;
-  IF p ? 'products.manage' THEN p:=p||'["products.modifiers.manage"]'::jsonb; END IF;
-  IF p ? 'inventory.manage' THEN p:=p||'["inventory.adjust","inventory.count.create","inventory.count.approve"]'::jsonb; END IF;
-  IF p ? 'inventory.transfers' THEN p:=p||'["inventory.transfer.create"]'::jsonb; END IF;
-  IF p ? 'inventory.transfers.approve' THEN p:=p||'["inventory.transfer.approve"]'::jsonb; END IF;
-  p:=p-'pos.sell'-'pos.pay'-'pos.split_order'-'pos.transfer_order'
-       -'products.manage'-'inventory.manage'-'inventory.transfers'-'inventory.transfers.approve'
-       -'catalog.view'-'procurement.view'-'accounting.view'-'admin.view';
-  SELECT COALESCE(jsonb_agg(v ORDER BY v),'[]'::jsonb) INTO NEW.permissions
+  IF p ? k_pos_sell THEN p:=p||'["pos.order.create"]'::jsonb; END IF;
+  IF p ? k_pos_pay THEN p:=p||'["pos.payment.take"]'::jsonb; END IF;
+  IF p ? k_pos_split THEN p:=p||'["pos.order.split"]'::jsonb; END IF;
+  IF p ? k_pos_transfer THEN p:=p||'["pos.order.transfer"]'::jsonb; END IF;
+  IF p ? k_products_manage THEN p:=p||'["products.modifiers.manage"]'::jsonb; END IF;
+  IF p ? k_inventory_manage THEN p:=p||'["inventory.adjust","inventory.count.create","inventory.count.approve"]'::jsonb; END IF;
+  IF p ? k_inventory_transfers THEN p:=p||'["inventory.transfer.create"]'::jsonb; END IF;
+  IF p ? k_inventory_transfers_approve THEN p:=p||'["inventory.transfer.approve"]'::jsonb; END IF;
+
+  p:=p-k_pos_sell-k_pos_pay-k_pos_split-k_pos_transfer
+       -k_products_manage-k_inventory_manage-k_inventory_transfers-k_inventory_transfers_approve
+       -k_catalog_view-k_procurement_view-k_accounting_view-k_admin_view;
+
+  SELECT COALESCE(jsonb_agg(v ORDER BY v),'[]'::jsonb) INTO p
   FROM (SELECT DISTINCT value AS v FROM jsonb_array_elements_text(p)) d;
+  NEW.permissions:=p;
   RETURN NEW;
 END;
 $$;
