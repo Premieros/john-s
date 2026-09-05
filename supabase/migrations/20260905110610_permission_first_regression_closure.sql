@@ -12,12 +12,10 @@ DECLARE
   v_permission text;
   v_primary_branch uuid;
 BEGIN
-  -- Direct DB/service maintenance has no end-user JWT.
   IF auth.uid() IS NULL THEN
     RETURN NEW;
   END IF;
 
-  -- Super Admin is the only implicit bypass.
   IF public.is_pos_admin() THEN
     RETURN NEW;
   END IF;
@@ -26,8 +24,6 @@ BEGIN
     RAISE EXCEPTION 'PERMISSION_DENIED:roles.permissions.manage';
   END IF;
 
-  -- New non-Super-Admin roles are normalized to the caller's branch instead
-  -- of ever becoming global by an omitted scope/branch_id field.
   IF TG_OP = 'INSERT' AND (NEW.scope IS DISTINCT FROM 'branch' OR NEW.branch_id IS NULL) THEN
     SELECT u.branch_id INTO v_primary_branch
     FROM public.users u
@@ -41,14 +37,12 @@ BEGIN
     NEW.branch_id := v_primary_branch;
   END IF;
 
-  -- Existing global roles can never be converted/edited by non-Super-Admin.
   IF NEW.scope IS DISTINCT FROM 'branch'
      OR NEW.branch_id IS NULL
      OR NOT public.user_may_access_branch(NEW.branch_id) THEN
     RAISE EXCEPTION 'PERMISSION_DENIED: role outside caller branch scope';
   END IF;
 
-  -- A role editor may delegate only capabilities they already hold.
   FOR v_permission IN
     SELECT jsonb_array_elements_text(COALESCE(NEW.permissions, '[]'::jsonb))
   LOOP
@@ -61,7 +55,6 @@ BEGIN
 END;
 $$;
 
--- The canonical role policies remain permission-first and branch scoped.
 DROP POLICY IF EXISTS auth_write_roles ON public.roles;
 DROP POLICY IF EXISTS auth_write_roles_upd ON public.roles;
 DROP POLICY IF EXISTS auth_write_roles_del ON public.roles;
@@ -110,8 +103,55 @@ USING (
   )
 );
 
--- reject_stock_count has a distinct signature/body shape, so define its
--- permission and branch contract explicitly rather than relying on text drift.
+CREATE OR REPLACE FUNCTION public.approve_stock_count(p_stock_count_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_count record;
+BEGIN
+  BEGIN
+    IF NOT public.can_permission('inventory.count.approve') THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'error', 'NOT_ALLOWED',
+        'detail', 'Approving stock counts requires the inventory.count.approve permission.'
+      );
+    END IF;
+
+    SELECT * INTO v_count
+    FROM public.stock_counts
+    WHERE id = p_stock_count_id
+    FOR UPDATE;
+
+    IF v_count.id IS NULL THEN
+      RETURN jsonb_build_object('success', false, 'error', 'COUNT_NOT_FOUND');
+    END IF;
+
+    IF v_count.status <> 'submitted' THEN
+      RETURN jsonb_build_object('success', false, 'error', 'INVALID_STATUS', 'status', v_count.status);
+    END IF;
+
+    IF NOT public.user_may_access_branch(v_count.branch_id) THEN
+      RETURN jsonb_build_object('success', false, 'error', 'BRANCH_MISMATCH');
+    END IF;
+
+    UPDATE public.stock_counts
+    SET status = 'approved',
+        approved_by = auth.uid(),
+        approved_at = now(),
+        rejection_reason = NULL
+    WHERE id = p_stock_count_id;
+
+    RETURN jsonb_build_object('success', true, 'stock_count_id', p_stock_count_id);
+  EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', 'TRANSACTION_FAILED', 'detail', SQLERRM);
+  END;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.reject_stock_count(
   p_stock_count_id uuid,
   p_reason text DEFAULT NULL::text
@@ -160,37 +200,125 @@ BEGIN
 END;
 $$;
 
--- approve/apply share the same historical primary-branch-only guard. Replace
--- it with canonical multi-branch access and fail closed if their shape drifts.
-DO $$
+CREATE OR REPLACE FUNCTION public.apply_stock_count(p_stock_count_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
 DECLARE
-  r record;
-  d text;
-  n text;
+  v_count public.stock_counts%ROWTYPE;
+  v_item public.stock_count_items%ROWTYPE;
+  v_current numeric(14,4);
+  v_variance numeric(14,4);
+  v_applied integer := 0;
+  v_res jsonb;
+  v_shortage numeric(14,4);
 BEGIN
-  FOR r IN
-    SELECT p.oid, p.proname, pg_get_functiondef(p.oid) AS def
-    FROM pg_proc p
-    JOIN pg_namespace ns ON ns.oid = p.pronamespace
-    WHERE ns.nspname = 'public'
-      AND p.prokind = 'f'
-      AND p.proname IN ('approve_stock_count', 'apply_stock_count')
-  LOOP
-    d := r.def;
-    n := d;
+  BEGIN
+    SELECT * INTO v_count
+    FROM public.stock_counts
+    WHERE id = p_stock_count_id
+    FOR UPDATE;
 
-    n := regexp_replace(
-      n,
-      'IF[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+THEN[[:space:]]+SELECT[[:space:]]+branch_id[[:space:]]+INTO[[:space:]]+v_user_branch[[:space:]]+FROM[[:space:]]+public\.users[[:space:]]+WHERE[[:space:]]+id[[:space:]]*=[[:space:]]*auth\.uid\(\);[[:space:]]+IF[[:space:]]+v_user_branch[[:space:]]+IS[[:space:]]+NOT[[:space:]]+NULL[[:space:]]+AND[[:space:]]+v_user_branch[[:space:]]*<>[[:space:]]*v_count\.branch_id[[:space:]]+THEN[[:space:]]+RETURN[[:space:]]+jsonb_build_object\(''success'',[[:space:]]*false,[[:space:]]*''error'',[[:space:]]*''BRANCH_MISMATCH''\);[[:space:]]+END[[:space:]]+IF;[[:space:]]+END[[:space:]]+IF;',
-      E'IF NOT public.user_may_access_branch(v_count.branch_id) THEN\n      RETURN jsonb_build_object(''success'', false, ''error'', ''BRANCH_MISMATCH'');\n    END IF;',
-      'gi'
-    );
-
-    IF n IS NOT DISTINCT FROM d THEN
-      RAISE EXCEPTION 'PERMISSION_FIRST_REGRESSION: stock-count branch guard not normalized for %', r.proname;
+    IF v_count.id IS NULL THEN
+      RETURN jsonb_build_object('success', false, 'error', 'COUNT_NOT_FOUND');
     END IF;
 
-    EXECUTE n;
-  END LOOP;
+    IF v_count.status <> 'approved' THEN
+      RETURN jsonb_build_object('success', false, 'error', 'COUNT_NOT_APPROVED', 'status', v_count.status);
+    END IF;
+
+    IF NOT public.can_permission('inventory.count.approve') THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'error', 'NOT_ALLOWED',
+        'detail', 'Applying stock counts requires the inventory.count.approve permission.'
+      );
+    END IF;
+
+    IF NOT public.user_may_access_branch(v_count.branch_id) THEN
+      RETURN jsonb_build_object('success', false, 'error', 'BRANCH_MISMATCH');
+    END IF;
+
+    FOR v_item IN
+      SELECT *
+      FROM public.stock_count_items
+      WHERE stock_count_id = p_stock_count_id
+      ORDER BY id
+      FOR UPDATE
+    LOOP
+      SELECT COALESCE(quantity, 0)
+      INTO v_current
+      FROM public.inventory
+      WHERE product_id = v_item.product_id
+        AND warehouse_id = v_count.warehouse_id;
+
+      IF v_current IS NULL THEN
+        v_current := 0;
+      END IF;
+
+      v_variance := v_item.counted_quantity - v_current;
+
+      IF v_variance > 0 THEN
+        v_res := public._product_inv_add(
+          v_item.product_id,
+          v_count.warehouse_id,
+          v_count.branch_id,
+          v_variance,
+          v_item.unit_cost,
+          NULL,
+          NULL,
+          NULL,
+          'adjustment',
+          'stock_count',
+          v_count.id,
+          v_count.count_number,
+          auth.uid()
+        );
+
+        IF NOT COALESCE((v_res->>'success')::boolean, false) THEN
+          RETURN jsonb_build_object(
+            'success', false,
+            'error', 'ADJUST_FAILED',
+            'product_id', v_item.product_id,
+            'detail', v_res->>'error'
+          );
+        END IF;
+      ELSIF v_variance < 0 THEN
+        v_res := public._product_inv_remove_fifo(
+          v_item.product_id,
+          v_count.warehouse_id,
+          v_count.branch_id,
+          -v_variance,
+          'adjustment',
+          'stock_count',
+          v_count.id,
+          v_count.count_number,
+          auth.uid()
+        );
+
+        v_shortage := COALESCE((v_res->>'shortage')::numeric, 0);
+        IF v_shortage > 0 THEN
+          RETURN jsonb_build_object(
+            'success', false,
+            'error', 'STOCK_COUNT_SHORTAGE',
+            'product_id', v_item.product_id,
+            'shortage', v_shortage
+          );
+        END IF;
+      END IF;
+
+      v_applied := v_applied + 1;
+    END LOOP;
+
+    UPDATE public.stock_counts
+    SET status = 'applied', applied_at = now()
+    WHERE id = p_stock_count_id;
+
+    RETURN jsonb_build_object('success', true, 'items_applied', v_applied);
+  EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', 'TRANSACTION_FAILED', 'detail', SQLERRM);
+  END;
 END;
 $$;
