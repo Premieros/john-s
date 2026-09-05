@@ -45,11 +45,13 @@ describe('Permission-First root contract', () => {
     expect(migration).toContain("UPDATE public.users SET role = 'manager' WHERE role = 'owner';");
     expect(migration).toContain("UPDATE public.organization_members SET membership_role = 'admin' WHERE membership_role = 'owner';");
     expect(migration).toContain('PERMISSION_FIRST_DRIFT: owner users remain');
-    expect(migration).toContain('PERMISSION_FIRST_DRIFT: role-based or legacy authorization remains');
+    expect(migration).toContain('PERMISSION_FIRST_DRIFT: runtime authorization remains');
+    expect(migration).toContain('PERMISSION_FIRST_DRIFT: RLS authorization remains');
   });
 
-  it('uses the canonical modifier capability on both read and write paths', () => {
-    expect(migration).toContain("public.can_permission('products.modifiers.manage')");
+  it('uses the canonical modifier capability on write paths and removes the legacy alias', () => {
     expect(migration).toContain("replace(n, '''products.manage''', '''products.modifiers.manage''')");
+    expect(permissionDefs).toContain("'products.modifiers.manage'");
+    expect(permissionDefs).not.toContain("| 'products.manage'");
   });
 });
