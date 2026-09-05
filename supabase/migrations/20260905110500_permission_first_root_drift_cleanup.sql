@@ -48,13 +48,9 @@ UPDATE public.users SET role='manager' WHERE role='owner';
 UPDATE public.organization_members SET membership_role='admin' WHERE membership_role='owner';
 DELETE FROM public.roles WHERE role='owner';
 
--- Compatibility hard-stop: old clients/fixtures cannot recreate the retired
--- label. They are normalized to manager before the normal user guard executes.
+-- Old clients cannot recreate the retired role label.
 CREATE OR REPLACE FUNCTION public.normalize_retired_owner_role()
-RETURNS trigger
-LANGUAGE plpgsql
-SET search_path=public,pg_temp
-AS $$
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
 BEGIN
   IF NEW.role='owner' THEN NEW.role:='manager'; END IF;
   RETURN NEW;
@@ -65,13 +61,35 @@ CREATE TRIGGER trg_00_normalize_retired_owner_role
 BEFORE INSERT OR UPDATE OF role ON public.users
 FOR EACH ROW EXECUTE FUNCTION public.normalize_retired_owner_role();
 
--- Legacy aliases are not authorization capabilities after normalization.
-UPDATE public.roles
-SET permissions = COALESCE(permissions, '[]'::jsonb)
-  - 'pos.sell' - 'pos.pay' - 'pos.split_order' - 'pos.transfer_order'
-  - 'products.manage' - 'inventory.manage' - 'inventory.transfers'
-  - 'inventory.transfers.approve' - 'catalog.view' - 'procurement.view'
-  - 'accounting.view' - 'admin.view';
+-- Normalize future role-permission writes at the database boundary as well.
+-- This prevents legacy clients/imports from reintroducing aliases.
+CREATE OR REPLACE FUNCTION public.normalize_legacy_role_permissions()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
+DECLARE p jsonb := COALESCE(NEW.permissions,'[]'::jsonb);
+BEGIN
+  IF p ? 'pos.sell' THEN p:=p||'["pos.order.create"]'::jsonb; END IF;
+  IF p ? 'pos.pay' THEN p:=p||'["pos.payment.take"]'::jsonb; END IF;
+  IF p ? 'pos.split_order' THEN p:=p||'["pos.order.split"]'::jsonb; END IF;
+  IF p ? 'pos.transfer_order' THEN p:=p||'["pos.order.transfer"]'::jsonb; END IF;
+  IF p ? 'products.manage' THEN p:=p||'["products.modifiers.manage"]'::jsonb; END IF;
+  IF p ? 'inventory.manage' THEN p:=p||'["inventory.adjust","inventory.count.create","inventory.count.approve"]'::jsonb; END IF;
+  IF p ? 'inventory.transfers' THEN p:=p||'["inventory.transfer.create"]'::jsonb; END IF;
+  IF p ? 'inventory.transfers.approve' THEN p:=p||'["inventory.transfer.approve"]'::jsonb; END IF;
+  p:=p-'pos.sell'-'pos.pay'-'pos.split_order'-'pos.transfer_order'
+       -'products.manage'-'inventory.manage'-'inventory.transfers'-'inventory.transfers.approve'
+       -'catalog.view'-'procurement.view'-'accounting.view'-'admin.view';
+  SELECT COALESCE(jsonb_agg(v ORDER BY v),'[]'::jsonb) INTO NEW.permissions
+  FROM (SELECT DISTINCT value AS v FROM jsonb_array_elements_text(p)) d;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_00_normalize_legacy_role_permissions ON public.roles;
+CREATE TRIGGER trg_00_normalize_legacy_role_permissions
+BEFORE INSERT OR UPDATE OF permissions ON public.roles
+FOR EACH ROW EXECUTE FUNCTION public.normalize_legacy_role_permissions();
+
+-- Normalize existing arrays after installing the write boundary.
+UPDATE public.roles SET permissions=permissions;
 
 CREATE OR REPLACE FUNCTION public.is_pos_admin()
 RETURNS boolean
