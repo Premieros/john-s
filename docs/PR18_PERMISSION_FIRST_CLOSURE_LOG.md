@@ -41,18 +41,26 @@
 6. Root cause found and fixed in the Permission-First migration/tests:
    - `owner` must remain an ordinary role label.
    - removed the attempted `owner -> manager` semantic conversion/deletion behavior.
-   - `owner` receives no implicit bypass.
+   - `owner` receives no implicit bypass in the candidate migration.
    - effective authority remains `roles.permissions` + branch/RLS scope.
    - regression coverage was added/updated to lock this invariant.
    - relevant commits include `94cbdbc99618ef9ae9bdabc3cb3103f8475fe90e`, `a30bdf599e9e89c6e8824200ec950174ea20b12f`, and `d40cb6f3995c659da261d2f8dd0837ac98e5e048`.
-7. PR #18 was refreshed against current `main` metadata without merging; its base now resolves to current `main` for the open PR.
-8. No production database DDL was applied.
-9. No RLS or tests were weakened.
+7. PR #18 was refreshed against current `main` metadata without merging; its base resolves to current `main` for the open PR.
+8. Performed a read-only Production database audit on the locked project. Confirmed current Production still contains the drift that PR #18 is intended to close:
+   - `public.is_pos_admin()` currently treats both `super_admin` and `owner` as implicit admin.
+   - `public.can_permission(text)` currently calls that broad `is_pos_admin()` before checking `roles.permissions`.
+   - the `owner` role row still exists, which is correct; it must remain a label rather than be deleted or renamed.
+   - legacy permission keys currently present in role permission arrays: `inventory.manage`, `inventory.transfers`, `inventory.transfers.approve`, `pos.pay`, `pos.sell`, `pos.split_order`, `pos.transfer_order`, `products.manage`.
+   - 22 public functions currently match fixed-role authorization-gate patterns.
+9. Candidate migration `20260905110500_permission_first_root_drift_cleanup.sql` explicitly changes `is_pos_admin()` to `u.role = 'super_admin'` only, derives normal access through active `roles.permissions`, keeps `owner`, and uses `search_path = public, pg_temp`.
+10. No production database DDL was applied.
+11. No RLS or tests were weakened.
 
 ### Current blocking items
 - Run Verify against the current PR head after the owner-label fix.
-- If Integration/Security/RLS still fails, use the new uploaded `verify-integration-log` and repair only the proven regression.
+- If Integration/Security/RLS still fails, use the uploaded `verify-integration-log` from a current-head run and repair only the proven regression.
 - Full Verify including Browser Smoke must be green before merge.
+- Production migration remains blocked until the candidate passes the full gate.
 
 ### Authorization invariants
 - Super Admin only = implicit bypass.
@@ -61,4 +69,4 @@
 - Legacy permission aliases must not return.
 
 ### Status
-`IN_PROGRESS — ROOT CAUSE FIXED, CURRENT-HEAD VERIFY REQUIRED`.
+`IN_PROGRESS — ROOT CAUSE CONFIRMED IN PRODUCTION, CANDIDATE FIX PRESENT, CURRENT-HEAD VERIFY REQUIRED`.
