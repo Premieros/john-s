@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(process.cwd());
-const migration = readFileSync(resolve(root, 'supabase/migrations/20260905110500_permission_first_root_drift_cleanup.sql'), 'utf8');
+const baseMigration = readFileSync(resolve(root, 'supabase/migrations/20260905110500_permission_first_root_drift_cleanup.sql'), 'utf8');
+const runtimeMigration = readFileSync(resolve(root, 'supabase/migrations/20260905110600_permission_first_runtime_reconcile.sql'), 'utf8');
+const migration = `${baseMigration}\n${runtimeMigration}`;
 const userTypes = readFileSync(resolve(root, 'src/lib/domains/types/users.ts'), 'utf8');
 const permissionDefs = readFileSync(resolve(root, 'src/lib/permissionDefs.ts'), 'utf8');
 
@@ -36,21 +38,24 @@ describe('Permission-First root contract', () => {
   });
 
   it('makes Super Admin the only implicit bypass', () => {
-    expect(migration).toContain("AND u.role = 'super_admin'");
-    expect(migration).toContain('JOIN public.roles r ON r.role = u.role AND r.is_active = true');
-    expect(migration).toContain("COALESCE(r.permissions, '[]'::jsonb) ? p_permission");
+    expect(baseMigration).toContain("AND u.role = 'super_admin'");
+    expect(baseMigration).toContain('JOIN public.roles r ON r.role = u.role AND r.is_active = true');
+    expect(baseMigration).toContain("COALESCE(r.permissions, '[]'::jsonb) ? p_permission");
   });
 
   it('migrates owner away and fails closed on future authorization drift', () => {
-    expect(migration).toContain("UPDATE public.users SET role = 'manager' WHERE role = 'owner';");
-    expect(migration).toContain("UPDATE public.organization_members SET membership_role = 'admin' WHERE membership_role = 'owner';");
-    expect(migration).toContain('PERMISSION_FIRST_DRIFT: owner users remain');
-    expect(migration).toContain('PERMISSION_FIRST_DRIFT: runtime authorization remains');
-    expect(migration).toContain('PERMISSION_FIRST_DRIFT: RLS authorization remains');
+    expect(baseMigration).toContain("UPDATE public.users SET role = 'manager' WHERE role = 'owner';");
+    expect(baseMigration).toContain("UPDATE public.organization_members SET membership_role = 'admin' WHERE membership_role = 'owner';");
+    expect(runtimeMigration).toContain('PERMISSION_FIRST_DRIFT: owner users remain');
+    expect(runtimeMigration).toContain('PERMISSION_FIRST_DRIFT: runtime authorization remains');
+    expect(runtimeMigration).toContain('PERMISSION_FIRST_DRIFT: RLS authorization remains');
   });
 
-  it('uses the canonical modifier capability on write paths and removes the legacy alias', () => {
-    expect(migration).toContain("replace(n, '''products.manage''', '''products.modifiers.manage''')");
+  it('uses canonical capabilities for legacy runtime paths', () => {
+    expect(runtimeMigration).toContain("replace(n, '''products.manage''', '''products.modifiers.manage''')");
+    expect(runtimeMigration).toContain("public.can_permission(''inventory.adjust'')");
+    expect(runtimeMigration).toContain("public.can_permission(''accounting.reconciliation.manage'')");
+    expect(runtimeMigration).toContain("public.can_permission(''approvals.override'')");
     expect(permissionDefs).toContain("'products.modifiers.manage'");
     expect(permissionDefs).not.toContain("| 'products.manage'");
   });
