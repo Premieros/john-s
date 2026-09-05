@@ -37,13 +37,13 @@ describe('Permission-First root contract', () => {
 
   it('makes Super Admin the only implicit bypass', () => {
     expect(migration).toContain("AND u.role = 'super_admin'");
-    expect(migration).toContain("JOIN public.roles r ON r.role = u.role AND r.is_active = true");
+    expect(migration).toContain('JOIN public.roles r ON r.role = u.role AND r.is_active = true');
     expect(migration).toContain("COALESCE(r.permissions, '[]'::jsonb) ? p_permission");
   });
 
   it('migrates owner away and fails closed on future authorization drift', () => {
-    expect(migration).toContain("UPDATE public.users\nSET role = 'manager'\nWHERE role = 'owner'");
-    expect(migration).toContain("SET membership_role = 'admin'\nWHERE membership_role = 'owner'");
+    expect(migration).toContain("UPDATE public.users SET role = 'manager' WHERE role = 'owner';");
+    expect(migration).toContain("UPDATE public.organization_members SET membership_role = 'admin' WHERE membership_role = 'owner';");
     expect(migration).toContain('PERMISSION_FIRST_DRIFT: owner users remain');
     expect(migration).toContain('PERMISSION_FIRST_DRIFT: role-based or legacy authorization remains');
   });
