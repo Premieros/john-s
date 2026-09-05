@@ -81,6 +81,8 @@ jobs:
         run: node scripts/db/apply-migration.js --file supabase/ci/disable_subscription_guard.sql
       - name: Seed raw-material branch helper (CI only, never on real Supabase)
         run: node scripts/db/apply-migration.js --file supabase/ci/seed_raw_material_branch.sql
+      - name: Seed explicit Permission-First role capabilities (CI only)
+        run: node scripts/db/apply-migration.js --file supabase/ci/permission_first_role_fixture.sql
       - name: Run integration and security/RLS regression tests
         shell: bash
         run: |
