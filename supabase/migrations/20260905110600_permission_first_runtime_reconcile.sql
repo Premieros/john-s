@@ -29,6 +29,7 @@ BEGIN
       n:=replace(n,'''inventory.manage''','''approvals.review''');
     END IF;
 
+    -- Remove owner from implicit role gates while preserving owner as a label.
     n:=replace(n,'NOT IN (''super_admin'', ''owner'')','<> ''super_admin''');
     n:=replace(n,'NOT IN (''super_admin'',''owner'')','<> ''super_admin''');
     n:=replace(n,'IN (''super_admin'', ''owner'')','= ''super_admin''');
@@ -70,12 +71,6 @@ BEGIN
       n:=regexp_replace(n,'v_role[[:space:]]+NOT[[:space:]]+IN[[:space:]]*\([^)]*(super_admin|owner|branch_manager)[^)]*\)','NOT public.can_permission(''products.modifiers.manage'')','gi');
     END IF;
 
-    IF r.proname='register_tenant' THEN
-      n:=replace(n,'''owner'',','''manager'',');
-      n:=replace(n,', ''owner'', true',', ''admin'', true');
-      n:=replace(n,'''membership_role'', ''owner''','''membership_role'', ''admin''');
-    END IF;
-
     IF n IS DISTINCT FROM d THEN EXECUTE n; END IF;
   END LOOP;
 END;
@@ -107,6 +102,10 @@ END;$$;
 CREATE OR REPLACE FUNCTION public.guard_role_permissions()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 BEGIN
+ -- Direct database/service maintenance has no end-user JWT. RLS still governs
+ -- authenticated application writes; this exception only keeps migrations and
+ -- CI fixture seeding operable.
+ IF auth.uid() IS NULL THEN RETURN NEW; END IF;
  IF public.is_pos_admin() THEN RETURN NEW; END IF;
  IF NOT public.can_permission('roles.permissions.manage') THEN RAISE EXCEPTION 'PERMISSION_DENIED:roles.permissions.manage'; END IF;
  IF NEW.branch_id IS NULL OR NEW.scope='global' OR NOT public.user_may_access_branch(NEW.branch_id) THEN RAISE EXCEPTION 'PERMISSION_DENIED: role outside caller branch scope'; END IF;
@@ -138,9 +137,6 @@ DROP FUNCTION IF EXISTS public.is_branch_manager();
 DO $$
 DECLARE v_count integer; v_objects text; v_policies text;
 BEGIN
- SELECT count(*) INTO v_count FROM public.users WHERE role='owner'; IF v_count<>0 THEN RAISE EXCEPTION 'PERMISSION_FIRST_DRIFT: owner users remain (%)',v_count; END IF;
- SELECT count(*) INTO v_count FROM public.roles WHERE role='owner'; IF v_count<>0 THEN RAISE EXCEPTION 'PERMISSION_FIRST_DRIFT: owner role remains'; END IF;
- SELECT count(*) INTO v_count FROM public.organization_members WHERE membership_role='owner'; IF v_count<>0 THEN RAISE EXCEPTION 'PERMISSION_FIRST_DRIFT: owner membership remains (%)',v_count; END IF;
  IF to_regprocedure('public.is_branch_manager()') IS NOT NULL THEN RAISE EXCEPTION 'PERMISSION_FIRST_DRIFT: is_branch_manager still exists'; END IF;
 
  SELECT count(*) INTO v_count FROM public.roles r CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(r.permissions,'[]'::jsonb)) x(permission)
