@@ -110,9 +110,58 @@ USING (
   )
 );
 
--- Stock-count lifecycle functions historically compared only users.branch_id.
--- Replace that primary-branch-only check with canonical branch access so an
--- explicitly authorized secondary branch behaves the same as transfers/waste.
+-- reject_stock_count has a distinct signature/body shape, so define its
+-- permission and branch contract explicitly rather than relying on text drift.
+CREATE OR REPLACE FUNCTION public.reject_stock_count(
+  p_stock_count_id uuid,
+  p_reason text DEFAULT NULL::text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_count record;
+BEGIN
+  BEGIN
+    IF NOT public.can_permission('inventory.count.approve') THEN
+      RETURN jsonb_build_object('success', false, 'error', 'NOT_ALLOWED');
+    END IF;
+
+    SELECT * INTO v_count
+    FROM public.stock_counts
+    WHERE id = p_stock_count_id
+    FOR UPDATE;
+
+    IF v_count.id IS NULL THEN
+      RETURN jsonb_build_object('success', false, 'error', 'COUNT_NOT_FOUND');
+    END IF;
+
+    IF v_count.status <> 'submitted' THEN
+      RETURN jsonb_build_object('success', false, 'error', 'INVALID_STATUS', 'status', v_count.status);
+    END IF;
+
+    IF NOT public.user_may_access_branch(v_count.branch_id) THEN
+      RETURN jsonb_build_object('success', false, 'error', 'BRANCH_MISMATCH');
+    END IF;
+
+    UPDATE public.stock_counts
+    SET status = 'rejected',
+        approved_by = auth.uid(),
+        approved_at = now(),
+        rejection_reason = p_reason
+    WHERE id = p_stock_count_id;
+
+    RETURN jsonb_build_object('success', true, 'stock_count_id', p_stock_count_id);
+  EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', 'TRANSACTION_FAILED', 'detail', SQLERRM);
+  END;
+END;
+$$;
+
+-- approve/apply share the same historical primary-branch-only guard. Replace
+-- it with canonical multi-branch access and fail closed if their shape drifts.
 DO $$
 DECLARE
   r record;
@@ -125,7 +174,7 @@ BEGIN
     JOIN pg_namespace ns ON ns.oid = p.pronamespace
     WHERE ns.nspname = 'public'
       AND p.prokind = 'f'
-      AND p.proname IN ('approve_stock_count', 'reject_stock_count', 'apply_stock_count')
+      AND p.proname IN ('approve_stock_count', 'apply_stock_count')
   LOOP
     d := r.def;
     n := d;
