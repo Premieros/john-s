@@ -22,14 +22,17 @@ describe.skipIf(skip)('Permission-First final-state drift sentinel', () => {
     if (client) await client.end().catch(() => {});
   });
 
-  it('has fully retired owner from users, roles and organization memberships', async () => {
-    const r = await client.query(`
+  it('keeps owner as a normal permission-driven role label', async () => {
+    const r = await client.query<{ owner_normalizer_absent: boolean; permission_def: string }>(`
       SELECT
-        (SELECT count(*)::int FROM public.users WHERE role='owner') AS users,
-        (SELECT count(*)::int FROM public.roles WHERE role='owner') AS roles,
-        (SELECT count(*)::int FROM public.organization_members WHERE membership_role='owner') AS members
+        to_regprocedure('public.normalize_retired_owner_role()') IS NULL AS owner_normalizer_absent,
+        pg_get_functiondef('public.can_permission(text)'::regprocedure) AS permission_def
     `);
-    expect(r.rows[0]).toEqual({ users: 0, roles: 0, members: 0 });
+    expect(r.rows[0].owner_normalizer_absent).toBe(true);
+    expect(r.rows[0].permission_def).toContain('JOIN public.roles');
+    expect(r.rows[0].permission_def).toContain('r.permissions');
+    expect(r.rows[0].permission_def).not.toContain("u.role = 'owner'");
+    expect(r.rows[0].permission_def).not.toContain("u.role IN ('super_admin', 'owner')");
   });
 
   it('stores only canonical role permission keys for all retired aliases', async () => {
@@ -65,7 +68,7 @@ describe.skipIf(skip)('Permission-First final-state drift sentinel', () => {
       SELECT p.oid::regprocedure::text AS fn
       FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
       WHERE n.nspname='public' AND p.prokind='f'
-        AND p.proname NOT IN ('normalize_retired_owner_role','guard_user_role_changes')
+        AND p.proname NOT IN ('guard_user_role_changes')
         AND (
           pg_get_functiondef(p.oid) ~ 'get_user_role\\(\\)[[:space:]]*(=|<>)[[:space:]]*''(owner|branch_manager|accountant|warehouse_manager|cashier)'''
           OR pg_get_functiondef(p.oid) ~ 'get_user_role\\(\\)[[:space:]]+(NOT[[:space:]]+)?IN[[:space:]]*\\([^)]*''(owner|branch_manager|accountant|warehouse_manager|cashier)'''
@@ -77,7 +80,7 @@ describe.skipIf(skip)('Permission-First final-state drift sentinel', () => {
     expect(r.rows).toEqual([]);
   });
 
-  it('has no RLS policy authorization based on retired/fixed operational roles', async () => {
+  it('has no RLS policy authorization based on fixed operational roles', async () => {
     const r = await client.query<{ policy: string }>(`
       SELECT schemaname||'.'||tablename||'.'||policyname AS policy
       FROM pg_policies
