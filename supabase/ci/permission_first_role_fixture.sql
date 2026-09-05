@@ -1,8 +1,9 @@
 -- CI-only fixture for permission-first authorization tests.
--- This does NOT run on Supabase Production. It makes the branch_manager test
--- principal explicitly permission-bearing, so tests prove capabilities rather
--- than relying on the role label itself.
+-- This does NOT run on Supabase Production. It grants only the explicit
+-- role-management capability; individual tests grant any delegated capability
+-- they need inside their rollback-only transaction.
 UPDATE public.roles
 SET permissions = COALESCE(permissions, '[]'::jsonb)
-  || '["settings.manage","roles.permissions.manage"]'::jsonb
-WHERE role = 'branch_manager';
+  || '["roles.permissions.manage"]'::jsonb
+WHERE role = 'branch_manager'
+  AND NOT COALESCE(permissions, '[]'::jsonb) ? 'roles.permissions.manage';
