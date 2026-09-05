@@ -10,6 +10,7 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_permission text;
+  v_primary_branch uuid;
 BEGIN
   -- Direct DB/service maintenance has no end-user JWT.
   IF auth.uid() IS NULL THEN
@@ -25,7 +26,22 @@ BEGIN
     RAISE EXCEPTION 'PERMISSION_DENIED:roles.permissions.manage';
   END IF;
 
-  -- Non-Super-Admin role definitions are always branch scoped.
+  -- New non-Super-Admin roles are normalized to the caller's branch instead
+  -- of ever becoming global by an omitted scope/branch_id field.
+  IF TG_OP = 'INSERT' AND (NEW.scope IS DISTINCT FROM 'branch' OR NEW.branch_id IS NULL) THEN
+    SELECT u.branch_id INTO v_primary_branch
+    FROM public.users u
+    WHERE u.id = auth.uid() AND u.is_active = true;
+
+    IF v_primary_branch IS NULL THEN
+      RAISE EXCEPTION 'PERMISSION_DENIED: branch-scoped role requires a caller primary branch';
+    END IF;
+
+    NEW.scope := 'branch';
+    NEW.branch_id := v_primary_branch;
+  END IF;
+
+  -- Existing global roles can never be converted/edited by non-Super-Admin.
   IF NEW.scope IS DISTINCT FROM 'branch'
      OR NEW.branch_id IS NULL
      OR NOT public.user_may_access_branch(NEW.branch_id) THEN
