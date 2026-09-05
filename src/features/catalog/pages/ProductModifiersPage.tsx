@@ -4,6 +4,7 @@ import { supabase } from '@/api';
 import * as api from '@/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useToast } from '@/components/Toast';
+import { useBranchFilter } from '@/lib/useBranchFilter';
 import type { InventoryUnit, Product } from '@/lib/types';
 
 interface RawMaterialRef {
@@ -69,6 +70,7 @@ export function ProductModifiersPage() {
   const { lang } = useLanguage();
   const isAr = lang === 'ar';
   const { show } = useToast();
+  const branchFilter = useBranchFilter();
   const [products, setProducts] = useState<Product[]>([]);
   const [productId, setProductId] = useState('');
   const [groups, setGroups] = useState<ModifierGroupDraft[]>([]);
@@ -84,29 +86,42 @@ export function ProductModifiersPage() {
 
   useEffect(() => {
     let cancelled = false;
+    if (!branchFilter) {
+      setProducts([]);
+      setProductId('');
+      setGroups([]);
+      setRawMaterials([]);
+      setInventoryUnits([]);
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+
     (async () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('products')
         .select('*')
+        .eq('branch_id', branchFilter)
         .eq('is_active', true)
         .order('name');
       if (cancelled) return;
       if (error) {
         show(error.message, 'error');
+        setProducts([]);
+        setProductId('');
         setLoading(false);
         return;
       }
       const rows = (data || []) as Product[];
       setProducts(rows);
-      setProductId((prev) => prev || rows[0]?.id || '');
+      setProductId((prev) => rows.some((row) => row.id === prev) ? prev : (rows[0]?.id || ''));
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [show]);
+  }, [branchFilter, show]);
 
   useEffect(() => {
-    if (!selectedProduct) {
+    if (!branchFilter || !selectedProduct || selectedProduct.branch_id !== branchFilter) {
       setGroups([]);
       setRawMaterials([]);
       setInventoryUnits([]);
@@ -117,8 +132,8 @@ export function ProductModifiersPage() {
       setLoading(true);
       const [mods, raws, units] = await Promise.all([
         supabase.rpc('get_product_modifiers_admin', { p_product_id: selectedProduct.id }),
-        supabase.from('raw_materials').select('id,name,branch_id').eq('branch_id', selectedProduct.branch_id).order('name'),
-        api.catalog.listInventoryUnits({ branch_id: selectedProduct.branch_id, is_active: true }),
+        supabase.from('raw_materials').select('id,name,branch_id').eq('branch_id', branchFilter).eq('is_active', true).order('name'),
+        api.catalog.listInventoryUnits({ branch_id: branchFilter, is_active: true }),
       ]);
       if (cancelled) return;
       if (mods.error) {
@@ -158,7 +173,7 @@ export function ProductModifiersPage() {
       }
     });
     return () => { cancelled = true; };
-  }, [selectedProduct, show]);
+  }, [branchFilter, selectedProduct, show]);
 
   const updateGroup = (groupIndex: number, patch: Partial<ModifierGroupDraft>) => {
     setGroups((prev) => prev.map((g, i) => i === groupIndex ? { ...g, ...patch } : g));
@@ -182,7 +197,7 @@ export function ProductModifiersPage() {
   };
 
   const save = async () => {
-    if (!selectedProduct) return;
+    if (!branchFilter || !selectedProduct || selectedProduct.branch_id !== branchFilter) return;
     for (const group of groups) {
       if (!group.name.trim()) {
         show(isAr ? 'اسم مجموعة الإضافات مطلوب' : 'Modifier group name is required', 'error');
@@ -250,7 +265,7 @@ export function ProductModifiersPage() {
         </div>
         <button
           onClick={save}
-          disabled={!selectedProduct || saving || loading}
+          disabled={!branchFilter || !selectedProduct || saving || loading}
           className="min-h-11 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-ui-primary text-ui-primary-fg font-bold disabled:opacity-50"
         >
           <Save className="w-4 h-4" />
@@ -258,21 +273,27 @@ export function ProductModifiersPage() {
         </button>
       </div>
 
-      <div className="rounded-2xl border border-ui-border bg-ui-surface p-4">
-        <label className="block text-sm font-bold mb-2">{isAr ? 'المنتج' : 'Product'}</label>
-        <select
-          value={productId}
-          onChange={(e) => setProductId(e.target.value)}
-          className="w-full md:max-w-xl min-h-11 rounded-xl border border-ui-border bg-ui-page px-3"
-        >
-          {products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.name_en ? ` — ${p.name_en}` : ''}</option>)}
-        </select>
-      </div>
+      {!branchFilter ? (
+        <div className="rounded-2xl border border-ui-border bg-ui-surface p-5 text-center text-ui-muted">
+          {isAr ? 'اختر فرعًا محددًا من محدد الفروع لعرض موديفاير هذا الفرع فقط.' : 'Select a specific branch to manage only that branch’s modifiers.'}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-ui-border bg-ui-surface p-4">
+          <label className="block text-sm font-bold mb-2">{isAr ? 'المنتج' : 'Product'}</label>
+          <select
+            value={productId}
+            onChange={(e) => setProductId(e.target.value)}
+            className="w-full md:max-w-xl min-h-11 rounded-xl border border-ui-border bg-ui-page px-3"
+          >
+            {products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.name_en ? ` — ${p.name_en}` : ''}</option>)}
+          </select>
+        </div>
+      )}
 
       {loading ? (
         <div className="py-16 text-center text-ui-muted">{isAr ? 'جاري التحميل…' : 'Loading…'}</div>
-      ) : !selectedProduct ? (
-        <div className="py-16 text-center text-ui-muted">{isAr ? 'لا توجد منتجات متاحة' : 'No products available'}</div>
+      ) : !branchFilter ? null : !selectedProduct ? (
+        <div className="py-16 text-center text-ui-muted">{isAr ? 'لا توجد منتجات متاحة في هذا الفرع' : 'No products available in this branch'}</div>
       ) : (
         <div className="space-y-4">
           {groups.map((group, gi) => (
