@@ -133,7 +133,7 @@ BEGIN
     n := regexp_replace(
       n,
       'IF[[:space:]]+NOT[[:space:]]+(public\.)?is_pos_admin\(\)[[:space:]]+THEN[[:space:]]+SELECT[[:space:]]+branch_id[[:space:]]+INTO[[:space:]]+v_user_branch[[:space:]]+FROM[[:space:]]+public\.users[[:space:]]+WHERE[[:space:]]+id[[:space:]]*=[[:space:]]*auth\.uid\(\);[[:space:]]+IF[[:space:]]+v_user_branch[[:space:]]+IS[[:space:]]+NOT[[:space:]]+NULL[[:space:]]+AND[[:space:]]+v_user_branch[[:space:]]*<>[[:space:]]*v_count\.branch_id[[:space:]]+THEN[[:space:]]+RETURN[[:space:]]+jsonb_build_object\(''success'',[[:space:]]*false,[[:space:]]*''error'',[[:space:]]*''BRANCH_MISMATCH''\);[[:space:]]+END[[:space:]]+IF;[[:space:]]+END[[:space:]]+IF;',
-      'IF NOT public.user_may_access_branch(v_count.branch_id) THEN\n      RETURN jsonb_build_object(''success'', false, ''error'', ''BRANCH_MISMATCH'');\n    END IF;',
+      E'IF NOT public.user_may_access_branch(v_count.branch_id) THEN\n      RETURN jsonb_build_object(''success'', false, ''error'', ''BRANCH_MISMATCH'');\n    END IF;',
       'gi'
     );
 
