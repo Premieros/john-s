@@ -15,6 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  SUPABASE_PROJECT_REF: azzdesuowpdcoflmyezn
   VITE_SUPABASE_URL: https://azzdesuowpdcoflmyezn.supabase.co
   VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'dummy_anon_key_for_ci_build' }}
 
@@ -29,6 +30,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Verify locked Supabase project identity
+        run: node scripts/db/verify-database-identity.js
       - name: Verify frontend API contract is current
         run: node scripts/db/gen-contract.js --check
       - run: npm run lint
@@ -55,6 +58,8 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      SUPABASE_PROJECT_REF: azzdesuowpdcoflmyezn
+      VITE_SUPABASE_URL: https://azzdesuowpdcoflmyezn.supabase.co
       SUPABASE_DB_URL: postgresql://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +69,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Verify locked Supabase project identity
+        run: node scripts/db/verify-database-identity.js
       - name: Apply auth stub (CI only, never on real Supabase)
         run: node scripts/db/apply-migration.js --file supabase/ci/stub_auth.sql
       - name: Apply canonical migrations
@@ -90,6 +97,9 @@ jobs:
   browser-smoke:
     needs: [verify, db]
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_PROJECT_REF: azzdesuowpdcoflmyezn
+      VITE_SUPABASE_URL: https://azzdesuowpdcoflmyezn.supabase.co
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -98,6 +108,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Verify locked Supabase project identity
+        run: node scripts/db/verify-database-identity.js
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
       - name: Build application
