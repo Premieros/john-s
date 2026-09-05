@@ -2,15 +2,10 @@
 // ============================================================================
 // Production schema-parity gate.
 //
-// WHY: the deploy chain must never publish a frontend that is newer than the
-// database it talks to. The published app calls RPC functions and reads tables
-// over PostgREST; if any of those objects is missing from the PRODUCTION schema
-// cache, the live page fails with PGRST202/PGRST205.
-//
-// RPC/table routes can legitimately return 401/403 to the anon probe while the
-// schema route itself is present (many app RPCs require authenticated users).
-// Structural column sentinels are stricter: a required column must be positively
-// resolved, otherwise the deployment is blocked.
+// RPC/table routes are checked through PostgREST with the anon key. A 401/403
+// can still prove that an exact route exists. Structural DB requirements are
+// verified through a narrow, data-free schema sentinel RPC instead of guessing
+// from table SELECT permissions/RLS.
 // ============================================================================
 
 import { readFileSync } from 'node:fs';
@@ -22,10 +17,7 @@ const ROOT = resolve(__dirname, '..', '..');
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
-
-const REQUIRED_COLUMNS = {
-  orders: ['inventory_warehouse_id'],
-};
+const SCHEMA_SENTINEL_RPC = '_production_schema_contract_kitchen_v1';
 
 if (!SUPABASE_URL || !ANON_KEY) {
   console.error('ERROR: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set (as in the build job).');
@@ -47,12 +39,14 @@ function loadContract() {
 async function readResponse(res) {
   const text = await res.text();
   let code = '';
+  let json = null;
   try {
-    code = JSON.parse(text)?.code || '';
+    json = JSON.parse(text);
+    code = json?.code || '';
   } catch {
     // Non-JSON responses are classified by HTTP status below.
   }
-  return { text, code };
+  return { text, code, json };
 }
 
 async function probeRpc(name, params, headers) {
@@ -65,8 +59,6 @@ async function probeRpc(name, params, headers) {
   const { text, code } = await readResponse(res);
 
   if (res.status === 404 && (code === 'PGRST202' || text.includes('PGRST202'))) return 'missing';
-  // 401/403 on an exact PostgREST RPC route proves the route resolved but the
-  // anon role is intentionally not allowed to execute it.
   if (res.ok || res.status === 400 || res.status === 401 || res.status === 403 || res.status >= 500) return 'present';
   return 'unverifiable';
 }
@@ -79,27 +71,23 @@ async function probeTable(name, headers) {
   const { text, code } = await readResponse(res);
 
   if (res.status === 404 && (code === 'PGRST205' || text.includes('PGRST205'))) return 'missing';
-  // As with RPCs, 401/403 still proves the table route exists.
-  if (res.ok || res.status === 401 || res.status === 403) return 'present';
+  // 400 can mean the table exists but does not expose an `id` column. The
+  // exact PostgREST table route has still resolved, so it proves presence.
+  if (res.ok || res.status === 400 || res.status === 401 || res.status === 403) return 'present';
   return 'unverifiable';
 }
 
-async function probeColumns(table, columns, headers) {
-  const select = encodeURIComponent(['id', ...columns].join(','));
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${select}&limit=0`, {
-    method: 'GET',
-    headers,
+async function probeSchemaSentinel(headers) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${SCHEMA_SENTINEL_RPC}`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: '{}',
   });
-  const { text, code } = await readResponse(res);
+  const { text, code, json } = await readResponse(res);
 
-  if ((res.status === 400 && (code === 'PGRST204' || text.includes('PGRST204')))
-      || (res.status === 404 && (code === 'PGRST205' || text.includes('PGRST205')))) {
-    return 'missing';
-  }
-  // Structural sentinels are fail-closed: only a successful select proves that
-  // the required column is available through the production API schema cache.
-  if (res.ok) return 'present';
-  return 'unverifiable';
+  if (res.status === 404 && (code === 'PGRST202' || text.includes('PGRST202'))) return 'missing';
+  if (!res.ok) return 'unverifiable';
+  return json === true ? 'present' : 'missing';
 }
 
 async function main() {
@@ -109,11 +97,11 @@ async function main() {
   console.log(`PRODUCTION PARITY CHECK  ${SUPABASE_URL}`);
   console.log(`RPC functions to verify : ${rpcs.size}`);
   console.log(`Tables to verify       : ${tables.length}`);
+  console.log(`Schema sentinel        : ${SCHEMA_SENTINEL_RPC}`);
   console.log('');
 
   const missingRpc = [];
   const missingTables = [];
-  const missingColumns = [];
   const unverifiable = [];
 
   for (const [name, params] of rpcs) {
@@ -131,17 +119,13 @@ async function main() {
     process.stdout.write(`  ${status === 'present' ? 'ok ' : status === 'missing' ? 'FAIL' : '????'} table ${name}\n`);
   }
 
-  for (const [table, columns] of Object.entries(REQUIRED_COLUMNS)) {
-    const status = await probeColumns(table, columns, headers);
-    const label = `${table}.${columns.join(',')}`;
-    if (status === 'missing') missingColumns.push(label);
-    if (status === 'unverifiable') unverifiable.push(`columns ${label}`);
-    process.stdout.write(`  ${status === 'present' ? 'ok ' : status === 'missing' ? 'FAIL' : '????'} columns ${table}(${columns.join(', ')})\n`);
-  }
+  const schemaStatus = await probeSchemaSentinel(headers);
+  if (schemaStatus === 'unverifiable') unverifiable.push(`schema sentinel ${SCHEMA_SENTINEL_RPC}`);
+  process.stdout.write(`  ${schemaStatus === 'present' ? 'ok ' : schemaStatus === 'missing' ? 'FAIL' : '????'} schema kitchen_inventory_v1\n`);
 
   console.log('');
-  if (missingRpc.length === 0 && missingTables.length === 0 && missingColumns.length === 0 && unverifiable.length === 0) {
-    console.log('PARITY OK: every frontend RPC/table route and required structural column is verified in production.');
+  if (missingRpc.length === 0 && missingTables.length === 0 && schemaStatus === 'present' && unverifiable.length === 0) {
+    console.log('PARITY OK: frontend API routes and the required Production schema sentinel are verified.');
     process.exit(0);
   }
 
@@ -155,9 +139,8 @@ async function main() {
     console.error(`\nMissing tables (${missingTables.length}):`);
     missingTables.forEach((t) => console.error(`  - ${t}`));
   }
-  if (missingColumns.length) {
-    console.error(`\nMissing required column contracts (${missingColumns.length}):`);
-    missingColumns.forEach((column) => console.error(`  - ${column}`));
+  if (schemaStatus === 'missing') {
+    console.error(`\nMissing/failed schema contract: ${SCHEMA_SENTINEL_RPC}`);
   }
   if (unverifiable.length) {
     console.error(`\nUnverifiable schema probes (${unverifiable.length}):`);
