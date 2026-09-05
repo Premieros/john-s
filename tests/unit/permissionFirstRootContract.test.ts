@@ -10,18 +10,8 @@ const userTypes = readFileSync(resolve(root, 'src/lib/domains/types/users.ts'), 
 const permissionDefs = readFileSync(resolve(root, 'src/lib/permissionDefs.ts'), 'utf8');
 
 const legacyPermissions = [
-  'pos.sell',
-  'pos.pay',
-  'pos.split_order',
-  'pos.transfer_order',
-  'products.manage',
-  'inventory.manage',
-  'inventory.transfers',
-  'inventory.transfers.approve',
-  'catalog.view',
-  'procurement.view',
-  'accounting.view',
-  'admin.view',
+  'pos.sell','pos.pay','pos.split_order','pos.transfer_order','products.manage','inventory.manage',
+  'inventory.transfers','inventory.transfers.approve','catalog.view','procurement.view','accounting.view','admin.view',
 ];
 
 describe('Permission-First root contract', () => {
@@ -44,14 +34,19 @@ describe('Permission-First root contract', () => {
     expect(baseMigration).not.toContain("u.role IN ('super_admin', 'owner')");
   });
 
-  it('preserves owner as a normal permission-bearing label', () => {
-    expect(baseMigration).toContain('`owner` remains a valid tenant role label');
-    expect(baseMigration).not.toContain("UPDATE public.users SET role = 'manager' WHERE role = 'owner';");
-    expect(baseMigration).not.toContain("DELETE FROM public.roles WHERE role = 'owner';");
-    expect(runtimeMigration).not.toContain("PERMISSION_FIRST_DRIFT: owner users remain");
-    expect(runtimeMigration).not.toContain("n:=replace(n,'''owner'',','''manager'',');");
-    expect(runtimeMigration).toContain('PERMISSION_FIRST_DRIFT: runtime authorization remains');
-    expect(runtimeMigration).toContain('PERMISSION_FIRST_DRIFT: RLS authorization remains');
+  it('retires owner entirely and migrates it to a neutral label', () => {
+    expect(baseMigration).toContain("UPDATE public.users SET role='manager' WHERE role='owner';");
+    expect(baseMigration).toContain("UPDATE public.organization_members SET membership_role='admin' WHERE membership_role='owner';");
+    expect(baseMigration).toContain("DELETE FROM public.roles WHERE role='owner';");
+    expect(baseMigration).toContain("SELECT 'manager', 'مدير', 'Manager'");
+  });
+
+  it('migrates explicit legacy grants before deleting their aliases', () => {
+    expect(baseMigration).toContain("? 'pos.sell'");
+    expect(baseMigration).toContain("'[\"pos.order.create\"]'::jsonb");
+    expect(baseMigration).toContain("'[\"pos.payment.take\"]'::jsonb");
+    expect(baseMigration).toContain("'[\"inventory.adjust\",\"inventory.count.create\",\"inventory.count.approve\"]'::jsonb");
+    expect(baseMigration).toContain("'[\"inventory.transfer.approve\"]'::jsonb");
   });
 
   it('uses canonical capabilities for legacy runtime paths', () => {
