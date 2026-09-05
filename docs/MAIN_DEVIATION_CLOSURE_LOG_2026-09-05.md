@@ -1,45 +1,60 @@
 # Main Deviation Closure Log — 2026-09-05
 
-> هذا السجل إلزامي لكل دفعة إصلاح على `Premieros/johna-s`.
-> قاعدة البيانات الوحيدة المسموح بها للمشروع: Supabase project ref `azzdesuowpdcoflmyezn`.
+## Verified baseline
 
-## P0 — PR #18 Permission-First Root Drift
+- Repository: `Premieros/johna-s`.
+- Main baseline before this documentation update: `096b2788c4068131de34fd5c24f55b0d9db17367`.
+- Supabase Production Project Ref: `azzdesuowpdcoflmyezn` only.
+- Verify main #702: PASS.
+  - Database Identity Lock
+  - API Contract
+  - Lint
+  - TypeScript app/tests
+  - Unit
+  - Build
+  - Fresh DB + canonical migrations
+  - Schema verification
+  - Integration/Security/RLS
+  - Browser Smoke
+- Deploy #521: PASS.
+  - Database Identity Lock
+  - Build
+  - Production API Parity
+  - GitHub Pages Deploy
 
-### نقطة البداية
-- PR: `#18` — `refactor: enforce permission-first authorization at the root`.
-- Branch: `fix/permission-first-root-drift-v2`.
-- Verified head before this log entry: `918749d0d7f6bb19c60fa182766c151383989ca0`.
-- Verify run: `33972141884` / `#696`.
+## Deviations confirmed on main
 
-### نتائج التحقق المثبتة
-- Frontend API contract ✅
-- Lint ✅
-- TypeScript application ✅
-- TypeScript tests ✅
-- Unit ✅
-- Build ✅
-- Fresh PostgreSQL + canonical migrations ✅
-- Schema verification ✅
-- Integration / Security / RLS ❌
-- Browser Smoke: skipped because DB gate failed.
+1. **Permission-First root closure is not final yet.** PR #18 (`fix/permission-first-root-drift-v2`) still carries a large authorization hardening set that has not been merged. Its last full Verify reached frontend green but failed Integration/Security/RLS; Browser Smoke therefore did not run.
+2. **Supabase Security Advisor still reports SECURITY DEFINER exposure warnings.** These require a function-by-function audit; the warnings are not automatically treated as vulnerabilities, but no 100% security claim is allowed until exposures are classified and tested.
+3. **Leaked Password Protection is disabled** in Supabase Auth and remains an explicit security hardening item.
+4. **CURRENT_WORK_PLAN had become stale** relative to actual `main`, Verify and Deploy run numbers. It has now been rewritten to match the current baseline and closure order.
+5. **`main` is not protected by GitHub branch protection** at the time of this audit. CI is green, but direct push remains a governance risk until required checks can be enforced.
+6. **UI/runtime backlog must be re-verified on the current deployed build before editing.** Old screenshots/issues are not automatically considered active because multiple fixes landed after those observations.
 
-### نطاق التغيير في PR #18
-التغييرات محصورة في نموذج Permission-First:
-- `src/lib/domains/types/users.ts`
-- أربع migrations تبدأ بـ `20260905110500_...` وتنتهي بـ `20260905110600_...`
-- Contract/Integration tests المرتبطة بالصلاحيات، modifiers، product units، stock valuation.
+## Locked execution order
 
-### قواعد الإصلاح
-1. Super Admin فقط هو implicit bypass.
-2. كل Role آخر Label فقط؛ الصلاحيات من `roles.permissions`.
-3. لا إعادة Legacy permission aliases.
-4. لا إضعاف RLS أو حذف/تخفيف اختبار لإخراج CI أخضر.
-5. لا DDL على Production في هذه الدفعة.
-6. لا استخدام لأي Supabase project غير `azzdesuowpdcoflmyezn`.
-7. Browser Smoke لا يعتبر مكتملًا قبل نجاح Integration/Security/RLS.
+1. Synchronize PR #18 with latest `main` and preserve the database identity lock.
+2. Review the PR's commits against current main to avoid reintroducing superseded code.
+3. Close Permission-First regressions until Fresh DB + Integration/Security/RLS + Browser Smoke are green.
+4. Audit SECURITY DEFINER functions and external EXECUTE grants on `azzdesuowpdcoflmyezn`.
+5. Harden or revoke unintended exposure, with regression tests.
+6. Enable/resolve leaked password protection.
+7. Run full Verify again.
+8. Re-run runtime UI regression checks on the live/current build.
+9. Fix only regressions reproduced on current main.
+10. Protect main with required checks if GitHub permissions allow.
+11. Finalize printing and remaining operational polish.
+12. Run full operational E2E and produce final Zero-Drift report before any 100% declaration.
 
-### التشخيص الجاري
-GitHub يعرض أن الفشل محصور في خطوة `npm run test:integration` لكنه لا يعرض النص الخام للـjob log عبر الموصل الحالي. سيتم إضافة artifact تشخيصي مؤقت/محدود إلى Workflow الفرع لالتقاط مخرجات Integration كاملة، ثم إصلاح الاختبار/العقد الفعلي فقط وإزالة التشخيص الزائد إن لم يعد مطلوبًا.
+## Non-negotiable constraints
 
-### الحالة
-`IN_PROGRESS` — لا دمج قبل Full Verify أخضر.
+- Never point this repository at any Supabase project other than `azzdesuowpdcoflmyezn`.
+- Super Admin is the only implicit full-access principal.
+- All other roles are labels; authorization is permission-first.
+- No weakening/deleting tests or RLS to make a gate green.
+- No reopening closed work without a current regression signal.
+- No production database mutation outside an explicitly approved task.
+
+## Source of Truth
+
+`docs/CURRENT_WORK_PLAN.md` on `main` is the authoritative execution plan after this audit.
